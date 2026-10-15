@@ -1,34 +1,55 @@
-# Hướng dẫn viết bot OTTv2 — C++17, protocol v2
+# Hướng dẫn viết bot OTTv2 — Python, C và C++ · protocol v2
 
-Bot là một chương trình C++17 chạy trong worker. Chương trình nhận một dòng JSON qua **stdin**, tính một nước đi, rồi trả một dòng JSON qua **stdout**. Đội nộp source ZIP và dùng trang Test & benchmark để kiểm tra. Mỗi lượt không tạo lại chương trình: cùng một process sống xuyên suốt trận hoặc benchmark.
+Bot là một chương trình Python 3.11 (chạy bằng PyPy), C11 hoặc C++17 chạy trong worker. Chương trình nhận một dòng JSON qua **stdin**, tính một nước đi, rồi trả một dòng JSON qua **stdout**. Đội nộp source ZIP và dùng trang Test & benchmark để kiểm tra. Cùng một process sống suốt trận hoặc benchmark, không khởi động lại ở mỗi lượt.
+
+
+## Chọn ngôn ngữ
+
+Chọn ngôn ngữ trên trang Nộp bot trước khi tải starter:
+
+| Ngôn ngữ | File chính ở gốc ZIP | Starter gồm | Worker làm gì |
+|---|---|---|---|
+| C++17 (`cpp17`) | bot.cpp, thêm .cpp/.hpp/.h nếu cần | bot.cpp, json.hpp | `g++ -std=c++17 -O2`, chạy file nhị phân |
+| C11 (`c11`) | bot.c, thêm .c/.h nếu cần | bot.c, jsmn.h | `gcc -std=c11 -O2 -lm`, chạy file nhị phân |
+| Python 3.11 (`python3`) | bot.py, thêm module .py nếu cần | bot.py | kiểm cú pháp rồi chạy bằng PyPy 3.11, chỉ thư viện chuẩn |
+
+Starter nào cũng đã lo phần đọc/ghi JSON; chỉ cần sửa một hàm chọn nước: `choose_move` trong C/C++, `choose` trong Python. Không có pip, không có mạng, không dùng thư viện native bên ngoài.
+
+Mọi ngôn ngữ dùng **cùng giao thức và cùng quỹ giờ**. Server không dịch code sang ngôn ngữ khác; nó chỉ ghép hai process trao đổi JSON, nên bot Python đấu được với bot C++. C/C++ thường tính được nhiều nước hơn Python trong cùng thời gian; chọn ngôn ngữ là quyết định của đội.
+
+Đọc bàn cờ và luật từ input, đừng viết cứng: giải có thể dùng bàn 7–15 hàng/cột, căn cứ ở chỗ khác, thắng khi diệt sạch 1 hoặc 2 loại quân, bật/tắt thắng bằng chiếm căn cứ. Số hàng là độ dài mảng `payload.state.board`, số cột là độ dài một hàng; căn cứ nằm ở `payload.bases`; luật đầy đủ nằm ở `payload.basic_rules.definition` khi giải dùng luật tùy chỉnh. Tọa độ có thể có hai chữ số hàng như `j10`, `o15`. `legal_moves` luôn được server tính đúng luật, nên trả lại một phần tử của danh sách này là cách an toàn nhất.
+
+Để dự giải, vào trang giải → **Đến benchmark**: hệ thống tự dùng đúng luật và quỹ giờ của giải. Trang **Luyện tập** cho đấu với phiên bản khác của đội hoặc với bot mẫu của BTC (tự chọn cầm Đỏ hay Xanh); kết quả luyện tập không tính hạng.
 
 ## 1. Bắt đầu và đóng gói source
 
 1. Đăng nhập tài khoản đội, đổi mật khẩu tạm nếu được yêu cầu.
-2. Vào Nộp bot → Tải starter OTTv2. Giải nén ZIP để lấy bot.cpp, json.hpp và giấy phép thư viện JSON.
-3. Sửa hàm chọn nước trong bot.cpp. Giữ nguyên phần đọc message và xuất phản hồi cho lần thử đầu tiên.
+2. Vào Nộp bot, chọn ngôn ngữ → Tải starter OTTv2. Giải nén để lấy file chính (bot.cpp, bot.c hoặc bot.py) và thư viện đi kèm.
+3. Sửa hàm chọn nước. Giữ nguyên phần đọc message và xuất phản hồi cho lần thử đầu tiên.
 4. Nén **các file bên trong** thành ZIP; không nén cả thư mục bao ngoài.
 5. Nộp với version mới, ví dụ v1.0.0, sau đó v1.0.1. Version đã nộp là bất biến.
 6. Chạy benchmark; chỉ khi đạt đủ 72 mẫu mới chọn bot dự giải với đúng quỹ thời gian của giải.
 
 ```text
 my-bot.zip
-├── bot.cpp          bắt buộc, nằm ngay tại gốc ZIP
+├── bot.cpp          bắt buộc (hoặc bot.c / bot.py), nằm ngay tại gốc ZIP
 ├── search.hpp       tùy chọn, mã thuật toán của đội
 ├── json.hpp         có trong starter; worker cũng cung cấp thư viện này
 ├── README.md        tùy chọn
 └── LICENSE.MIT      tùy chọn, giấy phép thư viện JSON
 ```
 
-ZIP tối đa **10 MiB**, sau giải nén tối đa **20 MiB**, từ 1 đến 64 entry. Tên file phân biệt hoa/thường. Chấp nhận .cpp, .hpp, .h, README.md và LICENSE.MIT. Không dùng thư mục con, symlink, file trùng tên, ZIP mã hóa, binary, Makefile, CMake hoặc script cài thư viện. Chỉ bot.cpp là translation unit được biên dịch; đặt phần phụ trợ trong header và include từ bot.cpp. Các file .cpp khác không được tự động link.
+ZIP tối đa **10 MiB**, sau giải nén tối đa **20 MiB**, từ 1 đến 64 entry. Tên file phân biệt hoa/thường. Chấp nhận file nguồn của ngôn ngữ đã chọn (C++: .cpp, .hpp, .h; C: .c, .h; Python: .py) cùng README.md và LICENSE.MIT. Không dùng thư mục con, symlink, file trùng tên, ZIP mã hóa, binary, Makefile, CMake hoặc script cài thư viện. C++ link các file .cpp trong ZIP; C link các file .c. Không trộn source C và C++ trong cùng bài.
 
 Lệnh build của worker tương đương:
 
 ```sh
-g++ -std=c++17 -O2 -pipe -Wall -Wextra -I/sdk -I/source /source/bot.cpp -o /out/bot
+g++ -std=c++17 -O2 -pipe -Wall -Wextra -I/sdk -I/source /source/*.cpp -o /out/bot   # C++17
+gcc -std=c11 -O2 -pipe -Wall -Wextra -I/sdk -I/source /source/*.c -o /out/bot -lm   # C11
+# Python: lúc build chỉ kiểm cú pháp; khi chạy là pypy3 -I -S với bot.py làm điểm vào
 ```
 
-Có thể dùng thư viện chuẩn C++: vector, array, queue, priority_queue, unordered_map, algorithm, bitset, chrono, random… Thư viện ngoài phải tương thích môi trường worker và có source/header hợp lệ trong ZIP; không có bước tải dependency. Backend hiện chạy C++17; Python/Codon chưa được bật.
+Có thể dùng thư viện chuẩn của ngôn ngữ: C++ có vector, queue, unordered_map, algorithm, chrono, random…; Python có collections, heapq, itertools, random, time…; C có thư viện chuẩn C và libm. Thư viện ngoài phải có source hợp lệ trong ZIP; không có bước tải dependency.
 
 ## 2. Vòng đời và quy tắc stdin/stdout
 
@@ -72,13 +93,13 @@ Mỗi lượt nhận một observation. File **ottv2-input.jsonl** tải ở tra
 | match_id | string opaque | Copy nguyên giá trị vào action |
 | turn_id | string opaque | Copy nguyên giá trị và kiểu string; không tự tăng |
 | state_version | integer không âm | Copy nguyên giá trị và kiểu số |
-| payload.state.board | Mảng 9 hàng × 9 cột | Đọc bàn hiện tại; ô trống là null |
+| payload.state.board | Mảng hàng × cột (mặc định 9 × 9) | Đọc bàn hiện tại; ô trống là null |
 | payload.state.to_move | red hoặc blue | Màu đang được đi |
 | payload.state.ply | Số nước đã thực hiện | Thông tin trạng thái, không thay turn_id |
 | payload.state.result | null hoặc object kết quả | null khi đang chơi |
 | payload.legal_moves | Mảng object from/to | Danh sách nước hợp lệ của bên tới lượt |
 | payload.counts | Số rock/paper/scissors mỗi màu | Đánh giá nguy cơ mất một loại quân |
-| payload.bases | red: a1, blue: i9 | Xác định căn cứ cần bảo vệ/chiếm |
+| payload.bases | Ô căn cứ của mỗi màu (mặc định red: a1, blue: i9) | Xác định căn cứ cần bảo vệ/chiếm |
 | payload.adjudication | Policy xử lý kết quả | Thông tin luật vận hành đã ghim |
 | timing.budget_ms | Ngân sách của lần trao đổi này | Đặt giới hạn tìm kiếm nội bộ có dư |
 | timing.clock_id | ID clock worker | Chỉ có ý nghĩa trong worker đó |
@@ -86,7 +107,7 @@ Mỗi lượt nhận một observation. File **ottv2-input.jsonl** tải ở tra
 | timing.remaining_ms / initial_ms | Số millisecond | Quỹ còn lại / ban đầu của bot; time_control là match, increment_ms bằng 0 |
 | timing.started_mono_ns / deadline_mono_ns | Nanosecond dạng string | Thông tin mốc worker; không dùng clock trình duyệt/UTC để quyết định |
 
-Một ô có quân là object như {"side":"red","kind":"rock"}. Các kind là rock (búa), paper (lá/bao), scissors (kéo). Tọa độ from/to là string từ a1 đến i9. **board[0][0] = a9**, board[8][0] = a1; cột 0 là a, cột 8 là i. Chuyển tọa độ: row = 9 - số_hàng, col = ký_tự_cột - 'a'.
+Một ô có quân là object như {"side":"red","kind":"rock"}. Các kind là rock (búa), paper (lá/bao), scissors (kéo). Tọa độ from/to là chữ cột + số hàng: a1 đến i9 trên bàn 9×9, tới o15 trên bàn 15×15. **board[0][0] là ô cột a ở hàng lớn nhất** (a9 trên bàn 9×9) và hàng cuối của mảng là hàng 1. Chuyển tọa độ: row = số_hàng_của_bàn − số_hàng, col = ký_tự_cột − 'a'.
 
 Ví dụ observation có match_id = example-match, turn_id = turn-A và state_version = 0; nếu a2 → b3 nằm trong legal_moves, trả:
 
@@ -102,7 +123,7 @@ Benchmark gồm **24 thế cờ × 3 lần**, không phải một ván cờ nố
 
 ## 5. Mẫu bot C++ hoàn chỉnh
 
-Mẫu dưới đây giữ vòng giao thức và dùng heuristic: ưu tiên chiếm căn cứ, ăn quân, loại loại quân cuối của đối thủ và tiến gần căn cứ địch. Nó chỉ xét legal_moves, nên bạn có thể thay dần hàm choose_move bằng minimax/alpha-beta mà giữ nguyên phần giao tiếp. Đây là bot khởi đầu để phát triển, không bảo đảm chiến thắng.
+Mẫu C++ dưới đây (starter C và Python dùng cùng ý tưởng) giữ vòng giao thức và dùng heuristic: ưu tiên chiếm căn cứ, ăn quân, loại loại quân cuối của đối thủ và tiến gần căn cứ địch. Nó chỉ xét legal_moves, nên bạn có thể thay dần hàm choose_move bằng minimax/alpha-beta mà giữ nguyên phần giao tiếp. Đây là bot khởi đầu để phát triển, không bảo đảm chiến thắng.
 
 ```cpp
 #include <algorithm>
@@ -122,13 +143,14 @@ json choose_move(const json& payload, Clock::time_point deadline) {
     const std::string side = state.at("to_move");
     const std::string enemy = side == "red" ? "blue" : "red";
     const std::string base = payload.at("bases").at(enemy);
-    const int base_row = 9 - (base[1] - '0'), base_col = base[0] - 'a';
+    const int rows = board.size();
+    const int base_row = rows - std::stoi(base.substr(1)), base_col = base[0] - 'a';
     json best = legal.at(0); // Always keep a legal fallback.
     int best_score = -10000000;
     for (const auto& move : legal) {
         if (Clock::now() >= deadline) break;
         const std::string to = move.at("to");
-        const int row = 9 - (to[1] - '0'), col = to[0] - 'a';
+        const int row = rows - std::stoi(to.substr(1)), col = to[0] - 'a';
         int score = -10 * std::max(std::abs(row - base_row), std::abs(col - base_col));
         const auto& target = board.at(row).at(col);
         if (!target.is_null()) {
@@ -200,7 +222,8 @@ output.jsonl phải có hai dòng: ready, rồi action. match_id phải khớp e
 | Bot | RAM container 256 MiB, 1 CPU, 1 process/thread |
 | stdout frame | 65.536 byte gồm LF |
 | stderr cả process | 262.144 byte |
-| Vận hành trận v2 | Lặp thế 3 lần, 512 ply hoặc 20 phút thì hòa |
+| Ngôn ngữ | C++17, C11 và Python 3.11 dùng cùng quỹ giờ |
+| Vận hành trận v2 | Hòa khi lặp thế 3 lần, đạt 512 nước (bàn 9×9; bàn khác tăng theo số ô) hoặc trận quá 20 phút |
 
 **Action phải được worker đọc đủ tới LF trước deadline cứng**, không chỉ được bot gọi cout trước deadline. Thời gian serialize input, gửi/nhận pipe và việc OS xếp lịch có ảnh hưởng; parse JSON, chọn nước và serialize output của bot cũng trừ vào quỹ thời gian của bot. Thời gian đối thủ suy nghĩ, engine xử lý và chờ SSE không trừ quỹ. Luôn chừa dư và flush. Khoảng chờ **3 giây không phải thời gian nghĩ thêm**: action muộn bị từ chối; sau đó server mới đại diện đối thủ tuyên bố hết giờ.
 
@@ -212,7 +235,7 @@ Nếu dùng iterative deepening, giữ best_move của **độ sâu đã hoàn t
 
 Nộp ZIP thành công chỉ xác nhận source đã được lưu và ZIP hợp lệ. Chưa có nghĩa là code đã build được hoặc bot đã đạt chuẩn. Job thường đi qua queued → building → validating → benchmarking → completed; failed/aborted cần xem lỗi.
 
-- **Build:** biên dịch bot.cpp; lỗi compiler nằm trong job/report.
+- **Build:** biên dịch C/C++ hoặc kiểm cú pháp Python; lỗi nằm trong job/report.
 - **Validating:** chạy process, gửi init và chờ ready.
 - **Benchmarking:** gửi 72 observation độc lập, kiểm từng action đúng schema, đúng lượt, hợp lệ và kịp giờ. Không có lượt warmup riêng.
 - **Completed + passed: true + đủ 72 mẫu:** đạt public smoke suite cho profile đó. Một job completed của trận luyện tập không phải chứng nhận benchmark.
@@ -228,20 +251,21 @@ Giữ **mã job**, **mã lỗi** và chi tiết trong báo cáo khi nhờ BTC h�
 
 | Mã / tình huống | Ý nghĩa | Cách xử lý |
 |---|---|---|
-| invalid_archive | ZIP sai cấu trúc, thiếu bot.cpp, file bị cấm, ZIP hỏng hoặc vượt giới hạn | Nén các file ở gốc; bỏ binary/thư mục; kiểm 10 MiB ZIP, 20 MiB giải nén, tối đa 64 entry |
+| invalid_archive | ZIP sai cấu trúc, thiếu bot.cpp / bot.c / bot.py, file không đúng ngôn ngữ đã chọn, ZIP hỏng hoặc vượt giới hạn | Nén các file ở gốc; bỏ binary/thư mục; kiểm 10 MiB ZIP, 20 MiB giải nén, tối đa 64 entry |
 | invalid_request khi nộp version | Version không đúng định dạng | Dùng v1.0.0 hoặc v1.0.1, không dùng tên tùy ý |
 | version_conflict | Đội đã dùng version đó | Tăng version; source cũ không bị ghi đè |
-| unsupported_runtime | Ngôn ngữ chưa được bật | Nộp C++17 theo starter hiện tại |
-| quota_exceeded | Đạt quota hoặc queue đầy | Đợi job đang chạy; mỗi đội tối đa 4 job chưa kết thúc, beta tối đa 20 source và 200 job; liên hệ BTC nếu chạm quota tổng |
-| build_error | Compiler không tạo được binary hợp lệ | Đọc dòng file:line trong log; kiểm include, cú pháp, hàm main và liên kết; chỉ bot.cpp được compile |
+| unsupported_runtime | Ngôn ngữ không hợp lệ | Chọn C++17, C11 hoặc Python 3.11 |
+| quota_exceeded | Đạt hạn mức của đội | Mỗi đội tối đa 4 tác vụ đang chạy và 4 yêu cầu đang chờ, 20 phiên bản source và 200 tác vụ; đợi tác vụ trước chạy xong |
+| superseded | Yêu cầu cũ được thay bằng yêu cầu mới hơn | Khi đội gửi benchmark mới cho cùng giải/cùng cấu hình (hoặc trận luyện tập mới) lúc yêu cầu cũ còn chờ, yêu cầu cũ nhường chỗ; tác vụ đang chạy không bị hủy |
+| build_error | Compiler không tạo được binary hợp lệ | Đọc dòng file:line trong log; kiểm include, cú pháp, hàm main và liên kết. Python: xem SyntaxError, nhớ dùng cú pháp Python 3.11 |
 | build_timeout | Build quá 30 giây | Giảm template/độ phức tạp compile; kiểm mã sinh hoặc header quá lớn |
 | build_output_limit | Log compiler quá lớn | Sửa nguyên nhân lỗi đầu tiên; tránh lỗi template lặp và warning hàng loạt |
 | timeout ở startup | Không trả ready kịp 2 giây | ACK ngay sau init; bỏ tiền tính toán dài; thêm LF và flush |
 | timeout trong lượt | Worker chưa đọc đủ action trước deadline | Giảm search, kiểm deadline thường xuyên, chừa dư, thêm LF/flush; không dùng 3 giây chờ như thời gian nghĩ thêm |
 | protocol_error | JSON/schema/type sai hoặc thừa phản hồi | stdout chỉ chứa ready/action; đúng protocol_version = 2; không thừa field, debug hoặc response |
 | stale_action | match_id, turn_id hoặc state_version sai giá trị/kiểu | Copy trực tiếp từ observation hiện tại; không hardcode hay tự tăng turn_id |
-| illegal_action | Nước đi không đúng luật, hoặc đầu hàng trong benchmark | Chọn từ legal_moves; kiểm tọa độ a1–i9 và row 0 = hàng 9 |
-| crash | Bot thoát/đóng pipe khi chưa trả xong | Kiểm truy cập mảng, null JSON, exception, stack/RAM; xem stderr và exit code nếu có |
+| illegal_action | Nước đi không đúng luật, hoặc đầu hàng trong benchmark | Chọn từ legal_moves; kiểm tọa độ theo kích thước bàn và row 0 = hàng lớn nhất |
+| crash | Bot thoát/đóng pipe khi chưa trả xong | Kiểm truy cập mảng, null JSON, exception, stack/RAM; xem stderr (Python in traceback ở đây) |
 | output_limit | Frame stdout hoặc tổng stderr quá giới hạn | Chỉ xuất một action nhỏ; giảm log stderr |
 | worker_unavailable / worker_error | Docker, supervisor hoặc transport gặp sự cố | Gửi mã job cho BTC; không tự coi đây là thua do nghĩ quá giờ |
 | artifact_missing / artifact_corrupt / provenance_mismatch | Artifact chốt bị mất, hỏng hoặc không khớp | BTC kiểm tra/khôi phục artifact đã xác minh; đội không tự thay binary sau chốt |
@@ -252,7 +276,7 @@ Trong trận v2, lỗi bot ở startup có thể bị xử thua kỹ thuật; c�
 
 ## 9. Checklist trước khi chốt bot
 
-1. ZIP phẳng, bot.cpp ở gốc, version chưa trùng, không có binary/script.
+1. ZIP phẳng, file chính (bot.cpp / bot.c / bot.py) ở gốc, version chưa trùng, không có binary/script.
 2. ready chỉ ba field, action chỉ sáu field; một JSON object + LF + flush mỗi response.
 3. stdout sạch; stderr gọn; EOF thì thoát.
 4. Copy đúng match_id/turn_id/state_version, giữ nguyên kiểu dữ liệu.

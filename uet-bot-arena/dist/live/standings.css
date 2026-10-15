@@ -4,7 +4,7 @@
 .score-legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;flex-shrink:0}
 .score-legend span{display:inline-flex;align-items:center;gap:7px}
 .score-dot{display:inline-block;width:9px;height:9px;border-radius:3px;flex-shrink:0}
-.score-loss{fill:#a96658;background:#a96658}.score-draw{fill:#97aaa0;background:#97aaa0}.score-win{fill:#2f6652;background:#2f6652}
+.score-loss{fill:#a96658;background:#a96658}.score-draw{fill:#97aaa0;background:#97aaa0}.score-win{fill:#2f6652;background:#2f6652}.score-bye{fill:#c9a24a;background:#c9a24a}
 .score-overview{margin:0;padding:22px 24px 10px;border:1px solid var(--line);border-radius:10px;background:#fff}
 .score-caption{display:flex;align-items:center;justify-content:space-between;gap:20px}
 .score-caption h3{font-size:19px;margin:5px 0 0;color:var(--ink)}

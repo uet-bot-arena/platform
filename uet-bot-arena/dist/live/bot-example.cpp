@@ -15,13 +15,14 @@ json choose_move(const json& payload, Clock::time_point deadline) {
     const std::string side = state.at("to_move");
     const std::string enemy = side == "red" ? "blue" : "red";
     const std::string base = payload.at("bases").at(enemy);
-    const int base_row = 9 - (base[1] - '0'), base_col = base[0] - 'a';
+    const int rows = board.size();
+    const int base_row = rows - std::stoi(base.substr(1)), base_col = base[0] - 'a';
     json best = legal.at(0); // Always keep a legal fallback.
     int best_score = -10000000;
     for (const auto& move : legal) {
         if (Clock::now() >= deadline) break;
         const std::string to = move.at("to");
-        const int row = 9 - (to[1] - '0'), col = to[0] - 'a';
+        const int row = rows - std::stoi(to.substr(1)), col = to[0] - 'a';
         int score = -10 * std::max(std::abs(row - base_row), std::abs(col - base_col));
         const auto& target = board.at(row).at(col);
         if (!target.is_null()) {

@@ -10,11 +10,11 @@ const piecePaths={
 export const pieceIcon=kind=>`<svg class="piece-symbol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${piecePaths[kind]||''}</svg>`;
 
 const samePiece=(a,b)=>a?.side===b?.side&&a?.kind===b?.kind;
-const square=(r,c)=>String.fromCharCode(97+c)+(9-r);
+const square=(r,c,rows=9)=>String.fromCharCode(97+c)+(rows-r);
 export function describeTransition(previous,state) {
   if(!previous)return {type:state.result?'end':state.ply===0?'start':'snapshot',ply:state.ply};
   const changed=[];
-  for(let r=0;r<9;r++)for(let c=0;c<9;c++){
+  for(let r=0;r<state.board.length;r++)for(let c=0;c<state.board[r].length;c++){
     if(!samePiece(previous.board[r][c],state.board[r][c]))changed.push({r,c,before:previous.board[r][c],after:state.board[r][c]});
   }
   // A result-only snapshot (timeout, resignation, startup failure, wall limit)
@@ -24,7 +24,7 @@ export function describeTransition(previous,state) {
     const to=changed.find(x=>x.after?.side===previous.to_move);
     if(from&&to&&samePiece(from.before,to.after)&&(!to.before||to.before.side!==previous.to_move)){
       return {type:'move',ply:state.ply,side:from.before.side,kind:from.before.kind,
-        from:square(from.r,from.c),to:square(to.r,to.c),captured:to.before?{...to.before}:null};
+        from:square(from.r,from.c,state.board.length),to:square(to.r,to.c,state.board.length),captured:to.before?{...to.before}:null};
     }
   }
   return {type:state.result?'end':'snapshot',ply:state.ply};
@@ -53,12 +53,13 @@ export function countPieces(state) {
   for(const row of state?.board||[])for(const piece of row)if(piece&&counts[piece.side]?.[piece.kind]!==undefined)counts[piece.side][piece.kind]++;
   return counts;
 }
-export function boardPage({title,red,blue,back,admin=false,officialLive=false,profile}) {
+export function boardPage({title,red,blue,back,admin=false,officialLive=false,profile,basicRules}) {
+  const rows=basicRules?.rows||9,cols=basicRules?.cols||9,bases=basicRules?.bases||{red:"a1",blue:"i9"};
   const follow=officialLive?`<section class="panel competition-follow"><label class="check-field"><input type="checkbox" id="follow-competition" checked> Tự chuyển trận</label><span id="competition-follow-message" role="status">Đang kết nối tiến độ giải…</span><div class="match-controls"><a id="competition-next" class="btn secondary" hidden>Trận tiếp theo</a><a id="competition-review" class="btn secondary">Xem lại trận này</a></div></section>`:'';
-  return head(title,profile?timeLabel(profile):'Theo dõi bàn cờ và xem lại từng nước đi.',link(back,'Quay lại'))+`<div id="rule-banner" class="rule-banner" hidden></div><div class="match-layout"><section class="panel"><div class="match-players">${[['red',red],['blue',blue]].map(([side,name])=>`<div class="match-player ${side}" id="player-${side}"><small>${sideName(side)}${side==='red'?' · Đi trước':''}</small><strong>${esc(name)}</strong><span class="clock" id="clock-${side}">—</span><div id="counts-${side}" class="piece-inventory" role="group" aria-label="Quân còn lại của ${sideName(side)}">${inventoryMarkup(side)}</div><div class="rule-resources" id="resources-${side}" hidden><span data-resource="energy"></span><span data-resource="control"></span></div></div>`).join('')}</div><div id="match-result" class="match-result" role="status">Chờ worker…</div><div class="board-wrap"><div id="live-board" data-view-id="${crypto.randomUUID()}" class="live-board" role="img" aria-label="Bàn cờ OTTv2 9 nhân 9">${Array.from({length:81},(_,i)=>{const r=Math.floor(i/9),c=i%9,sq=String.fromCharCode(97+c)+(9-r);return `<div class="board-square ${(r+c)%2?'dark':''} ${sq==='a1'?'base-red':sq==='i9'?'base-blue':''}" data-square="${sq}"><span class="board-piece"></span>${sq==='a1'||sq==='i9'?`<span class="base-marker" aria-hidden="true">${icon('home')}</span>`:''}<span class="zone-marker" aria-hidden="true"></span></div>`;}).join('')}</div><div class="board-files">${'abcdefghi'.split('').map(v=>`<span>${v}</span>`).join('')}</div><div class="board-ranks">${[9,8,7,6,5,4,3,2,1].map(v=>`<span>${v}</span>`).join('')}</div></div><div class="board-legend">${Object.entries(labels).map(([kind,label])=>`<span>${pieceIcon(kind)}${label}</span>`).join('')}<span>${icon('home')}Căn cứ</span></div><div class="match-caption"><strong id="move-caption">Chưa có nước đi</strong><label><input type="checkbox" id="follow-live" checked> Theo dõi mới nhất</label></div><input type="range" class="replay-slider" id="replay-slider" min="0" max="0" value="0" aria-label="Chọn nước đi replay" disabled><div class="match-controls">${button('Đầu trận','board-first')}${button('Trước','board-prev')}${button('Phát replay','board-play')}${button('Sau','board-next')}${button('Mới nhất','board-last')}${button('Xoay bàn','board-flip')}</div><span id="stream-message" class="stream-message" role="status">Đang tải diễn biến…</span><p id="clock-note" class="match-meta">Đang đồng bộ đồng hồ…</p></section><aside class="match-side">${follow}${panel('Diễn biến',`<div id="move-list" class="move-list"></div>`)}${panel('Thông tin trận',`<div id="match-status">${badge('queued')}</div>${note('Deadline cứng do worker quyết định. Sau thêm 3 giây, server đại diện đối thủ tuyên bố hết giờ. Không nhận action muộn.')}${admin?button('Lịch sử & lỗi worker','diagnostic'):''}`)}</aside></div>`;
+  return head(title,profile?timeLabel(profile):'Theo dõi bàn cờ và xem lại từng nước đi.',link(back,'Quay lại'))+`<div id="rule-banner" class="rule-banner" hidden></div><div class="match-layout"><section class="panel"><div class="match-players">${[['red',red],['blue',blue]].map(([side,name])=>`<div class="match-player ${side}" id="player-${side}"><small>${sideName(side)}${side==='red'?' · Đi trước':''}</small><strong>${esc(name)}</strong><span class="clock" id="clock-${side}">—</span><div id="counts-${side}" class="piece-inventory" role="group" aria-label="Quân còn lại của ${sideName(side)}">${inventoryMarkup(side)}</div><div class="rule-resources" id="resources-${side}" hidden><span data-resource="energy"></span><span data-resource="control"></span></div></div>`).join('')}</div><div id="match-result" class="match-result" role="status">Đang chờ máy chạy bot…</div><div class="board-wrap" data-rows="${rows}" data-cols="${cols}"><div id="live-board" data-view-id="${crypto.randomUUID()}" class="live-board" role="img" aria-label="Bàn cờ OTTv2 ${rows} nhân ${cols}">${Array.from({length:rows*cols},(_,i)=>{const r=Math.floor(i/cols),c=i%cols,sq=square(r,c,rows);return `<div class="board-square ${(r+c)%2?'dark':''} ${sq===bases.red?'base-red':sq===bases.blue?'base-blue':''}" data-square="${sq}"><span class="board-piece"></span>${sq===bases.red||sq===bases.blue?`<span class="base-marker" aria-hidden="true">${icon('home')}</span>`:''}<span class="zone-marker" aria-hidden="true"></span></div>`;}).join('')}</div><div class="board-files">${Array.from({length:cols},(_,i)=>String.fromCharCode(97+i)).map(v=>`<span>${v}</span>`).join('')}</div><div class="board-ranks">${Array.from({length:rows},(_,i)=>rows-i).map(v=>`<span>${v}</span>`).join('')}</div></div><div class="board-legend">${Object.entries(labels).map(([kind,label])=>`<span>${pieceIcon(kind)}${label}</span>`).join('')}<span>${icon('home')}Căn cứ</span></div><div class="match-caption"><strong id="move-caption">Chưa có nước đi</strong><label><input type="checkbox" id="follow-live" checked> Theo dõi mới nhất</label></div><input type="range" class="replay-slider" id="replay-slider" min="0" max="0" value="0" aria-label="Chọn nước đi replay" disabled><div class="match-controls">${button('Đầu trận','board-first')}${button('Trước','board-prev')}${button('Phát replay','board-play')}${button('Sau','board-next')}${button('Mới nhất','board-last')}${button('Xoay bàn','board-flip')}</div><span id="stream-message" class="stream-message" role="status">Đang tải diễn biến…</span><p id="clock-note" class="match-meta">Đang đồng bộ đồng hồ…</p></section><aside class="match-side">${follow}${panel('Diễn biến',`<div id="move-list" class="move-list"></div>`)}${panel('Thông tin trận',`<div id="match-status">${badge('queued')}</div>${note('Hạn chót mỗi nước do đồng hồ của máy chạy bot quyết định. Bot hết quỹ giờ thì sau 3 giây server tuyên bố thua; nước gửi muộn không được nhận.')}${admin?button('Lịch sử & lỗi worker','diagnostic'):''}`)}</aside></div>`;
 }
 
-// Event snapshots are immutable. The 81 square elements remain mounted for the
+// Event snapshots are immutable. The board square elements remain mounted for the
 // lifetime of the view; only each square's piece/label/highlight is patched.
 export class MatchBoard {
   constructor(api,{path,official=false,terminal=false,onExpired,onError,onReview}) {
@@ -85,7 +86,7 @@ export class MatchBoard {
     this.$('move-list').replaceChildren();this.paint(null);
     Object.assign(this.$('replay-slider'),{disabled:true,max:'0',value:'0'});
     this.$('follow-live').checked=true;this.$('move-caption').textContent='Chưa có nước đi';
-    this.$('match-status').innerHTML=badge('queued');this.$('match-result').textContent='Chờ worker…';
+    this.$('match-status').innerHTML=badge('queued');this.$('match-result').textContent='Đang chờ máy chạy bot…';
   }
   async history(){
     // The official cursor also advances over private events filtered by API.
@@ -110,6 +111,10 @@ export class MatchBoard {
     this.feed.onopen=()=>this.message('Đang nhận sự kiện trực tiếp từ server.');
     this.feed.onerror=()=>{if(!this.disposed&&!this.terminal)this.message('Đang nối lại luồng sự kiện… Replay hiện tại vẫn được giữ.');};
   }
+  markPlaying(){
+    // Public feeds hide worker phase events; the first board/turn event means the match is on.
+    const label=this.$('match-result');if(!this.result&&label&&label.textContent==='Đang chờ máy chạy bot…')label.textContent='Đang đấu';
+  }
   consume(event){
     if(this.disposed||event.seq<=this.seq)return;this.seq=event.seq;
     const d=event.data||{};
@@ -122,7 +127,8 @@ export class MatchBoard {
       this.$('replay-slider').max=String(index);this.$('replay-slider').disabled=false;
       if(this.follow||this.index<0)this.show(index);
       if(d.state.result)this.result=d.state.result;
-    }else if(event.type==='turn_started'){this.turn=d;this.$('match-status').innerHTML=badge('playing');this.clock();}
+      else this.markPlaying();
+    }else if(event.type==='turn_started'){this.turn=d;this.$('match-status').innerHTML=badge('playing');this.markPlaying();this.clock();}
     else if(event.type==='timeout_pending'){this.turn=null;this.pendingClocks=d.clocks;this.$('match-result').textContent=`${sideName(d.side)} đã hết giờ · Chờ server tuyên bố sau ${d.grace_ms/1000}s`;this.clock();}
     else if(event.type==='phase')this.$('match-status').innerHTML=badge(d.phase);
     else if(['completed','failed','aborted'].includes(event.type)){
@@ -137,7 +143,7 @@ export class MatchBoard {
     const state=snapshot?.state,previous=this.states[this.index-1]?.state,pack=snapshot?.ruleset,zones=pack?.definition.zones||[];
     const banner=this.$('rule-banner');if(banner){banner.hidden=!pack;banner.textContent=pack?'Experimental · '+pack.definition.name+' · v'+pack.version+' · '+pack.hash.slice(0,12):'';}
 
-    this.cells.forEach((cell,i)=>{const r=Math.floor(i/9),c=i%9,p=state?.board[r][c],span=cell.firstElementChild,was=previous?.board[r][c];
+    this.cells.forEach((cell,i)=>{const r=state?state.board.length-Number(cell.dataset.square.slice(1)):0,c=cell.dataset.square.charCodeAt(0)-97,p=state?.board[r]?.[c],span=cell.firstElementChild,was=previous?.board[r][c];
       const shielded=p?.shield_until>(state?.turns?.[p?.side]??0);
       const pieceClass='board-piece'+(p?' '+p.side:'')+(shielded?' shielded':'');if(span.className!==pieceClass)span.className=pieceClass;
       const kind=p?.kind||'';if((span.dataset.kind||'')!==kind){span.innerHTML=p?pieceIcon(kind):'';span.dataset.kind=kind;}
@@ -170,7 +176,7 @@ export class MatchBoard {
     if(action==='first')this.seek(0);if(action==='prev')this.seek(this.index-1);if(action==='next')this.seek(this.index+1);
     if(action==='last'){this.stopPlay();this.follow=true;this.show(this.states.length-1);}
     if(action==='play'){this.onReview?.();if(this.play){this.stopPlay();return;}this.follow=false;if(this.index>=this.states.length-1)this.show(0);this.play=setInterval(()=>{if(this.index>=this.states.length-1)this.stopPlay();else this.show(this.index+1);},650);this.$('follow-live').checked=false;document.querySelector('[data-action="board-play"]').textContent='Tạm dừng';}
-    if(action==='flip'){const flipped=this.$('live-board').classList.toggle('flipped');this.$('live-board').setAttribute('aria-label','Bàn cờ OTTv2 9 nhân 9'+(flipped?' · Đã xoay':''));document.querySelectorAll('.board-files span').forEach((e,i)=>e.textContent='abcdefghi'[flipped?8-i:i]);document.querySelectorAll('.board-ranks span').forEach((e,i)=>e.textContent=flipped?i+1:9-i);}
+    if(action==='flip'){const flipped=this.$('live-board').classList.toggle('flipped');this.$('live-board').setAttribute('aria-label','Bàn cờ OTTv2 '+(this.states[this.index]?.state.board.length||9)+' nhân '+(this.states[this.index]?.state.board[0]?.length||9)+(flipped?' · Đã xoay':''));document.querySelectorAll('.board-files span').forEach((e,i)=>e.textContent=String.fromCharCode(97+(flipped?document.querySelectorAll('.board-files span').length-1-i:i)));document.querySelectorAll('.board-ranks span').forEach((e,i)=>e.textContent=flipped?i+1:document.querySelectorAll('.board-ranks span').length-i);}
   }
   stopPlay(){clearInterval(this.play);this.play=null;const b=document.querySelector('[data-action="board-play"]');if(b)b.textContent='Phát replay';}
   clock(){
