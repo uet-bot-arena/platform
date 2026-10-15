@@ -1,0 +1,12 @@
+{
+  "name": "uet-bot-arena-ui",
+  "version": "0.6.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "check": "node --check dist/app.js && node --check dist/pages.js && node --check dist/ui.js && node --check dist/data.js && node --check dist/match-view.js && node --check dist/auth-ui.js && node --check dist/auth-demo.js && node --check dist/benchmark-ui.js && node --check dist/benchmark-data.js && node --check dist/library-data.js && node --check dist/runtime-config.js && node --check dist/submission-ui.js && node --check dist/live/app.js && node --check dist/live/access.js && node --check dist/live/experimental-ui.js && node --check dist/live/addon-ui.js && node --check dist/live/board.js && node --check dist/live/follow.js && node --check dist/live/client.js && node --check dist/live/pages.js && node --check dist/live/standings.js && node --check dist/live/view.js && node --check dist/live/patch.js && node --check dist/live/admin-ui.js && node --check dist/live/rules.js && node --check dist/live/bot-guide.js && node --check dist/live/result.js && node --check dist/live/time-control.js",
+    "start": "node scripts/serve.mjs"
+  }
+}
+

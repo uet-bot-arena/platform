@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import {standingsChart} from '../dist/live/standings.js';
+const scoring={win:3,draw:1,loss:0};
+const team=(id,name,wins,draws,losses,rank)=>({team_id:id,name,version:'v1.0.0',wins,draws,losses,rank,played:wins+draws+losses,points:3*wins+draws});
+const html=standingsChart({scoring,items:[team('a','A <script>',0,3,0,2),team('b','B',1,0,1,2)]},'a');
+assert.match(html,/A &lt;script&gt;/);assert.ok(!html.includes('<script>'));
+assert.equal((html.match(/class="score-rank"[^>]*>#2/g)||[]).length,2);
+assert.match(html,/Hạng 2 · B: 1 thua, 0 hòa, 1 thắng; 3 điểm/);assert.match(html,/Thắng: 1 trận · 3 điểm/);
+assert.match(html,/Hòa: 3 trận · 3 điểm/);
+// Three draws and one win have equal widths on the shared points axis.
+assert.equal((html.match(/width="530" height="22"/g)||[]).length,2);
+assert.equal((html.match(/<svg /g)||[]).length,1);
+assert.match(html,/score-own/);assert.ok(!html.includes('style='));
+assert.ok(!html.includes('NaN'));assert.ok(!html.includes('Infinity'));
+const zero=standingsChart({scoring,items:[team('empty','No games',0,0,0,1)]});
+assert.match(zero,/Chưa thi đấu/);assert.ok(!zero.includes('NaN'));
+assert.match(standingsChart({items:[]}),/máy chủ cập nhật/);
+const field=Array.from({length:12},(_,i)=>team('team-'+i,'Team '+i,12-i,0,0,i+1));
+// Keep exactly ten plotted teams even when the eleventh shares tenth rank.
+Object.assign(field[10],{wins:3,played:3,points:9,rank:10});
+const full=standingsChart({scoring,items:field},'team-11');
+const plot=full.split('<svg ')[1].split('</svg>')[0],rest=full.split('<section class="score-rest"')[1];
+assert.equal((plot.match(/class="score-graph-row/g)||[]).length,10);
+assert.ok(!plot.includes('data-key="score-team-10"'));
+assert.ok(!rest.includes('<svg'));
+assert.equal((rest.match(/<tr data-key=/g)||[]).length,2);
+assert.ok(rest.indexOf('score-table-team-10')<rest.indexOf('score-table-team-11'));
+assert.match(rest,/score-table-team-10"[^>]*><td>#10/);
+assert.match(rest,/score-table-team-11" class="score-own"/);
+assert.ok(!html.includes('score-rest-title'));
+assert.match(standingsChart({scoring,items:[]}),/Chưa có đội dự giải/);
+console.log('PASS standings: single shared points graph, exactly top 10, ranked table remainder, boundary ties, zero scores, escaping, CSP');

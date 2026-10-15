@@ -1,0 +1,20 @@
+[Unit]
+Description=UET Bot Arena Web API and serial worker controller
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=uet-arena
+Group=uet-arena
+WorkingDirectory=/srv/uet-arena/arena-backend
+EnvironmentFile=/etc/uet-arena/api.env
+ExecStart=/srv/uet-arena/arena-backend/.venv/bin/python -m arena_api serve --port 4181
+Restart=on-failure
+RestartSec=5
+# A current turn can take 300s plus bounded transport/cleanup.
+TimeoutStopSec=400
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

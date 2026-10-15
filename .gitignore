@@ -1,0 +1,54 @@
+# Local data, accounts, submitted source and built bots
+**/.platform-state/
+**/.platform-state-*/
+**/.state/
+**/.state-*/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+
+# Dependencies, caches, reports and disposable QA copies
+**/.venv/
+**/venv/
+**/node_modules/
+**/__pycache__/
+*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.tools/
+**/build/
+**/test-results/
+**/qa/
+experiments/codon-bot/results/
+*.log
+*.pid
+*.exe
+*.o
+*.so
+*.dll
+*.a
+
+# Generated downloads; source and packaging scripts are included
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+arena-backend/downloads/
+
+# Credentials, editor state, local hosting identity and publishing scratch
+.env
+.env.*
+!.env.example
+**/.sites/
+**/.openai/
+**/.codex/
+**/.agents/
+**/.vscode/
+**/.idea/
+.release/
+.release-tools/
+.DS_Store
+Thumbs.db
+
+# dist/live is the maintained buildless frontend source. Do not ignore dist/.

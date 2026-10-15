@@ -1,0 +1,2 @@
+# Uses Codon 0.20.3 native standard library. No pip dependencies.
+# This file does not grant permission to install arbitrary Python packages.

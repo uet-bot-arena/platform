@@ -1,0 +1,6 @@
+node_modules/
+.sites/
+*.tar.gz
+*.log
+qa/
+test-results/

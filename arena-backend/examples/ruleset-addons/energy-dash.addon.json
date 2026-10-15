@@ -1,0 +1,19 @@
+{
+  "format": "ottv2.ruleset-addon",
+  "format_version": 1,
+  "release_notes": "Kéo có thêm dash thẳng tối đa 2 ô, tốn 2 năng lượng và hồi 1 lượt. Giữ c5 hoặc g5 để nhận năng lượng cuối lượt; quan hệ Búa–Lá–Kéo giữ nguyên.",
+  "definition": {
+    "schema_version": 1,
+    "name": "Energy + Dash",
+    "energy": {"cap": 3, "initial": 1},
+    "zones": [
+      {"square": "c5", "kind": "energy", "gain": 1},
+      {"square": "g5", "kind": "energy", "gain": 1}
+    ],
+    "modifiers": [
+      {"id": "dash", "filter": {"kinds": ["scissors"]}, "pattern": "orthogonal", "range": 2, "cost": 2, "cooldown": 1}
+    ],
+    "shield": {"enabled": false, "cost": 2, "duration": 2},
+    "victory": {"base_capture": true, "type_eliminated": true, "no_legal_moves": true, "control_target": 0}
+  }
+}

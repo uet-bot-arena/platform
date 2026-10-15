@@ -1,0 +1,4 @@
+*
+!Dockerfile
+!arena/
+!arena/*.py
