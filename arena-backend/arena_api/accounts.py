@@ -27,11 +27,11 @@ def name_key(name):
 
 
 class Accounts:
-    def __init__(self, store, session_seconds=3600):
+    def __init__(self, store, session_seconds=3600, hash_workers=2):
         self.store, self.db, self.ttl = store, store.db, session_seconds
         migrate(store)
         self.hasher = PasswordHasher(time_cost=2, memory_cost=65536, parallelism=1)
-        self.hash_slots = threading.BoundedSemaphore(2)
+        self.hash_slots = threading.BoundedSemaphore(hash_workers)
         self.dummy_hash = self.hash_password(secrets.token_urlsafe(24))
 
     def hash_password(self, password):

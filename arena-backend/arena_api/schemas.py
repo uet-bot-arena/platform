@@ -100,13 +100,19 @@ class TimeControl(Model):
 class Benchmark(TimeControl):
     submission_id: str = Field(pattern=r"^[0-9a-f]{32}$")
     ruleset_id: str | None = Field(default=None, pattern=r'^[0-9a-f]{32}$')
+    competition_id: str | None = Field(default=None, pattern=r'^[0-9a-f]{32}$')
+    basic_rules: dict | None = None
 
 
 class Match(TimeControl):
     red_submission_id: str = Field(pattern=r"^[0-9a-f]{32}$")
-    blue_submission_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    blue_submission_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    sample_bot_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    sample_side: Literal["red", "blue"] | None = None
     delegate_timeout_claims: Literal[True]
     ruleset_id: str | None = Field(default=None, pattern=r'^[0-9a-f]{32}$')
+    competition_id: str | None = Field(default=None, pattern=r'^[0-9a-f]{32}$')
+    basic_rules: dict | None = None
 
     @field_validator("delegate_timeout_claims", mode="before")
     @classmethod
@@ -171,8 +177,22 @@ class AdminTeamEdit(Registration):
 
 class CompetitionCreate(TimeControl):
     title: str = Field(min_length=3, max_length=100)
-    max_teams: int = Field(default=16, ge=2, le=32)
+    max_teams: int = Field(default=16, ge=2, le=4096)
+    format: Literal["double_round_robin", "swiss"] = "double_round_robin"
+    rounds: int | None = Field(default=None, ge=1, le=64)
+    basic_rules: dict | None = None
     ruleset_id: str | None = Field(default=None, pattern=r'^[0-9a-f]{32}$')
+
+    @model_validator(mode="after")
+    def validate_options(self):
+        if self.format == "double_round_robin" and self.max_teams > 32:
+            raise ValueError("Round robin supports up to 32 teams; choose Swiss")
+        if self.basic_rules:
+            from arena.basic_rules import check_playable, normalize
+            check_playable(normalize(self.basic_rules))
+            if self.ruleset_id:
+                raise ValueError("Basic v2 rules cannot combine with v3 add-ons")
+        return self
 
     @field_validator("title")
     @classmethod

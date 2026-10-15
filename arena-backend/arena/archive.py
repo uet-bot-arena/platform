@@ -7,7 +7,9 @@ import zipfile
 from arena.protocol import Fault
 
 
-def unpack(raw, target, limits):
+def unpack(raw, target, limits, runtime="cpp17"):
+    extensions, entry = {"cpp17": ((".cpp", ".hpp", ".h"), "bot.cpp"),
+                         "c11": ((".c", ".h"), "bot.c"), "python3": ((".py",), "bot.py")}[runtime]
     if len(raw) > limits.max_zip_bytes:
         raise Fault("invalid_archive", "ZIP exceeds 10 MiB")
     try:
@@ -24,16 +26,18 @@ def unpack(raw, target, limits):
                 if len(path.parts) != 1 or path.name in (".", "..") or "\\" in item.filename or ":" in item.filename or path.is_absolute():
                     raise Fault("invalid_archive", "Unsafe ZIP path")
                 name = path.name
+                if runtime == "python3" and name == "__main__.py":
+                    raise Fault("invalid_archive", "bot.py is the entry point; __main__.py is reserved")
                 if name in seen or stat.S_ISLNK(mode) or (stat.S_IFMT(mode) not in (0, stat.S_IFREG)) or item.flag_bits & 1:
                     raise Fault("invalid_archive", "Duplicate, special or encrypted entry")
-                if not (name.endswith((".cpp", ".hpp", ".h")) or name in ("README.md", "LICENSE.MIT")):
-                    raise Fault("invalid_archive", "Only C++ source/headers and README/LICENSE allowed")
+                if not (name.endswith(extensions) or name in ("README.md", "LICENSE.MIT")):
+                    raise Fault("invalid_archive", "Only source files for the selected language and README/LICENSE allowed")
                 total += item.file_size
                 if total > limits.max_source_bytes:
                     raise Fault("invalid_archive", "Uncompressed source exceeds 20 MiB")
                 seen.add(name)
-            if "bot.cpp" not in seen:
-                raise Fault("invalid_archive", "Missing bot.cpp at ZIP root")
+            if entry not in seen:
+                raise Fault("invalid_archive", "Missing " + entry + " at ZIP root")
             # Validate everything before writing; read() checks CRC and refuses
             # malformed compression. No ZipFile.extract or user-controlled dirs.
             payloads = {item.filename: archive.read(item) for item in items}

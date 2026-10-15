@@ -148,7 +148,8 @@ def main():
                 assert len(attempts) == 1 and attempts[0]["status"] == "completed"
                 job = request(admin, "GET", f"/admin/competitions/{ident}/fixtures/{f['id']}/attempts/1").json()
                 assert job["report"]["eligible_for_tournament"] is True
-                assert job["report"]["final_state"]["ply"] == 30
+                # Both teams run the C++ starter (deterministic): blue reaches the base at ply 46.
+                assert job["report"]["final_state"]["ply"] == 46
                 expected = [next(s for s in sources if s["team_id"] == f[side + "_team_id"])["id"] for side in engine.SIDES]
                 assert job["submission_ids"] == expected
                 for client in (a, b):
@@ -161,7 +162,7 @@ def main():
                 resumed = request(a, "GET", f"/competitions/{ident}/fixtures/{f['id']}/events",
                     headers={"Accept": "text/event-stream", "Last-Event-ID": job["id"] + ":" + str(cursor)}).text
                 assert f"id: {job['id']}:{cursor}\n" not in resumed
-            checked("both_official_legs_execute_exact_locked_binaries_and_replay_safely", plies_per_leg=30)
+            checked("both_official_legs_execute_exact_locked_binaries_and_replay_safely", plies_per_leg=46)
 
             standings = request(a, "GET", f"/competitions/{ident}/standings").json()
             assert not standings["provisional"]

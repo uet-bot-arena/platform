@@ -10,6 +10,7 @@ import math
 import os
 from pathlib import Path
 import resource
+import re
 import select
 import signal
 import subprocess
@@ -19,6 +20,7 @@ import time
 import uuid
 
 from arena.protocol import Fault, response
+from arena.config import PYTHON_INTERPRETER
 
 CLOCK_ID = str(uuid.uuid4())
 MAX_LINE = 65_536
@@ -92,7 +94,11 @@ class Bot:
         # granting the supervisor CAP_CHOWN. Nothing secret is stored in /tmp.
         work.mkdir(mode=0o777)
         work.chmod(0o777)
-        self.p = subprocess.Popen(["/artifact/bot"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        runtime_file = Path("/artifact/runtime.json")
+        runtime = json.loads(runtime_file.read_text())["runtime"] if runtime_file.exists() else "cpp17"
+        interpreter = {"python3":PYTHON_INTERPRETER,"cpython3":"python3","pypy3":"pypy3"}.get(runtime)
+        command = ["/usr/bin/"+interpreter, "-I", "-S", "/artifact/bot"] if interpreter else ["/artifact/bot"]
+        self.p = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=subprocess.PIPE, cwd=work, bufsize=0,
                                   env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
                                   preexec_fn=lambda: child_setup(profile["memory_mib"], math.ceil(profile["job_wall_ms"] / 1000)))
@@ -209,9 +215,58 @@ class Bot:
                 "stderr_bytes": self.log_bytes, "cgroup": cgroup_metrics()}
 
 
+def pch_compatible(source):
+    # Force-including JSON before user macros/custom headers changes semantics.
+    allowed = {'algorithm','array','chrono','cmath','cstdint','cstdlib','iostream',
+               'limits','map','memory','queue','random','set','string','unordered_map',
+               'unordered_set','utility','vector'}
+    for path in source.glob('*.cpp'):
+        text = re.sub(r'/\*.*?\*/|//[^\n]*', '', path.read_text(errors='replace'), flags=re.S)
+        found = False
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if re.fullmatch(r'#\s*include\s*["<]json\.hpp[">]', line):
+                found = True
+                break
+            header = re.fullmatch(r'#\s*include\s*<([a-z_]+)>', line)
+            if not header or header[1] not in allowed or (source/header[1]).exists():
+                return False
+        if not found:
+            return False
+    return True
+
+
 def build():
     out = Path("/out")
-    command = ["g++", "-std=c++17", "-O2", "-pipe", "-Wall", "-Wextra", "-I/sdk", "-I/source", "/source/bot.cpp", "-o", "/out/bot"]
+    runtime = sys.argv[2] if len(sys.argv) > 2 else "cpp17"
+    preprocess = len(sys.argv)>3 and sys.argv[3] == "preprocess"
+    preprocessed = len(sys.argv)>3 and sys.argv[3] == "preprocessed"
+    if runtime in ("python3", "pypy3", "cpython3"):
+        script = ("import ast,pathlib,zipfile; p=pathlib.Path('/source'); files=sorted(p.glob('*.py')); "
+                  "[ast.parse(f.read_bytes(),filename=f.name) for f in files]; "
+                  "z=zipfile.ZipFile('/out/bot','w'); "
+                  "[z.writestr('__main__.py' if f.name=='bot.py' else f.name,f.read_bytes()) for f in files]; z.close()")
+        command = [{"python3":PYTHON_INTERPRETER,"cpython3":"python3","pypy3":"pypy3"}[runtime], "-I", "-S", "-c", script]
+    elif runtime == "c11":
+        command = ["gcc", "-std=c11", "-O2", "-pipe", "-Wall", "-Wextra", "-I/sdk", "-I/source", *map(str, sorted(Path('/source').glob('*.c'))), "-o", "/out/bot", "-lm"]
+    elif runtime == "cpp17":
+        command = ["g++", "-std=c++17", "-O2", "-pipe", "-Wall", "-Wextra", "-I/sdk", "-I/source", *map(str, sorted(Path('/source').glob('*.cpp'))), "-o", "/out/bot"]
+        local_json = Path("/source/json.hpp")
+        if Path("/opt/pch/json.hpp.gch").is_file() and pch_compatible(Path('/source')) and (not local_json.exists() or local_json.read_bytes() == Path("/sdk/json.hpp").read_bytes()):
+            command[1:1] = ["-include", "/opt/pch/json.hpp"]
+            command += ["/opt/pch/json.o"]
+        if preprocess:
+            command = [arg for arg in command if arg != "/opt/pch/json.o"]
+            command[1:1] = ["-E", "-fpch-preprocess"]
+            command[command.index("-o")+1] = "/out/translation.ii"
+        elif preprocessed:
+            command = ["g++", "-std=c++17", "-O2", "-pipe", "-Wall", "-Wextra", "-fpreprocessed", "/source/translation.ii", "-o", "/out/bot"]
+            if b'#pragma GCC pch_preprocess "/opt/pch/json.hpp.gch"' in Path('/source/translation.ii').read_bytes():
+                command += ["/opt/pch/json.o"]
+    else:
+        raise Fault("unsupported_runtime", "Unknown runtime")
     start = time.monotonic_ns()
     p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                          env={"PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8"},
@@ -240,13 +295,14 @@ def build():
         if not chunk:
             break
         log.extend(chunk)
-    artifact = out / "bot"
+    artifact = out / ("translation.ii" if preprocess else "bot")
     if len(log) > MAX_LOG:
         error = "build_output_limit"
     ok = not error and p.returncode == 0 and artifact.is_file() and not artifact.is_symlink() and artifact.stat().st_size <= 16 * 1024 * 1024
     emit({"ok": ok, "code": error or (None if ok else "build_error"), "exit_code": p.returncode,
           "wall_ms": (time.monotonic_ns() - start) / 1e6, "log": bytes(log[:MAX_LOG]).decode("utf-8", errors="replace"),
-          "compiler": subprocess.check_output(["g++", "--version"], text=True).splitlines()[0], "cgroup": cgroup_metrics()})
+          "compiler": subprocess.check_output([{"cpp17":"g++","c11":"gcc","python3":PYTHON_INTERPRETER,"pypy3":"pypy3","cpython3":"python3"}[runtime], "--version"], text=True).splitlines()[0],
+          "runtime": runtime, "cgroup": cgroup_metrics()})
 
 
 def run():
@@ -283,7 +339,7 @@ def run():
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] == ["build"]:
+    if sys.argv[1:2] == ["build"]:
         build()
     elif sys.argv[1:] == ["run"]:
         run()

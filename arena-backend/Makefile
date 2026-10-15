@@ -19,7 +19,7 @@ test:
 	cd "$(CURDIR)" && $(PYTHON) -m unittest discover -s tests -v
 
 integration:
-	cd "$(CURDIR)" && docker build -t uet-arena-worker:v1 -t uet-arena-worker:clock-v2 -t uet-arena-worker:experimental-clock-v2 .
+	cd "$(CURDIR)" && docker build -t uet-arena-worker:v1 -t uet-arena-worker:clock-v2 -t uet-arena-worker:experimental-v1 -t uet-arena-worker:experimental-clock-v2 .
 	cd "$(CURDIR)" && $(PYTHON) tests/integration.py
 	cd "$(CURDIR)" && $(PYTHON) tests/web_integration.py
 	cd "$(CURDIR)" && $(PYTHON) tests/competition_integration.py

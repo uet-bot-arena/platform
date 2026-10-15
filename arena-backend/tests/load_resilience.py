@@ -68,7 +68,7 @@ class Harness:
         self.auth, self.team_ids, self.account_ids = [], [], []
         self.report = {"started_local": datetime.now(ZoneInfo("Asia/Bangkok")).isoformat(),
             "image_id": image, "environment": {"os": platform.platform(), "logical_cpus": os.cpu_count(),
-            "python": platform.python_version(), "server": "normal CLI; one process/worker; concurrency limit 32",
+            "python": platform.python_version(), "server": "normal CLI; one process; ARENA_WORKERS=1",
             "transport": "loopback HTTP, closed-loop clients, no browser rendering/network latency"},
             "checks": [], "load": [], "resources": []}
 
@@ -93,8 +93,9 @@ class Harness:
             store.db.close()
 
     async def start(self, client, missing_image=False):
+        # One worker keeps the "kill the running container" scenario deterministic.
         env = {**os.environ, "ARENA_API_DATA": str(self.root), "ARENA_API_ORIGIN": self.origin,
-               "ARENA_API_COOKIE_SECURE": "0"}
+               "ARENA_API_COOKIE_SECURE": "0", "ARENA_WORKERS": "1"}
         if missing_image:
             env["ARENA_WORKER_IMAGE"] = "uet-arena-worker:missing-load-test-" + uuid.uuid4().hex
         self.process = subprocess.Popen([sys.executable, "-m", "arena_api", "serve", "--port", str(self.port)],
@@ -111,7 +112,14 @@ class Harness:
             await asyncio.sleep(.05)
         else:
             raise AssertionError("Test controller failed to start")
-        ready = await self.request(client, "GET", "/health/ready", expected=503 if missing_image else 200)
+        # Startup verifies images in the background; wait for readiness (or confirm it stays down).
+        end = time.monotonic() + 60
+        while True:
+            ready = await client.get(self.origin + "/api/v1/health/ready")
+            if missing_image or ready.status_code == 200 or time.monotonic() > end:
+                break
+            await asyncio.sleep(.2)
+        assert ready.status_code == (503 if missing_image else 200), ready.text
         assert ready.json()["ready"] is not missing_image, ready.text
 
     async def stop_idle(self):
@@ -298,12 +306,13 @@ class Harness:
                     assert result.json()["error"]["code"] == "quota_exceeded"
                 return result.status_code
             queue_statuses = await asyncio.gather(*(queue_one(i) for i in range(30)))
-            assert queue_statuses.count(202) == 15 and queue_statuses.count(429) == 15, Counter(queue_statuses)
-            active_by_team = Counter(index for index, _ in submitted)
-            active_by_team[0] += 1
-            assert max(active_by_team.values()) <= 4, active_by_team
-            self.checked("30_concurrent_job_requests_enforce_15_waiting_and_4_per_team",
-                         statuses=dict(Counter(queue_statuses)), max_active_per_team=max(active_by_team.values()))
+            # The durable queue has no global cap. Five identical requests from one team share
+            # one waiting job (same purpose), so 30 requests become exactly one job per team.
+            assert queue_statuses.count(202) == 30, Counter(queue_statuses)
+            jobs_by_team = {index: {job["id"] for i, job in submitted if i == index} for index in range(6)}
+            assert all(len(ids) == 1 for ids in jobs_by_team.values()), jobs_by_team
+            self.checked("30_concurrent_job_requests_share_one_waiting_job_per_team_purpose",
+                         statuses=dict(Counter(queue_statuses)), waiting_jobs=sum(len(ids) for ids in jobs_by_team.values()))
             await self.sse_viewers(client, active)
 
             # Revoke the owner of a queued job while its stream is connected.
@@ -333,13 +342,18 @@ class Harness:
             own = await asyncio.to_thread(self.containers, True)
             assert len(own) == 1 and "/artifacts/" in own[0]["source"], own
             await asyncio.to_thread(sandbox.command, ["docker", "kill", own[0]["id"]])
-            failed = await self.wait_job(client, self.auth[0], active["id"])
-            assert failed["status"] == "failed" and failed["error"]["code"] == "worker_error", failed
-            assert not failed["report"].get("result"), failed
+            # A killed container is an infrastructure error, never a bot fault. A benchmark has
+            # no public board yet, so the worker retries it once in place (match boards are not
+            # retried in place; see Service.may_retry_in_place).
+            retried = await self.wait_job(client, self.auth[0], active["id"])
+            events = (await self.request(client, "GET", f"/jobs/{active['id']}/events", self.auth[0])).json()["items"]
+            retry = [e for e in events if e["type"] == "infrastructure_retry"]
+            assert len(retry) == 1 and retry[0]["data"]["code"] == "worker_error", events
+            assert retried["status"] == "completed" and retried["report"]["passed"] is True, retried
             for index, queued in submitted:
                 done = await self.wait_job(client, self.auth[index], queued["id"])
                 assert done["status"] == "completed" and len(done["report"]["samples"]) == 72, done
-            self.checked("killed_worker_is_infrastructure_error_and_all_15_queued_benchmarks_recover")
+            self.checked("killed_worker_is_retried_once_as_infrastructure_error_and_all_queued_benchmarks_recover")
 
             bad_sources = {
                 "build_error": "int main( { bad source",
@@ -423,11 +437,12 @@ class Harness:
             assert all(x["played"] == 0 and x["points"] == 0 for x in standings["items"]), standings
             old = (await self.request(client, "GET", f"/admin/competitions/{cid}/fixtures/{fixture}/attempts/1", admin)).json()
             assert old["status"] == "aborted" and old["error"]["code"] == "server_restart", old
+            # The durable queue keeps jobs that had not started; only the running match is aborted.
             waiting = await self.wait_job(client, self.auth[2], waiting["id"])
-            assert waiting["status"] == "aborted" and waiting["error"]["code"] == "server_restart", waiting
+            assert waiting["status"] == "completed" and waiting["report"]["passed"] is True, waiting
             fixtures = (await self.request(client, "GET", f"/competitions/{cid}/fixtures", self.auth[0])).json()["items"]
             assert fixtures[0]["status"] == "attention" and fixtures[0]["result"] is None, fixtures
-            self.checked("controller_sigkill_restart_preserves_sessions_aborts_jobs_pauses_cup_and_awards_no_points",
+            self.checked("controller_sigkill_restart_keeps_queued_jobs_aborts_running_match_pauses_cup_and_awards_no_points",
                          orphan_containers_explicitly_reclaimed=len(orphaned),
                          reclaimed_container_states=dict(Counter(item["state"] for item in orphaned)))
 

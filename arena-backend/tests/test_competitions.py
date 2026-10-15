@@ -382,7 +382,9 @@ class CompetitionAPI(APIHarness):
         for i in range(16):
             self.app.state.service.pending.put_nowait("practice-unit-" + str(i))
         self.comp.tick()
-        self.assertEqual(self.comp.view(comp["id"])["fixture_counts"]["pending"], 2)
+        self.assertEqual(self.comp.view(comp["id"])["fixture_counts"]["pending"], 1)
+        # Durable admission no longer blocks official games at sixteen jobs.
+        self.finish(self.take_job())
         for _ in range(16):
             self.app.state.service.pending.get_nowait()
             self.app.state.service.pending.task_done()
@@ -394,7 +396,7 @@ class CompetitionAPI(APIHarness):
         for _ in range(5):
             self.comp.tick()
         self.assertEqual(self.app.state.service.pending.qsize(), 1)
-        self.assertEqual(self.comp.view(comp["id"])["fixture_counts"], {"pending": 1, "queued": 1, "completed": 0, "attention": 0})
+        self.assertEqual(self.comp.view(comp["id"])["fixture_counts"], {"pending": 0, "queued": 1, "completed": 1, "attention": 0})
 
     def test_completed_report_with_invalid_provenance_never_scores(self):
         comp, _, _, _ = self.prepared()

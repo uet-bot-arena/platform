@@ -52,3 +52,7 @@ alpha–beta + cache; `quiet`: mở rộng chiến thuật; `choose`: iterative 
 
 Build local: `g++ -std=c++17 -O2 -Wall -Wextra bot.cpp -o bot`.
 Header nlohmann/json đi kèm dùng MIT; giữ `LICENSE.MIT` khi phân phối.
+
+## Giới hạn: chỉ cho bàn 9×9
+
+Bot này mô phỏng luật bằng mảng 81 ô và tọa độ một chữ số hàng (`9 - số_hàng`), nên chỉ đúng với luật OTTv2 chuẩn. Ở giải đổi kích thước bàn (ví dụ 10×10) nó trả nước sai luật và bị xử thua. Muốn dùng cho mọi kích thước, đọc số hàng/cột từ `payload.state.board`, đọc căn cứ từ `payload.bases` và thay các hằng 9/81 — đây cũng là bài tập phù hợp cho vòng thi đổi luật.

@@ -18,13 +18,14 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript("""
           CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY, kind TEXT, team TEXT, data TEXT);
+          CREATE INDEX IF NOT EXISTS documents_kind_team ON documents(kind,team);
           CREATE TABLE IF NOT EXISTS events(job TEXT, seq INTEGER, data TEXT, PRIMARY KEY(job,seq));
           CREATE TABLE IF NOT EXISTS idempotency(team TEXT, operation TEXT, key TEXT, hash TEXT, id TEXT,
              PRIMARY KEY(team,operation,key));
         """)
         self.db.commit()
         for job in self.list("job") if recover_jobs else []:
-            if job["status"] not in ("completed", "failed", "aborted"):
+            if job["status"] not in ("queued", "completed", "failed", "aborted"):
                 self.update(job["id"], status="aborted", error={"code": "server_restart", "detail": "Controller restarted; no competitive result awarded"})
                 self.event(job["id"], "aborted", {"code": "server_restart"})
 
@@ -72,20 +73,29 @@ class Store:
             rows = self.db.execute("SELECT data FROM events WHERE job=? AND seq>? ORDER BY seq LIMIT 1000", (job, after)).fetchall()
         return [json.loads(row[0]) for row in rows]
 
-    def deduplicate(self, team, operation, key, digest, create):
+    def deduplicate(self, team, operation, key, digest, create, prepare=None):
         if not isinstance(key, str) or not (8 <= len(key) <= 128):
             raise Fault("invalid_request", "Idempotency-Key of 8..128 characters required")
-        with self.lock:
+        def existing():
             row = self.db.execute("SELECT hash,id FROM idempotency WHERE team=? AND operation=? AND key=?", (team, operation, key)).fetchone()
             if row:
                 if row[0] != digest:
                     raise Fault("idempotency_conflict", "Key already used for different input")
                 return self.get(row[1], team)
+        with self.lock:
+            old = existing()
+            if old:
+                return old
+        prepared = prepare() if prepare else None
+        with self.lock:
+            old = existing()
+            if old:
+                return old
             # Record + idempotency key commit together in create(). A crash
             # cannot persist one without the other; filesystem staging may be
             # left orphaned, but never causes duplicate versions/jobs.
             self.pending_idempotency = (team, operation, key, digest)
             try:
-                return create()
+                return create(prepared) if prepare else create()
             finally:
                 self.pending_idempotency = None

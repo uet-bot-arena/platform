@@ -140,6 +140,7 @@ class Operations:
             'errors':[{'code':code,'count':value} for code,value in sorted(errors.items(),key=lambda x:-x[1])],
             'worker':{**self.health_value,'scheduler_error':self.competitions.scheduler_error,
                 'queue_depth':self.service.pending.qsize(),'queue_capacity':self.service.pending.maxsize,
-                'queue_by_scope':self.service.pending.counts(), 'queue_policy':'official_first_fifo', 'reserved_official_slots':1,
-                'active_job_id':self.service.active,'uptime_seconds':int(time.monotonic()-self.started)},
+                'queue_by_scope':self.service.pending.counts(), 'queue_policy':'official_benchmark_practice_fifo', 'reserved_official_slots':0,
+                'active_job_id':self.service.active,'active_job_ids':list(self.service.active_jobs.values()),
+                'worker_count':self.service.worker_count,'uptime_seconds':int(time.monotonic()-self.started)},
             'generated_ms':now_ms()}

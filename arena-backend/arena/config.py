@@ -1,4 +1,7 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
+
+PYTHON_INTERPRETER = "pypy3"
+PYTHON_TOOLCHAIN = "PyPy 7.3.23 / Python 3.11; -I -S; stdlib only"
 
 
 @dataclass(frozen=True)
@@ -18,9 +21,12 @@ class Profile:
     max_stderr_bytes: int = 262_144
     max_zip_bytes: int = 10 * 1024 * 1024
     max_source_bytes: int = 20 * 1024 * 1024
+    board_area: int | None = None
 
     def public(self):
         value = asdict(self)
+        if self.board_area is None:
+            value.pop("board_area")
         if self.match_ms is None:
             value.pop("match_ms")  # Preserve the exact pinned legacy profile.
         return value
@@ -45,7 +51,24 @@ def request_profile(body):
 
 
 def stored_profile(value):
+    if value.get("board_area") is not None:
+        area = value["board_area"]
+        if type(area) is not int or not 49 <= area <= 225:
+            raise ValueError("Invalid board area")
+        clock = "match_ms" if value.get("match_ms") is not None else "turn_ms"
+        return scale_profile(request_profile({clock: value[clock]}), area)
     return match_profile(value["match_ms"]) if value.get("match_ms") is not None else profile(value["turn_ms"])
+
+
+def scale_profile(p, area):
+    """Every board keeps the same clock (Bullet 60 s or Normal 300 s per bot, no increment).
+
+    Only the ply cap follows the number of squares, so a 15x15 game is not drawn by the
+    9x9 limit of 512 plies; 9x9 keeps the exact pinned profile.
+    """
+    if area == 81:
+        return p
+    return replace(p, id=p.id+f"-area-{area}", board_area=area, max_plies=round(p.max_plies*area/81))
 
 
 def worker_image(p, experimental=False):
@@ -55,3 +78,8 @@ def worker_image(p, experimental=False):
 
 
 BUILD_FLAGS = ["-std=c++17", "-O2", "-pipe", "-Wall", "-Wextra"]
+
+
+def runtime_flags(runtime):
+    return {"cpp17":list(BUILD_FLAGS),"c11":["-std=c11","-O2","-pipe","-Wall","-Wextra","-lm"],
+            "python3":[PYTHON_INTERPRETER,"-I","-S"]}[runtime]

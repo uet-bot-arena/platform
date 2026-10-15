@@ -3,15 +3,15 @@
 Practice documents remain private. Official jobs use a controller-only namespace
 and explicitly record the owner of each locked submission.
 """
-import hashlib
 import json
 import logging
+import math
 import threading
 import uuid
 
-from arena import engine, sandbox, experimental
+from arena import engine, sandbox, experimental, basic_rules
 from arena.adjudication import CURRENT, LEGACY, policy, valid_result
-from arena.config import BUILD_FLAGS, request_profile, stored_profile, worker_image
+from arena.config import BUILD_FLAGS, PYTHON_TOOLCHAIN, request_profile, stored_profile, worker_image, scale_profile, runtime_flags
 from arena.protocol import Fault
 from arena.service import TERMINAL, digest, fixtures
 from arena_api.accounts import now_ms
@@ -22,6 +22,8 @@ SCORING = {'win': 3, 'draw': 1, 'loss': 0}
 class Competitions:
     def __init__(self, store, service, accounts):
         self.store, self.service, self.accounts = store, service, accounts
+        self.schedule_lock = threading.Lock()
+        service.competitions = self
         self.db = store.db
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self.loop, daemon=True, name="competition-scheduler")
@@ -87,12 +89,23 @@ class Competitions:
             config = {"format": "double_round_robin", "ranking": "points_shared_rank", "scoring": dict(SCORING), "max_teams": body["max_teams"], "adjudication": dict(CURRENT),
                       "profile": request_profile(body).public(), "runtime": "cpp17", "protocol_version": 2,
                       "image_id": sandbox.image_id(worker_image(request_profile(body))), "engine_id": engine.ENGINE_ID, "engine_sha256": engine.ENGINE_SHA256,
-                      "sdk_sha256": hashlib.sha256((sandbox.ROOT / "sdk" / "json.hpp").read_bytes()).hexdigest(),
+                      "sdk_sha256": sandbox.sdk_hash(),
                       "build_flags": BUILD_FLAGS, "suite_id": "ottv2-public-smoke-v1", "suite_sha256": self.suite_sha256}
             if snapshot:
                 config.update(ruleset=snapshot,protocol_version=3,image_id=sandbox.image_id(worker_image(request_profile(body), True)),engine_id=experimental.ENGINE_ID,
                               engine_sha256=experimental.ENGINE_SHA256,sdk_sha256=experimental.sdk_hash(),suite_id='ottv2-experimental-smoke-v1',
                               suite_sha256=digest(fixtures(experimental.provider(snapshot))))
+            if body.get("basic_rules"):
+                pack = basic_rules.validated_snapshot(body["basic_rules"])
+                d = pack["definition"]
+                config.update(basic_rules=pack, profile=scale_profile(request_profile(body), d["rows"]*d["cols"]).public(),
+                              suite_sha256=digest(fixtures(basic_rules.provider(pack))))
+            config.update(format=body.get("format", "double_round_robin"), rounds=body.get("rounds"),
+                          runtime_flags={r:runtime_flags(r) for r in ("cpp17","c11","python3")},
+                          runtimes=["cpp17", "c11", "python3"], python_interpreter="pypy3",
+                          toolchains={"cpp17":"g++ -std=c++17 -O2", "c11":"gcc -std=c11 -O2", "python3":PYTHON_TOOLCHAIN})
+            if config["format"] == "swiss":
+                config["ranking"] = "points_buchholz"
             return config
         def action(config):
             if self.db.execute("SELECT COUNT(*) FROM competitions").fetchone()[0] >= 100:
@@ -116,6 +129,13 @@ class Competitions:
             if body.get('ruleset_id') and body['ruleset_id'] != (config.get('ruleset') or {}).get('id'):
                 raise Fault('admin_conflict','Ruleset is immutable for this competition; create a new competition')
             requested = request_profile(body).public()
+            if config.get("basic_rules"):
+                d = config["basic_rules"]["definition"]
+                requested = scale_profile(request_profile(body), d["rows"]*d["cols"]).public()
+            if body.get("basic_rules") and basic_rules.snapshot(body["basic_rules"]) != config.get("basic_rules"):
+                raise Fault("admin_conflict", "Basic rules are immutable; create another competition")
+            if body.get("format", config["format"]) != config["format"] or body.get("rounds") not in (None, config.get("rounds")):
+                raise Fault("admin_conflict", "Format and rounds are immutable; create another competition")
             if requested != config['profile']:
                 if item['status'] != 'draft' or entries:
                     raise Fault('admin_conflict', 'Time control can only change in an empty draft')
@@ -149,6 +169,9 @@ class Competitions:
             self.require_status(item, *allowed[target])
             if target == "running":
                 self.check_runtime(item["config"])
+                if item["config"].pop("pairing_error", None):
+                    # Resuming retries the Swiss pairing once on the next scheduler tick.
+                    self.db.execute("UPDATE competitions SET config=? WHERE id=?", (json.dumps(item["config"]), ident))
             self.db.execute("UPDATE competitions SET status=?,revision=revision+1 WHERE id=?", (target, ident))
             return self.get(ident)
         return self.command(actor, target + ":" + ident, key, {}, action)
@@ -157,9 +180,11 @@ class Competitions:
     def check_runtime(config):
         policy(config.get("adjudication"))
         experimental.provider(config.get("ruleset"))
+        basic_rules.provider(config.get("basic_rules"))
         expected_engine = experimental.ENGINE_SHA256 if config.get("ruleset") else engine.ENGINE_SHA256
-        expected_sdk = experimental.sdk_hash() if config.get("ruleset") else hashlib.sha256((sandbox.ROOT / "sdk" / "json.hpp").read_bytes()).hexdigest()
+        expected_sdk = experimental.sdk_hash() if config.get("ruleset") else sandbox.sdk_hash()
         if (config["engine_sha256"] != expected_engine or config["build_flags"] != BUILD_FLAGS
+                or config.get("runtime_flags") is not None and config["runtime_flags"] != {r:runtime_flags(r) for r in ("cpp17","c11","python3")}
                 or config["sdk_sha256"] != expected_sdk
                 or config["profile"] != stored_profile(config["profile"]).public()):
             raise Fault("provenance_mismatch", "Pinned competition runtime changed; create a new competition")
@@ -170,16 +195,18 @@ class Competitions:
         report = job.get("report") or {}
         artifacts = report.get("artifacts") or []
         artifact = artifacts[0] if len(artifacts) == 1 else {}
-        if (source.get("runtime") != "cpp17" or job.get("kind") != "benchmark" or job["status"] != "completed"
+        if (source.get("runtime") not in ("cpp17", "c11", "python3") or job.get("kind") != "benchmark" or job["status"] != "completed"
                 or job.get("submission_ids") != [submission_id] or report.get("passed") is not True
                 or (report.get("ruleset") or {}).get("hash") != (config.get("ruleset") or {}).get("hash")
+                or (report.get("basic_rules") or {}).get("hash") != (config.get("basic_rules") or {}).get("hash")
                 or report.get("error") or report.get("aborted") or len(report.get("samples", [])) != 72
                 or (report.get("turn_wall_ms") or {}).get("samples") != 72
                 or report.get("profile") != config["profile"] or report.get("image_id") != config["image_id"]
                 or report.get("engine_sha256") != config["engine_sha256"] or report.get("suite_sha256") != config["suite_sha256"]
                 or report.get("suite_id") != config["suite_id"] or artifact.get("source") != source.get("source")
                 or artifact.get("image_id") != config["image_id"] or artifact.get("sdk_sha256") != config["sdk_sha256"]
-                or artifact.get("flags") != config["build_flags"] or not artifact.get("artifact_sha256")):
+                or artifact.get("flags") != config.get("runtime_flags",{"cpp17":config["build_flags"]}).get(source.get("runtime")) or not artifact.get("artifact_sha256")
+                or artifact.get("runtime", "cpp17") != source.get("runtime")):
             raise Fault("qualification_required", "A completed 72-sample benchmark under this exact competition profile/toolchain is required")
         return {"team_id": team, "submission_id": submission_id, "version": source["version"], "source": source["source"],
                 "artifact_sha256": artifact["artifact_sha256"], "benchmark_id": benchmark_id, "benchmark_report_sha256": digest(report)}
@@ -213,6 +240,18 @@ class Competitions:
                 current = self.qualification(item["config"], entry["team_id"], entry["submission_id"], entry["benchmark_id"])
                 if current != json.loads(entry["snapshot"]):
                     raise Fault("provenance_mismatch", "Entry qualification changed; team must enter again")
+            if item["config"]["format"] == "swiss":
+                config = item["config"]
+                count = len(entries)
+                maximum = count if count % 2 else count-1
+                rounds = config.get("rounds") or min(maximum, math.ceil(math.log2(count))+2)
+                if rounds > maximum:
+                    raise Fault("competition_conflict", "Too many Swiss rounds without repeated opponents/byes")
+                config.update(rounds=rounds, current_round=0)
+                self.db.execute("UPDATE competitions SET config=? WHERE id=?", (json.dumps(config), ident))
+                self._swiss_round(ident)
+                self.db.execute("UPDATE competitions SET status='locked',locked_ms=?,revision=revision+1 WHERE id=?", (now_ms(), ident))
+                return {**self.get(ident), "fixture_count":count//2*2}
             # Circle method: everyone plays once per round, each pair swaps
             # colours in the second leg; odd counts receive one bye per leg.
             teams = [e["team_id"] for e in entries]
@@ -263,6 +302,7 @@ class Competitions:
         return self.command(actor, "retry:" + fixture_id, key, {}, action)
 
     def reconcile(self):
+        next_rounds = []
         with self.store.lock, self.db:
             for row in self.rows("SELECT * FROM competition_fixtures WHERE status='queued'"):
                 job = self.store.get(row["current_job_id"], "competition:" + row["competition_id"], "job")
@@ -277,6 +317,7 @@ class Competitions:
                          and valid_result(result, rules, experimental=bool(config.get("ruleset"))) and report.get("adjudication", LEGACY) == rules
                          and (report.get("final_state") or {}).get("result") == result
                          and (report.get("ruleset") or {}).get("hash") == (config.get("ruleset") or {}).get("hash")
+                         and (report.get("basic_rules") or {}).get("hash") == (config.get("basic_rules") or {}).get("hash")
                          and report.get("engine_sha256") == config["engine_sha256"]
                          and report.get("image_id") == config["image_id"] and report.get("profile") == config["profile"])
                 status = "completed" if valid else "attention"
@@ -286,18 +327,76 @@ class Competitions:
                 self.accounts.audit("system", "competition.result" if valid else "competition.attention", row["id"])
             for row in self.rows("SELECT id FROM competitions WHERE status IN ('running','paused')"):
                 remaining = self.db.execute("SELECT COUNT(*) FROM competition_fixtures WHERE competition_id=? AND status<>'completed'", (row["id"],)).fetchone()[0]
+                if remaining == 0 and self.get(row["id"])["config"].get("format") == "swiss":
+                    config = self.get(row["id"])["config"]
+                    if config.get("current_round", 0) < config["rounds"]:
+                        # A failed pairing waits for the organiser; retrying it every tick
+                        # would flood logs and block scheduling of other competitions.
+                        if not config.get("pairing_error"):
+                            next_rounds.append(row["id"])
+                        continue
                 if remaining == 0:
                     self.db.execute("UPDATE competitions SET status='completed',completed_ms=?,revision=revision+1 WHERE id=?", (now_ms(), row["id"]))
                     self.accounts.audit("system", "competition.completed", row["id"])
+        for ident in next_rounds:
+            try:
+                self._swiss_round(ident)
+            except Exception as exc:
+                # Isolate one competition's pairing failure from every other competition.
+                logging.getLogger("arena.competitions").exception("Swiss pairing failed for %s", ident)
+                with self.store.lock, self.db:
+                    config = self.get(ident)["config"]
+                    config["pairing_error"] = (exc.detail if isinstance(exc, Fault) else "Swiss pairing failed")[:500]
+                    self.db.execute("UPDATE competitions SET status='paused',config=?,revision=revision+1 WHERE id=?", (json.dumps(config), ident))
+                    self.accounts.audit("system", "competition.pairing_attention", ident)
+
+    def _swiss_round(self, ident):
+        from arena_api.swiss import pair
+        with self.store.lock:
+            item = self.get(ident)
+            config = item["config"]
+            current = config.get("current_round", 0)
+            if current and self.db.execute("SELECT 1 FROM competition_fixtures WHERE competition_id=? AND status<>'completed' LIMIT 1", (ident,)).fetchone():
+                return
+            teams = [r["team_id"] for r in self.rows("SELECT team_id FROM competition_entries WHERE competition_id=? ORDER BY team_id", (ident,))]
+            byes = {r["team_id"] for r in self.rows("SELECT team_id FROM competition_byes WHERE competition_id=?", (ident,))}
+            opponents = {t:set() for t in teams}
+            for row in self.rows("SELECT red_team_id,blue_team_id FROM competition_fixtures WHERE competition_id=?", (ident,)):
+                opponents[row["red_team_id"]].add(row["blue_team_id"])
+            points = {r["team_id"]:r["points"] for r in self.standings(ident, True)["items"]}
+        # Round zero has no history; adjacent score order is a perfect matching.
+        # Later blossom matching runs outside the global database lock.
+        if current == 0:
+            ordered = sorted(teams)
+            bye = ordered.pop() if len(ordered)%2 else None
+            pairs = list(zip(ordered[::2], ordered[1::2]))
+        else:
+            pairs, bye = pair(teams, points, opponents, byes)
+        with self.store.lock, self.db:
+            latest = self.get(ident)
+            if latest["config"].get("current_round",0) != current or current and latest["status"] not in ("running", "paused"):
+                return
+            number = current+1
+            ordinal = self.db.execute("SELECT COALESCE(MAX(ordinal),0) FROM competition_fixtures WHERE competition_id=?", (ident,)).fetchone()[0]
+            for a,b in pairs:
+                # Both colours in each pair keep every team's colour totals equal.
+                for red,blue in ((a,b),(b,a)):
+                    ordinal += 1
+                    self.db.execute("INSERT INTO competition_fixtures(id,competition_id,ordinal,red_team_id,blue_team_id,status,round_number) VALUES(?,?,?,?,?,'pending',?)",
+                                    (uuid.uuid4().hex,ident,ordinal,red,blue,number))
+            if bye:
+                self.db.execute("INSERT INTO competition_byes VALUES(?,?,?)", (ident,number,bye))
+            config["current_round"] = number
+            self.db.execute("UPDATE competitions SET config=?,revision=revision+1 WHERE id=?", (json.dumps(config),ident))
+            self.accounts.audit("system", "competition.swiss_round", ident)
 
     def tick(self):
         self.reconcile()
         with self.store.lock:
             if self.stop.is_set() or self.service.stop.is_set() or self.service.pending.full():
                 return
-            # At most one official attempt outstanding globally. Fixtures stay
-            # in SQLite, so a large round robin cannot overflow the RAM queue.
-            if self.db.execute("SELECT 1 FROM competition_fixtures WHERE status='queued' LIMIT 1").fetchone():
+            # Keep enough official work outstanding to occupy every worker.
+            if self.db.execute("SELECT COUNT(*) FROM competition_fixtures WHERE status='queued'").fetchone()[0] >= self.service.worker_count:
                 return
             row = self.one("SELECT f.* FROM competition_fixtures f JOIN competitions c ON c.id=f.competition_id WHERE f.status='pending' AND c.status='running' ORDER BY c.created_ms,c.id,f.ordinal LIMIT 1")
             if row is None:
@@ -311,10 +410,13 @@ class Competitions:
                    "kind": "match", "status": "queued", "submission_ids": [e["submission_id"] for e in entries],
                    "profile": config["profile"], "image_id": config["image_id"], "engine_id": config["engine_id"],
                    "engine_sha256": config["engine_sha256"], "report": None, "error": None,
+                   **({"basic_rules":config["basic_rules"]} if config.get("basic_rules") else {}),
                    **({"ruleset":config["ruleset"],"protocol_version":3} if config.get("ruleset") else {}),
                    "official": {"competition_id": item["id"], "fixture_id": row["id"], "attempt": number,
-                                "entries": entries, **({"ruleset":config["ruleset"]} if config.get("ruleset") else {}), "engine_sha256": config["engine_sha256"],
+                                "entries": entries, **({"ruleset":config["ruleset"]} if config.get("ruleset") else {}),
+                                **({"basic_rules":config["basic_rules"]} if config.get("basic_rules") else {}), "engine_sha256": config["engine_sha256"],
                                 "sdk_sha256": config["sdk_sha256"], "build_flags": config["build_flags"],
+                                **({"runtime_flags":config["runtime_flags"]} if config.get("runtime_flags") else {}),
                                 "adjudication": policy(config.get("adjudication"))}}
             with self.db:
                 self.db.execute("INSERT INTO documents VALUES(?,?,?,?)", (job["id"], "job", job["team_id"], json.dumps(job)))
@@ -334,6 +436,8 @@ class Competitions:
         # Called by both scheduler and worker before selecting its next job.
         # Reconcile/dispatch immediately after a game so practice cannot slip
         # ahead of the next official fixture between periodic scheduler ticks.
+        if not self.schedule_lock.acquire(blocking=False):
+            return
         try:
             self.tick()
             self.scheduler_error = None
@@ -341,17 +445,28 @@ class Competitions:
             if self.scheduler_error is None:
                 logging.getLogger("arena.competitions").exception("Competition scheduler failed")
             self.scheduler_error = "scheduler_error"
+        finally:
+            self.schedule_lock.release()
 
     def listing(self, admin=False, limit=50, offset=0):
-        self.reconcile()
         with self.store.lock:
             where = "" if admin else " WHERE status<>'draft' AND archived_ms IS NULL"
             total = self.db.execute("SELECT COUNT(*) FROM competitions" + where).fetchone()[0]
             items = self.rows("SELECT id FROM competitions" + where + " ORDER BY created_ms DESC,id LIMIT ? OFFSET ?", (limit, offset))
-            return {"items": [self.get(r["id"]) for r in items], "total": total, "limit": limit, "offset": offset}
+            values = [self.get(r["id"]) for r in items]
+            if not admin:
+                for item in values:
+                    item["config"] = self.public_config(item["config"])
+            return {"items": values, "total": total, "limit": limit, "offset": offset}
+
+    @staticmethod
+    def public_config(config):
+        value = {k:v for k,v in config.items() if k not in ("image_id", "engine_sha256", "sdk_sha256", "suite_sha256")}
+        if value.get("ruleset"):
+            value["ruleset"] = {k:v for k,v in value["ruleset"].items() if k not in ("engine_sha256", "sdk_sha256")}
+        return value
 
     def view(self, ident, admin=False):
-        self.reconcile()
         with self.store.lock:
             item = self.get(ident)
             if (item["status"] == "draft" or item["archived_ms"] is not None) and not admin:
@@ -362,6 +477,8 @@ class Competitions:
             item["entries"] = [{"team_id": e["team_id"], "name": e["name"], "version": json.loads(e["snapshot"])["version"], "accepted_ms": e["accepted_ms"]} for e in entries]
             counts = {r["status"]: r["n"] for r in self.rows("SELECT status,COUNT(*) n FROM competition_fixtures WHERE competition_id=? GROUP BY status", (ident,))}
             item["fixture_counts"] = {s: counts.get(s, 0) for s in ("pending", "queued", "completed", "attention")}
+            if not admin:
+                item["config"] = self.public_config(item["config"])
             return item
 
     @staticmethod
@@ -394,13 +511,29 @@ class Competitions:
                                            'draws': team['draws'] * SCORING['draw'],
                                            'losses': team['losses'] * SCORING['loss']}
                 team['points'] = sum(team['point_breakdown'].values())
-            rows = sorted(scores.values(), key=lambda s: (-s["points"], s["team_id"]))
+            swiss = item["config"].get("format") == "swiss"
+            if swiss:
+                for bye in self.rows("SELECT team_id,round_number FROM competition_byes WHERE competition_id=?", (ident,)):
+                    team = scores[bye["team_id"]]
+                    # A bye is scored as winning the whole round: two games x 3 points.
+                    # It is listed separately and is not counted as played games.
+                    team["bye_round"] = bye["round_number"]
+                    team["bye_points"] = 2 * SCORING["win"]
+                    team["points"] += team["bye_points"]
+                    team["point_breakdown"]["bye"] = team["bye_points"]
+                opponents = {t:set() for t in scores}
+                for fixture in self.rows("SELECT red_team_id,blue_team_id FROM competition_fixtures WHERE competition_id=? AND status='completed'", (ident,)):
+                    opponents[fixture["red_team_id"]].add(fixture["blue_team_id"])
+                for t, team in scores.items():
+                    team["buchholz"] = sum(scores[o]["points"] for o in opponents[t])
+            rows = sorted(scores.values(), key=lambda s: (-s["points"], -s.get("buchholz",0), s["team_id"]))
             previous, rank = None, 0
             for index, row in enumerate(rows, 1):
-                if row["points"] != previous:
+                key = (row["points"], row.get("buchholz",0))
+                if key != previous:
                     rank = index
-                row["rank"], previous = rank, row["points"]
-            return {"competition_id": ident, "ranking": "points_shared_rank", "scoring": dict(SCORING),
+                row["rank"], previous = rank, key
+            return {"competition_id": ident, "ranking": "points_buchholz" if swiss else "points_shared_rank", "scoring": dict(SCORING),
                     "provisional": item["status"] != "completed", "items": rows}
 
     def attempts(self, ident, fixture_id):
@@ -440,5 +573,8 @@ class Competitions:
         safe = []
         for event in raw:
             if event["type"] in fields:
-                safe.append({**event, "data": {k: event["data"][k] for k in fields[event["type"]] if k in event["data"]}})
+                data = {k: event["data"][k] for k in fields[event["type"]] if k in event["data"]}
+                if data.get("ruleset"):
+                    data["ruleset"] = {k:v for k,v in data["ruleset"].items() if k not in ("engine_sha256", "sdk_sha256")}
+                safe.append({**event, "data": data})
         return safe, raw[-1]["seq"] if raw else after

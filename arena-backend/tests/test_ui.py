@@ -25,7 +25,7 @@ class UIIntegration(APIHarness):
         for path in ("/_ui/app.js", "/_ui/client.js", "/_ui/pages.js", "/_ui/board.js", "/_ui/patch.js", "/_ui/admin-ui.js", "/_ui/app.css", "/styles.css", "/assets/favicon.svg"):
             self.assertEqual(guest.get(path).status_code, 200, path)
         self.assertNotIn("@import", guest.get("/styles.css").text)
-        self.assertEqual(guest.get("/api/v1/platform").json()["runtimes"], ["cpp17"])
+        self.assertEqual(guest.get("/api/v1/platform").json()["runtimes"], ["cpp17", "c11", "python3"])
         rules = guest.get("/api/v1/rules")
         self.assertEqual(rules.status_code, 200)
         self.assertIn("OTT", rules.text)

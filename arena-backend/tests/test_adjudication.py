@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 from arena import engine
 from arena.adjudication import CURRENT, LEGACY, policy, position_key, valid_result
 from arena.config import profile
-from arena.job_queue import JobQueue
+from arena.job_queue import DurableJobQueue
 from arena.protocol import Fault
 from arena.service import Service
 from arena.store import Store
@@ -156,29 +156,26 @@ class Adjudication(unittest.TestCase):
         self.assertFalse(valid_result({'winner':'red','reason':'wall_limit'}, CURRENT))
         self.assertFalse(valid_result({'winner':None,'reason':'worker_error'}, CURRENT))
 
-    def test_practice_api_cannot_consume_reserved_official_slot(self):
+    def test_practice_queue_has_no_global_sixteen_job_limit(self):
         submission = self.store.create('submission','unit-team',{})
         for i in range(15):
             self.service.pending.put_nowait('practice-'+str(i))
-        with patch('arena.sandbox.image_id',return_value='unit-image'), self.assertRaises(Fault) as raised:
-            self.service.enqueue('unit-team','benchmark',{'submission_id':submission['id']},'reserved-slot-test')
-        self.assertEqual(raised.exception.code,'quota_exceeded')
-        self.assertEqual(self.store.list('job'),[])
+        with patch('arena.sandbox.image_id',return_value='unit-image'):
+            job = self.service.enqueue('unit-team','benchmark',{'submission_id':submission['id']},'reserved-slot-test')
+        self.assertEqual(job['status'], 'queued')
+        self.assertEqual(self.service.pending.qsize(), 16)
 
 
 class Priority(unittest.TestCase):
-    def test_official_first_fifo_with_reserved_capacity_and_accounting(self):
-        pending = JobQueue()
-        for i in range(15):
-            pending.put_nowait('practice-' + str(i))
-        self.assertTrue(pending.practice_full())
-        self.assertFalse(pending.full())
-        pending.put_official('official')
-        self.assertTrue(pending.full())
-        self.assertEqual(pending.counts(), {'official':1, 'practice':15})
-        self.assertEqual(pending.get_nowait(), 'official')
-        pending.task_done()
-        for i in range(15):
-            self.assertEqual(pending.get_nowait(), 'practice-' + str(i))
-            pending.task_done()
-        self.assertEqual(pending.unfinished_tasks, 0)
+    def test_official_benchmark_practice_priority_and_fifo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store=Store(tmp);pending=DurableJobQueue(store)
+            for i in range(40):pending.put_nowait('practice-'+str(i))
+            self.assertFalse(pending.practice_full())
+            pending.put('benchmark',kind='benchmark');pending.put_official('official')
+            self.assertFalse(pending.full())
+            self.assertEqual(pending.counts(),{'official':1,'practice':41})
+            for expected in ['official','benchmark',*('practice-'+str(i) for i in range(40))]:
+                self.assertEqual(pending.get_nowait(),expected);pending.task_done()
+            self.assertEqual(pending.unfinished_tasks,0)
+            store.db.close()

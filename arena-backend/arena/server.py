@@ -261,7 +261,7 @@ def main():
         server.serve_forever()
     finally:
         app.service.stop.set()
-        app.service.worker_thread.join(timeout=12)
+        app.service.join()
         server.server_close()
         lease.close()
 

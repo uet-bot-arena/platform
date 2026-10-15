@@ -79,7 +79,12 @@ def main():
                 time.sleep(0.1)
             raise AssertionError("Job did not finish: " + job["id"])
         try:
-            assert request("/health", token=None)["ready"]
+            # Startup verifies the worker images and removes this data dir's orphan
+            # containers in the background; readiness turns true when that is done.
+            ready_by = time.monotonic() + 60
+            while not request("/health", token=None)["ready"]:
+                assert time.monotonic() < ready_by, "Worker runtime never became ready"
+                time.sleep(0.2)
             clock = request("/time", token=None)
             assert clock["server_sent_unix_ms"] >= clock["server_received_unix_ms"]
             request("/submissions", token=None, status=401)
@@ -176,7 +181,7 @@ def main():
             app.service.stop.set()
             server.shutdown()
             server.server_close()
-            app.service.worker_thread.join(timeout=15)
+            app.service.join()
             app.store.db.close()
     results["passed"] = True
     results["completed_unix_ms"] = time.time_ns() // 1_000_000

@@ -4,21 +4,22 @@ import hashlib
 from pathlib import Path
 
 ENGINE_ID = "ottv2-v1"
-ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+ENGINE_SHA256 = hashlib.sha256(Path(__file__).read_bytes() + Path(__file__).with_name("basic_rules.py").read_bytes()).hexdigest()
 SIDES = ("red", "blue")
 BEATS = {"rock": "scissors", "scissors": "paper", "paper": "rock"}
 BASES = {"red": "a1", "blue": "i9"}
 DIRECTIONS = [(dr, dc) for dr in (-1, 0, 1) for dc in (-1, 0, 1) if dr or dc]
 
 
-def position(square):
-    if not isinstance(square, str) or len(square) != 2 or square[0] not in "abcdefghi" or square[1] not in "123456789":
+def position(square, rows=9, cols=9):
+    if (not isinstance(square, str) or not 2 <= len(square) <= 3 or not 'a' <= square[0] < chr(97+cols)
+            or not square[1:].isascii() or not square[1:].isdigit() or square[1:].startswith('0') or not 1 <= int(square[1:]) <= rows):
         raise ValueError("Invalid square")
-    return 9 - int(square[1]), ord(square[0]) - 97
+    return rows - int(square[1:]), ord(square[0]) - 97
 
 
-def square(row, col):
-    return chr(97 + col) + str(9 - row)
+def square(row, col, rows=9):
+    return chr(97 + col) + str(rows - row)
 
 
 def other(side):
@@ -54,17 +55,18 @@ def legal_moves(state, side=None):
         return []
     side = side or state["to_move"]
     board, moves = state["board"], []
+    rows, cols = len(board), len(board[0])
     for r, row in enumerate(board):
         for c, piece in enumerate(row):
             if not piece or piece["side"] != side:
                 continue
             for dr, dc in DIRECTIONS:
                 nr, nc = r + dr, c + dc
-                if not (0 <= nr < 9 and 0 <= nc < 9):
+                if not (0 <= nr < rows and 0 <= nc < cols):
                     continue
                 target = board[nr][nc]
                 if target is None or (target["side"] != side and BEATS[piece["kind"]] == target["kind"]):
-                    moves.append({"from": square(r, c), "to": square(nr, nc)})
+                    moves.append({"from": square(r, c, rows), "to": square(nr, nc, rows)})
     return moves
 
 
@@ -84,18 +86,20 @@ def apply(state, action):
         return finish(result, other(side), "resignation")
     if set(action) != {"from", "to"} or action not in legal_moves(state):
         raise ValueError("Illegal move")
-    fr, fc = position(action["from"])
-    tr, tc = position(action["to"])
+    rows, cols = len(state["board"]), len(state["board"][0])
+    rules = state.get("basic_rules", {})
+    fr, fc = position(action["from"], rows, cols)
+    tr, tc = position(action["to"], rows, cols)
     result["board"][tr][tc] = result["board"][fr][fc]
     result["board"][fr][fc] = None
     result["ply"] += 1
     result["to_move"] = other(side)
     remaining = counts(result)[other(side)]
-    if action["to"] == BASES[other(side)]:
+    if rules.get("base_capture", True) and action["to"] == rules.get("bases", BASES)[other(side)]:
         return finish(result, side, "base_capture")
     if sum(remaining.values()) == 0:
         return finish(result, side, "all_pieces_eliminated")
-    if 0 in remaining.values():
+    if sum(n == 0 for n in remaining.values()) >= rules.get("eliminate_types", 1):
         return finish(result, side, "type_eliminated")
     if not legal_moves(result):
         return finish(result, side, "no_legal_moves")
@@ -103,4 +107,5 @@ def apply(state, action):
 
 
 def observation(state):
-    return {"state": deepcopy(state), "legal_moves": legal_moves(state), "counts": counts(state), "bases": BASES}
+    return {"state": deepcopy(state), "legal_moves": legal_moves(state), "counts": counts(state), "bases": state.get("basic_rules", {}).get("bases", BASES),
+            **({"basic_rules": state["basic_rules"]} if "basic_rules" in state else {})}

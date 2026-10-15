@@ -17,7 +17,7 @@ from arena.service import Service, TERMINAL
 from arena.store import Store
 from arena_api.accounts import Accounts
 from arena_api.settings import Lease, Settings
-from arena_api import auth_routes, admin_routes, arena_routes, competition_routes, ui_routes, ruleset_routes
+from arena_api import auth_routes, admin_routes, arena_routes, competition_routes, ui_routes, ruleset_routes, sample_bots
 from arena_api.competitions import Competitions
 from arena_api.dependencies import SPECTATOR_PATHS
 
@@ -57,7 +57,8 @@ class RequestBoundary:
         if headers.get("origin") not in (None, self.settings.origin) or headers.get("sec-fetch-site") == "cross-site":
             return await reject(403, "forbidden", "Cross-origin request rejected")
         if scope["method"] in ("POST", "PUT", "PATCH"):
-            limit = 10 * 1024 * 1024 if scope["path"] == "/api/v1/submissions" else 16_384
+            archive = scope["path"] in ("/api/v1/submissions", "/api/v1/admin/sample-bots")
+            limit = 10 * 1024 * 1024 if archive else 16_384
             length = headers.get("content-length", "")
             if not length.isascii() or not length.isdigit() or headers.get("transfer-encoding"):
                 return await reject(411, "invalid_request", "Content-Length required; chunked bodies unsupported")
@@ -81,7 +82,7 @@ class RequestBoundary:
                 return await reject(400, "invalid_request", "Incomplete request body")
             # Validate strict JSON before Pydantic to reject duplicate keys,
             # NaN and Infinity consistently with the bot/control protocol.
-            if body and scope["path"] != "/api/v1/submissions" and headers.get("content-type", "").split(";")[0] != "application/json":
+            if body and not archive and headers.get("content-type", "").split(";")[0] != "application/json":
                 return await reject(415, "invalid_request", "Expected application/json")
             if body and headers.get("content-type", "").split(";")[0] == "application/json":
                 from arena.protocol import strict_json
@@ -110,7 +111,9 @@ def create_app(settings=None, start_worker=True):
         try:
             store = Store(settings.data)
             app.state.store = store
-            app.state.accounts = Accounts(store, settings.session_seconds)
+            import anyio.to_thread
+            anyio.to_thread.current_default_thread_limiter().total_tokens = settings.thread_limit
+            app.state.accounts = Accounts(store, settings.session_seconds, settings.hash_workers)
             app.state.clock_id = secrets.token_hex(16)
             service = Service(store, start_worker=start_worker)
             app.state.service = service
@@ -119,6 +122,8 @@ def create_app(settings=None, start_worker=True):
             service.rulesets = app.state.rulesets
             competitions = Competitions(store, service, app.state.accounts)
             app.state.competitions = competitions
+            from arena_api.broadcast import Snapshots
+            app.state.broadcast = Snapshots()
             from arena_api.operations import Operations
             app.state.operations = Operations(store, app.state.accounts, service, competitions)
             if start_worker:
@@ -133,10 +138,9 @@ def create_app(settings=None, start_worker=True):
                 service.stop.set()
                 # Finish the bounded in-flight operation before closing SQLite
                 # or releasing its lease. No second controller can race it.
-                if service.worker_thread.is_alive():
-                    await asyncio.to_thread(service.worker_thread.join)
+                await asyncio.to_thread(service.join)
                 for job in store.list("job"):
-                    if job["status"] not in TERMINAL:
+                    if job["status"] not in (*TERMINAL, "queued"):
                         store.update(job["id"], status="aborted", error={"code": "server_shutdown", "detail": "Controller stopped; no result awarded"})
                         store.event(job["id"], "aborted", {"code": "server_shutdown"})
                 if competitions:
@@ -156,6 +160,7 @@ def create_app(settings=None, start_worker=True):
     app.include_router(competition_routes.router)
     app.include_router(ui_routes.router)
     app.include_router(ruleset_routes.router)
+    app.include_router(sample_bots.router)
 
     def error_body(request, code, detail):
         return {"error": {"code": code, "detail": detail}, "request_id": getattr(request.state, "request_id", None)}

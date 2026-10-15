@@ -117,21 +117,26 @@ def watch(ident: str, request: Request, admin=Depends(spectator_admin)):
 
     async def stream():
         previous, until = None, time.monotonic() + 60
+        def snapshot(is_admin):
+            state = competitions.watch_state(ident, is_admin)
+            return json.dumps(state, separators=(',', ':')), state['status'] == 'completed'
         while time.monotonic() < until and not request.app.state.service.stop.is_set():
             if await request.is_disconnected():
                 return
             try:
-                state = competitions.watch_state(ident, spectator_admin(request))
+                from starlette.concurrency import run_in_threadpool
+                is_admin = await run_in_threadpool(spectator_admin, request) if request.cookies else False
+                payload, finished = await request.app.state.broadcast.get_async(("watch", ident, is_admin),
+                    lambda: snapshot(is_admin))
             except Fault:
                 yield 'event: unavailable\ndata: {}\n\n'
                 return
-            payload = json.dumps(state, separators=(',', ':'))
             if payload != previous:
                 yield 'event: competition\ndata: ' + payload + '\n\n'
                 previous = payload
             else:
                 yield ': heartbeat\n\n'
-            if state['status'] == 'completed':
+            if finished:
                 return
             await asyncio.sleep(1)
     return StreamingResponse(stream(), media_type='text/event-stream',
@@ -164,7 +169,10 @@ def events(ident: str, fixture_id: str, request: Request, after: int = Query(0, 
             if await request.is_disconnected():
                 return
             try:
-                current = competitions.live_fixture(ident, fixture_id, spectator_admin(request))
+                from starlette.concurrency import run_in_threadpool
+                is_admin = await run_in_threadpool(spectator_admin, request) if request.cookies else False
+                current = await request.app.state.broadcast.get_async(("fixture", ident, fixture_id, is_admin),
+                    lambda: competitions.live_fixture(ident, fixture_id, is_admin))
             except Fault:
                 yield 'event: unavailable\ndata: {}\n\n'
                 return
@@ -172,11 +180,16 @@ def events(ident: str, fixture_id: str, request: Request, after: int = Query(0, 
                 yield 'event: attempt_changed\ndata: {}\n\n'
                 return
             if job_id:
-                safe, next_cursor = competitions.safe_events(job_id, cursor)
-                for event in safe:
-                    yield f"id: {job_id}:{event['seq']}\nevent: arena\ndata: {json.dumps(event, separators=(',', ':'))}\n\n"
+                def batch():
+                    safe, next_cursor = competitions.safe_events(job_id, cursor)
+                    payload = ''.join(f"id: {job_id}:{event['seq']}\nevent: arena\ndata: {json.dumps(event, separators=(',', ':'))}\n\n" for event in safe)
+                    done = request.app.state.store.get(job_id)["status"] in TERMINAL and not request.app.state.store.events(job_id, next_cursor)
+                    return payload, next_cursor, done
+                payload, next_cursor, done = await request.app.state.broadcast.get_async(("events", job_id, cursor), batch)
+                if payload:
+                    yield payload
                 cursor = next_cursor
-                if request.app.state.store.get(job_id)["status"] in TERMINAL and not request.app.state.store.events(job_id, cursor):
+                if done:
                     return
             yield ": heartbeat\n\n"
             await asyncio.sleep(1)

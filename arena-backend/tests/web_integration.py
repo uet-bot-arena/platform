@@ -59,7 +59,13 @@ def main():
                 client.headers["X-CSRF-Token"] = data["csrf_token"]
                 return data
 
-            health = request(admin, "GET", "/health/ready")
+            until = time.monotonic()+30
+            while time.monotonic()<until:
+                health = admin.get("/api/v1/health/ready")
+                if health.status_code == 200:
+                    break
+                time.sleep(0.1)
+            assert health.status_code == 200, health.text
             assert health.json()["ready"] and health.headers["X-Request-ID"]
             schema = admin.get("/openapi.json").json()
             assert schema["paths"]["/api/v1/matches"]["post"]["security"]

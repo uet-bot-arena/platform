@@ -1,4 +1,5 @@
 import asyncio
+from copy import deepcopy
 import io
 import json
 from pathlib import Path
@@ -17,7 +18,26 @@ ROOT = Path(__file__).resolve().parents[1]
 router = APIRouter(prefix="/api/v1", tags=["arena"])
 
 
+PRIVATE_SAMPLE = "Chẩn đoán của bot mẫu BTC được giữ kín"
+
+
 def public_job(job, full=False):
+    if job.get("sample_bot"):
+        # Hide only the organiser bot's side: its build manifest/log, stderr and fault text.
+        # The team keeps every diagnostic about its own bot.
+        job = deepcopy(job)
+        side = job["sample_bot"].get("side", "blue")
+        index = engine.SIDES.index(side)
+        job["sample_bot"] = {"id": job["sample_bot"]["id"], "side": side}
+        if job.get("error") and job["error"].get("side") == side:
+            job["error"]["detail"] = PRIVATE_SAMPLE
+        report = job.get("report") or {}
+        for field in ("artifacts", "sandbox_metrics"):
+            if len(report.get(field) or []) > index:
+                report[field][index] = {"redacted": True}
+        for fault in [report.get("fault"), *(report.get("startup_faults") or [])]:
+            if fault and fault.get("side") == side:
+                fault["detail"] = PRIVATE_SAMPLE
     # Reports/build manifests contain source hashes, not a host source path.
     if full:
         return job
@@ -31,9 +51,21 @@ def public_job(job, full=False):
     return result
 
 
+def private_event(job, event):
+    if not job.get("sample_bot"):
+        return event
+    event = deepcopy(event)
+    sample = job["sample_bot"]
+    if event["type"] == "build" and event["data"].get("submission_id") == sample["submission_id"]:
+        event["data"] = {"redacted": True}
+    if event["type"] == "failed" and event["data"].get("side") == sample.get("side", "blue"):
+        event["data"]["detail"] = PRIVATE_SAMPLE
+    return event
+
+
 @router.get("/health/live", summary="Tiến trình API đang hoạt động; không gọi Docker")
 def live():
-    return {"ok": True, "service": "uet-arena-web-api", "version": "0.4.0"}
+    return {"ok": True, "service": "uet-arena-web-api", "version": "0.6.0"}
 
 
 @router.get("/health/ready", summary="DB + immutable worker image sẵn sàng")
@@ -58,7 +90,7 @@ def clock(request: Request):
 @router.get("/config", summary="Cấu hình engine/runtime/profile của đội")
 def config(auth=Depends(team_principal)):
     return {"team_id": auth["user"]["team_id"], "profile": match_profile().public(), "match_options_ms": [60000, 300000],
-            "runtimes": ["cpp17"], "protocol_version": 2, "engine_id": engine.ENGINE_ID, "codon_enabled": False}
+            "runtimes": ["cpp17", "c11", "python3"], "protocol_version": 2, "engine_id": engine.ENGINE_ID, "codon_enabled": False}
 
 
 @router.get("/teams/me", response_model=TeamView, summary="Hồ sơ đội hiện tại, chỉ đội đó đọc được")
@@ -77,12 +109,14 @@ def dashboard(request: Request, auth=Depends(team_principal)):
 
 
 @router.get("/starter.zip", summary="Tải SDK C++17 OTTv2 protocol v2")
-def starter(auth=Depends(team_principal)):
+def starter(runtime: str = Query("cpp17", pattern="^(cpp17|c11|python3)$"), auth=Depends(team_principal)):
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as z:
-        for name in ("bot.cpp", "json.hpp", "LICENSE.MIT", "README.md"):
+        names = {"cpp17": ("bot.cpp", "json.hpp", "LICENSE.MIT", "README.md"),
+                 "c11": ("bot.c", "jsmn.h", "README.md"), "python3": ("bot.py", "README.md")}[runtime]
+        for name in names:
             z.write(ROOT / "sdk" / name, name)
-    return Response(output.getvalue(), media_type="application/zip", headers={"Content-Disposition": 'attachment; filename="ottv2-cpp-v2.zip"'})
+    return Response(output.getvalue(), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="ottv2-{runtime}-v2.zip"'})
 
 
 @router.get("/submissions", summary="Các source version bất biến của đội")
@@ -112,7 +146,8 @@ def benchmark(body: Benchmark, request: Request, idempotency_key: str = Header()
 
 @router.post("/matches", status_code=202, summary="Trận luyện tập giữa hai version của cùng đội")
 def match(body: Match, request: Request, idempotency_key: str = Header(), auth=Depends(team_principal)):
-    return request.app.state.service.enqueue(auth["user"]["team_id"], "match", body.model_dump(exclude_none=True), idempotency_key)
+    job = request.app.state.service.enqueue(auth["user"]["team_id"], "match", body.model_dump(exclude_none=True), idempotency_key)
+    return public_job(job, full=True)
 
 
 @router.get("/jobs", summary="Jobs của đội, phân trang")
@@ -123,12 +158,13 @@ def jobs(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Q
 
 @router.get("/jobs/{ident}", summary="Chi tiết job gồm báo cáo nếu có")
 def job(ident: str, request: Request, auth=Depends(team_principal)):
-    return public_job(request.app.state.store.get(ident, auth["user"]["team_id"], "job"), full=True)
+    value = public_job(request.app.state.store.get(ident, auth["user"]["team_id"], "job"), full=True)
+    return {**value, "queue_position": request.app.state.service.pending.position(ident)}
 
 
 @router.get("/jobs/{ident}/report", summary="Tải báo cáo timing/provenance; 409 khi chưa có báo cáo")
 def report(ident: str, request: Request, auth=Depends(team_principal)):
-    result = request.app.state.store.get(ident, auth["user"]["team_id"], "job")["report"]
+    result = public_job(request.app.state.store.get(ident, auth["user"]["team_id"], "job"), True)["report"]
     if not result:
         raise Fault("report_unavailable", "No report is available for this job")
     return Response(json.dumps(result, ensure_ascii=False), media_type="application/json", headers={"Content-Disposition": 'attachment; filename="report.json"'})
@@ -138,13 +174,13 @@ def report(ident: str, request: Request, auth=Depends(team_principal)):
 def events(ident: str, request: Request, after: int = Query(0, ge=0, le=9223372036854775807), last_event_id: str | None = Header(None), auth=Depends(team_principal)):
     store = request.app.state.store
     team_id = auth["user"]["team_id"]
-    store.get(ident, team_id, "job")
+    job = store.get(ident, team_id, "job")
     if last_event_id is not None:
         if not last_event_id.isascii() or not last_event_id.isdigit() or len(last_event_id) > 12:
             raise Fault("invalid_request", "Invalid Last-Event-ID")
         after = int(last_event_id)
     if "text/event-stream" not in request.headers.get("Accept", ""):
-        return {"items": store.events(ident, after)}
+        return {"items": [private_event(job, e) for e in store.events(ident, after)]}
 
     async def stream():
         cursor, until = after, time.monotonic() + 60
@@ -153,14 +189,21 @@ def events(ident: str, request: Request, after: int = Query(0, ge=0, le=92233720
                 return
             try:
                 # Revoked/expired sessions must not keep a live feed open.
-                request.app.state.accounts.principal(request.cookies.get(COOKIE, ""))
+                await asyncio.to_thread(request.app.state.accounts.principal, request.cookies.get(COOKIE, ""))
             except Fault:
                 yield 'event: auth_expired\ndata: {}\n\n'
                 return
-            for event in store.events(ident, cursor):
+            def batch():
+                values = store.events(ident, cursor)
+                next_cursor = values[-1]['seq'] if values else cursor
+                done = store.get(ident, team_id, 'job')['status'] in TERMINAL and not store.events(ident, next_cursor)
+                return values, done
+            values, done = await request.app.state.broadcast.get_async(('private', ident, team_id, cursor), batch)
+            for event in values:
+                event = private_event(job, event)
                 yield f"id: {event['seq']}\nevent: arena\ndata: {json.dumps(event, separators=(',', ':'))}\n\n"
                 cursor = event["seq"]
-            if store.get(ident, team_id, "job")["status"] in TERMINAL and not store.events(ident, cursor):
+            if done:
                 return
             yield ": heartbeat\n\n"
             await asyncio.sleep(1)

@@ -1,4 +1,6 @@
 // OTTv2 protocol v2; single-threaded, persistent C++17 process.
+#include <algorithm>
+#include <cstdlib>
 #include <iostream>
 #include <string>
 #include "json.hpp"
@@ -7,13 +9,17 @@ using json = nlohmann::json;
 json choose_move(const json& state, const json& legal) {
     // Prefer an immediate base capture, then captures, then advance towards base.
     const std::string side = state.at("to_move");
-    const std::string base = side == "red" ? "i9" : "a1";
+    const int rows = state.at("board").size(), cols = state.at("board").at(0).size();
+    const auto bases = state.value("basic_rules", json::object()).value("bases", json({{"red","a1"},{"blue","i9"}}));
+    const std::string base = bases.at(side == "red" ? "blue" : "red");
+    const int base_row = rows - std::stoi(base.substr(1)), base_col = base[0] - 'a';
+    (void)cols;
     json best = legal.at(0);
     int best_score = -100000;
     for (const auto& move : legal) {
         const std::string to = move.at("to");
-        const int row = 9 - (to[1] - '0'), col = to[0] - 'a';
-        int score = side == "red" ? 8 - row + col : row + 8 - col;
+        const int row = rows - std::stoi(to.substr(1)), col = to[0] - 'a';
+        int score = -std::max(std::abs(row - base_row), std::abs(col - base_col));  // closer to the enemy base
         if (!state.at("board").at(row).at(col).is_null()) score += 50;
         if (to == base) score += 10000;
         if (score > best_score) { best = move; best_score = score; }
