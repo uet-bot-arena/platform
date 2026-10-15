@@ -1,77 +1,75 @@
-# UET Bot Arena · platform
+# UET Bot Arena — thi đấu bot Oẳn Tù Tì (OTTv2)
 
-Nền tảng thi đấu bot OTTv2 trên bàn cờ 9×9. Backend biên dịch source C++17 trong Docker, chạy benchmark, điều phối giải vòng tròn hai lượt và phục vụ UI cùng origin. Live/replay cập nhật bàn cờ bằng SSE; các trang danh sách không tự reload định kỳ.
+Nền tảng cho các đội nộp bot **Python, C hoặc C++** và cho bot đấu với nhau trên bàn cờ Oẳn Tù Tì. Server biên dịch và chạy bot trong Docker cô lập, làm trọng tài từng nước, xếp lịch giải (Swiss hoặc vòng tròn), tính điểm, phát trực tiếp và lưu replay. Giao diện web và API chạy cùng một server.
 
-**[Hướng dẫn cài đặt đầy đủ → INSTALL.md](INSTALL.md)** · **[Hướng dẫn viết bot](uet-bot-arena/dist/live/bot-guide.md)** · **[Ruleset add-on](arena-backend/docs/RULESET-ADDONS.md)**
+Tài liệu: [Cài đặt chi tiết](INSTALL.md) · [Hướng dẫn viết bot](uet-bot-arena/dist/live/bot-guide.md) · [Thể thức giải](arena-backend/docs/COMPETITIONS.md) · [Giao thức bot](arena-backend/docs/PROTOCOL.md) · [Bảo mật](arena-backend/docs/SECURITY.md)
 
-## Tính năng hiện có
+## Tính năng
 
-- Đăng ký đội; BTC duyệt/cấp tài khoản, đổi/reset mật khẩu, khóa/khôi phục và nhật ký thao tác.
-- Nộp ZIP source C++17, verify archive, biên dịch trong worker cô lập và lưu phiên bản bất biến.
-- Benchmark 72 mẫu; báo thời gian, CPU, bộ nhớ, startup/build và lỗi protocol dễ tra cứu.
-- Luyện tập, giải hai lượt đổi màu, chốt binary đã benchmark, live/replay, tự chuyển trận và khách xem giải công khai.
-- Thắng 3 điểm, hòa 1 điểm, thua 0 điểm; bằng điểm đồng hạng. Biểu đồ chung cho top 10.
-- Quỹ cả trận mỗi bot: Bullet 60 giây hoặc thường 300 giây, không increment. Deadline do worker monotonic quyết định; khoảng chờ 3 giây không nhận nước đi muộn.
-- **Ruleset add-on (Experimental):** ghép năng lượng/vùng/mẫu đi/Khiên/mục tiêu, nhập/xuất JSON, kiểm tra & công bố, changelog và playground legal_actions cho đội. SDK v3; mỗi giải giữ một snapshot luật cố định.
+- **Ba vai:** ban tổ chức (BTC) quản lý đội, giải, bot mẫu; đội nộp bot, benchmark, luyện tập; khách xem giải, trực tiếp, replay, bảng xếp hạng.
+- **Nộp bot:** ZIP source C++17, C11 hoặc Python 3.11 (PyPy); mỗi phiên bản được giữ nguyên, có benchmark 72 thế cờ để kiểm tra trước khi dự giải.
+- **Hàng đợi bền trong SQLite, nhiều worker chạy song song**, ưu tiên trận chính thức → benchmark → luyện tập; mỗi trận chạy trên một CPU riêng.
+- **Giải đấu:** vòng tròn hai lượt (≤ 32 đội) hoặc Swiss (tới 4096 đội); mỗi cặp đấu 2 ván đổi màu.
+- **Luyện tập** giữa các phiên bản của đội hoặc với bot mẫu của BTC (không tính điểm).
+- **Luật tùy chỉnh theo giải:** bàn 7–15 hàng/cột, vị trí căn cứ, thắng khi diệt sạch 1 hoặc 2 loại quân, bật/tắt thắng bằng chiếm căn cứ.
 
-## Chạy nhanh
+## Luật và thể lệ
 
-Yêu cầu **Linux x86_64 hoặc Ubuntu trong WSL2**, Python 3.11+, Docker chạy Linux containers với cgroup v2. Windows dùng Docker Desktop và bật WSL integration cho Ubuntu. Node.js chỉ cần cho kiểm thử UI/prototype, không cần để chạy web chính.
+- Bàn mặc định 9×9, mỗi bên 9 quân (3 Búa, 3 Lá/Bao, 3 Kéo), căn cứ Đỏ a1 / Xanh i9, Đỏ đi trước. Mỗi nước đi 1 ô theo 8 hướng; Búa ăn Kéo, Kéo ăn Lá, Lá ăn Búa; cùng loại chặn nhau.
+- Thắng khi chiếm căn cứ đối phương, diệt sạch một loại quân của đối phương, hoặc đối phương bí nước.
+- **Quỹ giờ cả trận mỗi bot: Bullet 60 giây hoặc thường 300 giây, không cộng giây**, như nhau cho mọi ngôn ngữ và mọi kích thước bàn. Deadline do đồng hồ monotonic của worker quyết định; hết quỹ là thua. Khoảng chờ 3 giây chỉ để server tuyên bố hết giờ, không nhận nước đi muộn.
+- Hòa khi cùng thế cờ lặp lại 3 lần, khi đạt 512 nước (bàn 9×9; bàn khác tăng theo số ô) hoặc trận quá 20 phút.
+- **Thắng 3 điểm, hòa 1 điểm, thua 0 điểm.** Swiss: đội được nghỉ (bye) nhận 6 điểm như thắng cả vòng, bằng điểm xét Buchholz. Vòng tròn: bằng điểm thì đồng hạng.
+- Bot lỗi (crash, sai giao thức, nước sai luật, hết giờ) bị xử thua; lỗi hạ tầng không tính kết quả, BTC cho chạy lại.
+
+## Cài và chạy
+
+Cần **Linux x86_64 hoặc Ubuntu trong WSL2**, Python 3.11+, Docker (Linux containers, cgroup v2). Trên Windows dùng Docker Desktop và bật WSL integration.
 
 ```bash
-git clone https://github.com/Dashlane04/platform.git
+git clone https://github.com/khoinguyencode/platform.git
 cd platform
-bash scripts/setup.sh
-# Chọn mật khẩu của riêng bạn tại prompt ẩn; không có tài khoản/mật khẩu mặc định.
-cd arena-backend
-.venv/bin/python -m arena_api bootstrap-admin --username organizer
-cd ..
-bash scripts/start.sh
+bash scripts/setup.sh                       # venv, dependency, build image worker, tạo DB
+cd arena-backend && .venv/bin/python -m arena_api bootstrap-admin --username organizer && cd ..
+bash scripts/start.sh                       # http://127.0.0.1:41810/#/login
 ```
 
-Mở **http://127.0.0.1:41810/#/login**. Đăng nhập BTC bằng username/mật khẩu vừa tạo. `GET /api/v1/health/ready` phải trả `ready: true` trước khi nộp/chạy bot. Xem [INSTALL.md](INSTALL.md) cho cài dependency, test hai đội, đổi cổng, lỗi thường gặp và cách dừng/chạy lại.
+Đợi `GET /api/v1/health/ready` trả `ready: true` rồi mới mở giải. Dữ liệu (DB, source, binary) nằm ở `arena-backend/.platform-state/`; backup khi server đã dừng.
 
-Không cần `npm install`, không cần frontend server riêng. `uet-bot-arena/dist/live/` là source HTML/CSS/ES module được viết trực tiếp và cần được giữ trong Git. `npm run dev` mở prototype cũ, không phải UI/API thật.
+Cấu hình bằng biến môi trường trước khi chạy `scripts/start.sh`:
 
-## Cấu trúc repo
+| Biến | Mặc định | Ý nghĩa |
+|---|---|---|
+| `ARENA_WORKERS` | số CPU − 2 | Số trận/benchmark chạy song song |
+| `ARENA_BUILD_WORKERS` | 2 | Số bài biên dịch cùng lúc |
+| `ARENA_CONNECTION_LIMIT` | 1024 | Số kết nối HTTP/SSE đồng thời |
+| `ARENA_API_ORIGIN` | `http://127.0.0.1:<port>` | Địa chỉ công khai của web |
+| `ARENA_TRUSTED_PROXIES` | (trống) | CIDR của reverse proxy, ví dụ `127.0.0.1/32` |
 
-```text
-arena-backend/
-  arena/          Engine, JSON Lines protocol, Docker supervisor, queue và benchmark
-  arena_api/      FastAPI, tài khoản, migrations, giải đấu và catalog add-on
-  sdk/            Bot C++ mẫu, JSON header, SDK v3 simulator và license của thư viện
-  examples/       Alpha-beta, minimax SDK v3, client và gói ruleset JSON
-  tests/          Unit/API, Docker integration, kiểm thử tải và sự cố
-  docs/           Luật, protocol, timing, quản trị và vận hành
-uet-bot-arena/
-  dist/live/      UI chính nối API thật
-  dist/           Prototype UI cũ và asset/source starter tham chiếu
-  tests/          Kiểm thử UI và các fixture độc lập
-experiments/
-  codon-bot/      Nghiên cứu Python/Codon, tách khỏi runtime thi đấu
-scripts/          Setup và startup cho checkout mới
-```
+Khi mở ra mạng: đặt server sau HTTPS reverse proxy theo mẫu `arena-backend/deploy/`, đặt `ARENA_API_ORIGIN=https://…`, `ARENA_API_COOKIE_SECURE=1`, `ARENA_TRUSTED_PROXIES`, và chạy worker trên máy không chứa dữ liệu quan trọng ([SECURITY.md](arena-backend/docs/SECURITY.md)).
 
 ## Kiểm thử
 
 ```bash
 cd arena-backend
-make test
-make integration          # Build image và kiểm thử Docker/API/giải thật bằng dữ liệu tạm
-make experimental-test   # SDK v3, add-on, simulator parity và giải add-on
-cd ../uet-bot-arena
-npm run check
-node --test tests/*.test.mjs
+make test                 # unit + API
+make integration          # Docker thật: build, benchmark, trận, giải, replay
+make experimental-test    # ruleset add-on SDK v3
+.venv/bin/python tests/languages_integration.py                          # C / C++ / Python đấu chéo
+.venv/bin/python tests/load_lab/e2e_submissions.py --teams 100 --tournament 8   # nhiều đội nộp bài cùng lúc
+cd ../uet-bot-arena && npm run check && node --test tests/*.test.mjs     # giao diện
 ```
 
-Kiểm thử tải/sự cố: `make load-test`, `make guest-load-test`, `make experimental-load-test`; đọc phạm vi trong [LOAD-RESILIENCE.md](arena-backend/docs/LOAD-RESILIENCE.md) trước khi chạy. Kết quả sinh vào `test-results/`, không đưa lên Git.
+Kết quả kiểm thử ghi vào `arena-backend/test-results/` (không đưa lên Git).
 
-## Dữ liệu và phạm vi bản hiện tại
+## Cấu trúc
 
-Repo có source, SDK, migrations, ví dụ và test; không có DB, tài khoản, session, source các đội đã nộp, binary, ZIP sinh sẵn hoặc log trên máy phát triển. Người cài tạo DB và BTC mới. Dữ liệu chạy web mặc định ở `arena-backend/.platform-state/`; không xóa thư mục này nếu cần giữ giải/tài khoản.
+```text
+arena-backend/arena/       engine luật, giao thức, sandbox Docker, worker, hàng đợi
+arena-backend/arena_api/   FastAPI: tài khoản, giải đấu, Swiss, bot mẫu, SSE
+arena-backend/sdk/         bot mẫu C++ / C / Python cho đội
+arena-backend/tests/       unit, integration Docker, load_lab (thử tải nhiều đội)
+uet-bot-arena/dist/live/   giao diện web (HTML/CSS/JS thuần, không cần build)
+```
 
-C++17 là runtime thi đấu hiện bật. Python/Codon chỉ là nghiên cứu/prototype, chưa bật để nhận bot thật. Ruleset add-on vẫn Experimental và chưa được chứng nhận cân bằng. Mỗi giải hiện dùng một luật, chưa có các vòng thay luật trong cùng giải.
-
-Bản này phục vụ thử local. Trước khi nhận source không tin cậy qua Internet cần host/VM worker riêng, HTTPS cùng origin, kiểm tra cấu hình bảo mật, giới hạn tài nguyên và backup/restore. Xem [SECURITY.md](arena-backend/docs/SECURITY.md), [BACKEND.md](arena-backend/docs/BACKEND.md) và các template trong `arena-backend/deploy/`.
-
-Thư viện JSON được vendored kèm giấy phép tại [sdk/LICENSE.MIT](arena-backend/sdk/LICENSE.MIT). Repo public chưa gán giấy phép chung cho toàn bộ dự án; giấy phép của các thành phần bên thứ ba được giữ nguyên.
+Dự án fork từ [Dashlane04/platform](https://github.com/Dashlane04/platform). Thư viện bên thứ ba giữ nguyên giấy phép của chúng (`sdk/LICENSE.MIT`, `sdk/jsmn.h`).
