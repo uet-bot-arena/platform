@@ -101,7 +101,7 @@ class Accounts:
 
     def login(self, username, password, peer):
         username = username.casefold().strip()
-        self.rate_limit("login-ip:" + peer, 30, 900)
+        self.rate_limit("login-ip:" + peer, 600, 900)
         self.rate_limit("login-account:" + username, 10, 900)
         with self.store.lock:
             account = self.one("SELECT * FROM accounts WHERE username=?", (username,))
@@ -149,7 +149,8 @@ class Accounts:
             return self.new_session(self.one("SELECT * FROM accounts WHERE id=?", (ident,)))
 
     def register(self, data, peer):
-        self.rate_limit("register:" + peer, 5, 3600)
+        self.rate_limit("register-ip:" + peer, 1000, 3600)
+        self.rate_limit("register-contact:" + data["email"].strip().casefold(), 5, 3600)
         ident, key = uuid.uuid4().hex, name_key(data["team"])
         try:
             with self.store.lock, self.db:

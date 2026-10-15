@@ -59,8 +59,21 @@ def admin_principal(request: Request):
 
 
 def peer(request):
-    # Never trust user-supplied X-Forwarded-For. Gateway limits are separate.
-    return request.client.host if request.client else "unknown"
+    import ipaddress
+    host = request.client.host if request.client else "unknown"
+    try:
+        networks = [ipaddress.ip_network(n.strip()) for n in request.app.state.settings.trusted_proxies]
+        current = ipaddress.ip_address(host)
+        # Walk from the socket peer, stopping at the first untrusted hop.
+        for value in reversed(request.headers.get("x-forwarded-for", "").split(",")):
+            if not any(current in network for network in networks):
+                break
+            if not value.strip():
+                break
+            current = ipaddress.ip_address(value.strip())
+        return str(current)
+    except ValueError:
+        return host
 
 
 def set_session(request, response, result):

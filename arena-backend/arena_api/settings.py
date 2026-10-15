@@ -10,10 +10,17 @@ class Settings:
     origin: str = field(default_factory=lambda: os.environ.get("ARENA_API_ORIGIN", "http://127.0.0.1:4181"))
     cookie_secure: bool = field(default_factory=lambda: os.environ.get("ARENA_API_COOKIE_SECURE", "0") == "1")
     session_seconds: int = 3600
+    trusted_proxies: tuple[str, ...] = field(default_factory=lambda: tuple(filter(None, os.environ.get("ARENA_TRUSTED_PROXIES", "").split(","))))
+    connection_limit: int = field(default_factory=lambda: int(os.environ.get("ARENA_CONNECTION_LIMIT", "1024")))
     ui_root: Path = field(default_factory=lambda: Path(os.environ.get("ARENA_UI_ROOT",
         str(Path(__file__).resolve().parents[2] / "uet-bot-arena" / "dist"))).resolve())
 
     def __post_init__(self):
+        import ipaddress
+        for network in self.trusted_proxies:
+            ipaddress.ip_network(network.strip())
+        if not 256 <= self.connection_limit <= 16384:
+            raise ValueError("ARENA_CONNECTION_LIMIT must be 256..16384")
         parts = urlsplit(self.origin)
         if parts.scheme not in ("http", "https") or not parts.netloc or parts.path or parts.query or parts.fragment or parts.username:
             raise ValueError("ARENA_API_ORIGIN must be an exact origin without a trailing slash")

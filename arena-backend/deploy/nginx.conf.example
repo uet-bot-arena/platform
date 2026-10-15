@@ -1,6 +1,6 @@
 # Template only. Put the zone directives inside nginx's http {} block.
 limit_req_zone $binary_remote_addr zone=arena_api:10m rate=10r/s;
-limit_req_zone $binary_remote_addr zone=arena_login:10m rate=2r/s;
+limit_req_zone $binary_remote_addr zone=arena_login:10m rate=10r/s;
 
 server {
     listen 443 ssl;
@@ -10,15 +10,19 @@ server {
     client_max_body_size 10m;
 
     location = /api/v1/auth/login {
-        limit_req zone=arena_login burst=10 nodelay;
+        limit_req zone=arena_login burst=100 nodelay;
         proxy_pass http://127.0.0.1:4181;
         proxy_set_header Host $http_host;
+        # Configure ARENA_TRUSTED_PROXIES=127.0.0.1/32,::1/128 on the API.
+        # Overwrite client-supplied forwarding headers at this public edge.
+        proxy_set_header X-Forwarded-For $remote_addr;
         # Do not log request bodies, cookies or passwords.
     }
     location /api/ {
         limit_req zone=arena_api burst=30 nodelay;
         proxy_pass http://127.0.0.1:4181;
         proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
         proxy_buffering off;

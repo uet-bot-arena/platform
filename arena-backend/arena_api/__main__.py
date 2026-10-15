@@ -21,7 +21,7 @@ def main():
     if args.action == "serve":
         import uvicorn
         uvicorn.run("arena_api.app:create_app", factory=True, host="127.0.0.1", port=args.port, workers=1,
-                    access_log=False, proxy_headers=False, limit_concurrency=32,
+                    access_log=False, proxy_headers=False, limit_concurrency=settings.connection_limit,
                     timeout_keep_alive=5, timeout_graceful_shutdown=400)
         return
     lease, store = Lease(settings.data), None
