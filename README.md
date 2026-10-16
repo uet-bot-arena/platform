@@ -62,7 +62,7 @@ cd ../uet-bot-arena && npm run check && node --test tests/*.test.mjs     # giao 
 
 Kết quả kiểm thử ghi vào `arena-backend/test-results/` (không đưa lên Git).
 
-## Cấu trúc
+## Cấu trúc:
 
 ```text
 arena-backend/arena/       engine luật, giao thức, sandbox Docker, worker, hàng đợi
