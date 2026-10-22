@@ -1,4 +1,4 @@
-.PHONY: setup migrate serve test integration experimental-test experimental-load-test load-test guest-load-test schema time-bank-test
+.PHONY: setup migrate serve test integration sandbox-test sandbox-calibrate experimental-test experimental-load-test load-test guest-load-test schema time-bank-test
 PYTHON := .venv/bin/python
 EXPERIMENTAL_PROOF := experimental-proof-$(shell date +%s)
 # Re-enter by absolute path before every process. On the WSL /mnt/c workspace,
@@ -49,3 +49,12 @@ schema:
 time-bank-test:
 	cd "$(CURDIR)" && docker build -t uet-arena-worker:clock-v2 -t uet-arena-worker:experimental-clock-v2 .
 	cd "$(CURDIR)" && $(PYTHON) tests/time_bank_integration.py
+
+# Shared destructive-bot suite (docs/SANDBOX.md). BACKEND=bwrap|docker; on Windows run
+# "python tests/sandbox_suite/suite.py --backend windows" from PowerShell.
+BACKEND ?= bwrap
+sandbox-test:
+	cd "$(CURDIR)" && $(PYTHON) tests/sandbox_suite/suite.py --backend $(BACKEND)
+
+sandbox-calibrate:
+	cd "$(CURDIR)" && $(PYTHON) tests/sandbox_suite/suite.py --backend $(BACKEND) --calibrate

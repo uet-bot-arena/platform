@@ -1,9 +1,19 @@
-"""Docker-only execution. No uploaded code ever falls back to host execution."""
+"""Sandboxed execution: one interface, three backends. No uploaded code ever runs on the host.
+
+Every backend offers ``build(source, out, profile, runtime, stage)``, ``worker(artifact, profile)``
+(start/turn/close over the supervisor's JSON-lines protocol) and ``identity()`` (platform and
+runtime_id). Backends:
+
+  * ``docker``  — this module (Linux containers; the original behaviour);
+  * ``bwrap``   — arena.sandbox.bwrap (bubblewrap + systemd-run cgroup v2, Linux/WSL2);
+  * ``windows`` — arena.sandbox.windows (AppContainer + Job Object, Windows 10/11, no admin).
+
+The Docker helpers stay at package level because tests and the hub patch them by name.
+"""
 import hashlib
 import json
 import os
 from pathlib import Path
-import select
 import subprocess
 import shutil
 import tempfile
@@ -12,8 +22,10 @@ import time
 import uuid
 
 from arena.protocol import Fault, strict_json
+from arena.sandbox.transport import SupervisorWorker, Transport
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
+BACKENDS = ("docker", "bwrap", "windows")
 IMAGE = os.environ.get("ARENA_WORKER_IMAGE", "uet-arena-worker:v1")
 _images = {}
 _image_lock = threading.Lock()
@@ -137,27 +149,32 @@ def build(source, output, profile, image, runtime="cpp17", stage=None):
         raw = command(argv, timeout=profile.build_ms / 1000 + 15)
         if len(raw) > 2 * 1024 * 1024:
             raise Fault("worker_error", "Oversized build supervisor response")
-        report = strict_json(raw)
-        if report["ok"]:
-            path = output / ("translation.ii" if stage == "preprocess" else "bot")
-            signature = b"PK\x03\x04" if runtime in ("python3", "pypy3", "cpython3") else b"\x7fELF"
-            if path.is_symlink() or not path.is_file() or path.stat().st_size > 16 * 1024 * 1024 or stage != "preprocess" and path.read_bytes()[:4] != signature:
-                raise Fault("worker_error", "Invalid built artifact")
-            # Compiler output has uid 10001 on native Linux. Make a verified
-            # controller-owned copy before sealing, without CAP_CHOWN.
-            binary = path.read_bytes()
-            verified = output / ("verified-" + uuid.uuid4().hex)
-            with verified.open("xb") as stream:
-                stream.write(binary)
-            verified.chmod(0o444 if stage == "preprocess" else 0o555)
-            verified.replace(path)
-            report["artifact_sha256"] = hashlib.sha256(binary).hexdigest()
-            if stage != "preprocess":
-                (output / "runtime.json").write_text(json.dumps({"runtime": runtime}))
-                (output / "runtime.json").chmod(0o444)
-        return report
+        return seal(strict_json(raw), output, runtime, stage)
     finally:
         cleanup(name)
+
+
+def seal(report, output, runtime, stage=None, built=None, signature=None):
+    """Verify the compiler output and replace it with a controller-owned, read-only copy."""
+    if report["ok"]:
+        path = output / ("translation.ii" if stage == "preprocess" else "bot")
+        built = built or path
+        signature = signature or (b"PK\x03\x04" if runtime in ("python3", "pypy3", "cpython3") else b"\x7fELF")
+        if built.is_symlink() or not built.is_file() or built.stat().st_size > 16 * 1024 * 1024 or stage != "preprocess" and built.read_bytes()[:len(signature)] != signature:
+            raise Fault("worker_error", "Invalid built artifact")
+        # Compiler output has uid 10001 on native Linux. Make a verified
+        # controller-owned copy before sealing, without CAP_CHOWN.
+        binary = built.read_bytes()
+        verified = output / ("verified-" + uuid.uuid4().hex)
+        with verified.open("xb") as stream:
+            stream.write(binary)
+        verified.chmod(0o444 if stage == "preprocess" else 0o555)
+        verified.replace(path)
+        report["artifact_sha256"] = hashlib.sha256(binary).hexdigest()
+        if stage != "preprocess":
+            (output / "runtime.json").write_text(json.dumps({"runtime": runtime}))
+            (output / "runtime.json").chmod(0o444)
+    return report
 
 
 def cached_cpp_build(source, output, profile, image, cache_root, lock_for, compile_slots):
@@ -197,95 +214,40 @@ def cached_cpp_build(source, output, profile, image, cache_root, lock_for, compi
                     "translation_sha256":prepared["artifact_sha256"]}
 
 
-class Worker:
+class Worker(SupervisorWorker):
+    """One bot in its own Docker container (network=none, read-only, 256 MiB, 1 CPU)."""
+
     def __init__(self, artifact, profile, image):
         self.name = "arena-run-" + uuid.uuid4().hex
-        self.buffer = bytearray()
-        self.profile = profile
         argv = options(self.name, profile.memory_mib, image,
                        [(artifact.resolve(), "/artifact", True)], "run")
-        self.p = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
-        try:
-            boot = self.line(15)
-            if boot.get("type") != "boot":
-                raise Fault("worker_error", "Missing trusted supervisor handshake")
-            if profile.match_ms is not None and "match" not in boot.get("time_controls", []):
-                raise Fault("worker_error", "Worker image does not support cumulative clocks; rebuild clock-v2 image")
-            self.clock_id = boot["clock_id"]
-            # Bound the worker/host monotonic mapping by the probe's send and
-            # receive instants. Used for countdown display, never adjudication.
-            before = time.monotonic_ns()
-            probe = self.rpc({"op": "probe"}, 5)
-            after = time.monotonic_ns()
-            self.clock_offset_ns = (before + after) // 2 - int(probe["mono_ns"])
-            self.clock_uncertainty_ms = (after - before) / 2e6
-        except BaseException:
-            self.close()
-            raise
+        super().__init__(Transport(argv), profile, cleanup=lambda: cleanup(self.name))
 
-    def line(self, seconds):
-        deadline = time.monotonic() + seconds
-        while b"\n" not in self.buffer:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0 or not select.select([self.p.stdout], [], [], remaining)[0]:
-                raise Fault("worker_error", "Control transport timeout (not a bot time loss)")
-            chunk = os.read(self.p.stdout.fileno(), 65536)
-            if not chunk:
-                raise Fault("worker_error", "Supervisor exited: " + self.p.stderr.read(2048).decode(errors="replace"))
-            self.buffer.extend(chunk)
-            if len(self.buffer) > 2 * 1024 * 1024:
-                raise Fault("worker_error", "Oversized supervisor response")
-        line, tail = self.buffer.split(b"\n", 1)
-        self.buffer = bytearray(tail)
-        return strict_json(line)
 
-    def rpc(self, payload, timeout, on_started=None):
-        self.p.stdin.write(json.dumps(payload, separators=(",", ":")).encode() + b"\n")
-        self.p.stdin.flush()
-        deadline = time.monotonic() + timeout
-        while True:
-            item = self.line(max(0, deadline - time.monotonic()))
-            if item.get("type") == "turn_started":
-                if on_started:
-                    worker_start = int(item["started_mono_ns"])
-                    estimated_host_start = worker_start + self.clock_offset_ns
-                    item["estimated_started_unix_ms"] = (time.time_ns() + estimated_host_start - time.monotonic_ns()) // 1_000_000
-                    item["clock_uncertainty_ms"] = self.clock_uncertainty_ms
-                    on_started(item)
-                continue
-            if not item.get("ok"):
-                fault = Fault(item.get("code", "worker_error"), item.get("detail", "Unknown supervisor failure"))
-                fault.worker_data = item
-                raise fault
-            return item.get("result")
+class DockerBackend:
+    name, platform = "docker", "linux"
 
-    def start(self, match_id, side, context=None):
-        msg = {"protocol_version": 2, "type": "init", "match_id": match_id,
-               "payload": {"side": side, "engine": "ottv2-v1", "profile": self.profile.public()}}
-        if context is not None:
-            msg["payload"]["match"] = {k:v for k,v in context.items() if k!='ruleset'}
-            if context.get("basic_rules"):
-                msg["payload"]["basic_rules"] = context["basic_rules"]
-            if context.get('ruleset'):
-                msg['protocol_version']=3
-                msg['payload']['engine']='ottv2-experimental-v1'
-                msg['payload']['ruleset']=context['ruleset']
-        return self.rpc({"op": "start", "profile": self.profile.public(), "message": msg}, self.profile.startup_ms / 1000 + 10)
+    def __init__(self, image=None, cpu=None):
+        self.image, self.cpu = image, cpu
 
-    def turn(self, message, on_started=None):
-        return self.rpc({"op": "turn", "message": message, "budget_ms": self.profile.turn_ms},
-                        self.profile.turn_ms / 1000 + 10, on_started)
+    def identity(self):
+        return {"backend": self.name, "platform": self.platform, "runtime_id": image_id(self.image)}
 
-    def close(self):
-        final = None
-        try:
-            if self.p.poll() is None:
-                final = self.rpc({"op": "close"}, 4)
-        except (Fault, OSError, ValueError):
-            pass
-        finally:
-            cleanup(self.name)
-            if self.p.poll() is None:
-                self.p.kill()
-            self.p.communicate(timeout=5)
-        return final
+    def build(self, source, output, profile, runtime="cpp17", stage=None):
+        return build(source, output, profile, image_id(self.image), runtime, stage)
+
+    def worker(self, artifact, profile):
+        return Worker(artifact, profile, image_id(self.image))
+
+
+def get_backend(name, **options):
+    """docker | bwrap | windows. Options are backend specific (see each module)."""
+    if name == "docker":
+        return DockerBackend(**options)
+    if name == "bwrap":
+        from arena.sandbox.bwrap import BwrapBackend
+        return BwrapBackend(**options)
+    if name == "windows":
+        from arena.sandbox.windows import WindowsBackend
+        return WindowsBackend(**options)
+    raise ValueError("Unknown sandbox backend: " + str(name))

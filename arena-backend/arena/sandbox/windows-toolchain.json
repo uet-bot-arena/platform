@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "platform": "windows",
+  "archives": [
+    {
+      "name": "gcc",
+      "version": "WinLibs GCC 13.3.0, MinGW-w64 11.0.1 (UCRT), posix threads, SEH, r1",
+      "url": "https://github.com/brechtsanders/winlibs_mingw/releases/download/13.3.0posix-11.0.1-ucrt-r1/winlibs-x86_64-posix-seh-gcc-13.3.0-mingw-w64ucrt-11.0.1-r1.zip",
+      "file": "winlibs-x86_64-posix-seh-gcc-13.3.0-mingw-w64ucrt-11.0.1-r1.zip",
+      "sha256": "6c90485da4d9966683a83a1e5f3a0b1084d2a5ba2e57e8b27c0634afe3983776",
+      "size": 227250141,
+      "strip": "mingw64",
+      "exclude": ["share/", "lib/python3.9/", "include/python3.9/", "bin/gdb", "bin/cmake", "bin/cpack", "bin/ctest",
+                  "bin/doxygen", "bin/cppcheck", "bin/ctags", "bin/ccache", "bin/yasm", "bin/nasm", "bin/ndisasm",
+                  "bin/jwasm", "bin/ninja", "bin/mingw32-make", "bin/python"]
+    },
+    {
+      "name": "pypy",
+      "version": "PyPy 7.3.23 / Python 3.11, win64",
+      "url": "https://downloads.python.org/pypy/pypy3.11-v7.3.23-win64.zip",
+      "file": "pypy3.11-v7.3.23-win64.zip",
+      "sha256": "948b8ea58dea5b9917210fe4afd242c788fbfaba1c3f1a25e696a404f703389a",
+      "size": 33210641,
+      "strip": "pypy3.11-v7.3.23-win64",
+      "exclude": []
+    }
+  ],
+  "pch": {
+    "header": "sdk/json.hpp",
+    "header_sha256": "9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6",
+    "flags": ["-std=c++17", "-O2", "-pipe", "-Wall", "-Wextra"]
+  },
+  "link_flags": ["-static"],
+  "compilers": {"cpp17": "gcc/bin/g++.exe", "c11": "gcc/bin/gcc.exe", "python3": "pypy/pypy3.exe"}
+}

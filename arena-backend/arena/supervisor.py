@@ -1,7 +1,8 @@
-"""Trusted in-container judge. Bot timestamps are never used for adjudication.
+"""Trusted judge next to one untrusted bot. Bot timestamps are never used for adjudication.
 
-This module runs only inside the worker image; the HTTP API cannot choose paths
-or commands. One untrusted, single-thread bot per container, frozen off-turn.
+Linux (Docker image or bubblewrap rootfs): fixed paths /artifact, /source, /out, /sdk; the bot
+is single-threaded (seccomp), frozen off-turn with SIGSTOP. Windows: see supervisor_windows.py
+(AppContainer + Job Object). The HTTP API cannot choose paths or commands.
 """
 import ctypes
 import errno
@@ -9,7 +10,10 @@ import json
 import math
 import os
 from pathlib import Path
-import resource
+try:
+    import resource  # Linux only; Windows uses Job Object limits (supervisor_windows.py)
+except ImportError:
+    resource = None
 import re
 import select
 import signal
@@ -23,8 +27,16 @@ from arena.protocol import Fault, response
 from arena.config import PYTHON_INTERPRETER
 
 CLOCK_ID = str(uuid.uuid4())
+# Python 3.12 on Windows implements time.monotonic with GetTickCount64 (15.6 ms steps);
+# perf_counter is QueryPerformanceCounter there. On Linux both are CLOCK_MONOTONIC.
+monotonic_ns = time.perf_counter_ns if os.name == "nt" else time.monotonic_ns
 MAX_LINE = 65_536
 MAX_LOG = 262_144
+# Bot scratch space (cwd). Checked during and after every turn on every backend, so a bot
+# that fills its work directory loses with the same code on Docker, bubblewrap and Windows.
+WORK_QUOTA_BYTES = 16 * 1024 * 1024
+WORK_QUOTA_FILES = 256
+QUOTA_CHECK_NS = 50_000_000
 
 
 def emit(data):
@@ -37,6 +49,38 @@ def cgroup_metrics():
     return {"cpu_usage_usec": int(cpu["usage_usec"]),
             "memory_peak_bytes": int((root / "memory.peak").read_text()),
             "memory_events": dict((k, int(v)) for k, v in (line.split() for line in (root / "memory.events").read_text().splitlines()))}
+
+
+def directory_usage(path, limit_files=WORK_QUOTA_FILES):
+    """(bytes, files) under path; stops early once limit_files is exceeded."""
+    total, files, stack = 0, 0, [str(path)]
+    while stack:
+        try:
+            entries = os.scandir(stack.pop())
+        except OSError:
+            continue
+        with entries:
+            for entry in entries:
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        stack.append(entry.path)
+                    else:
+                        files += 1
+                        total += entry.stat(follow_symlinks=False).st_size
+                except OSError:
+                    continue
+                if files > limit_files:
+                    return total, files
+    return total, files
+
+
+def check_work_quota(*paths):
+    used = files = 0
+    for path in filter(None, paths):
+        size, count = directory_usage(path)
+        used, files = used + size, files + count
+    if used > WORK_QUOTA_BYTES or files > WORK_QUOTA_FILES:
+        raise Fault("output_limit", f"Work directory exceeds {WORK_QUOTA_BYTES // 1048576} MiB or {WORK_QUOTA_FILES} files")
 
 
 def restrict_bot():
@@ -74,9 +118,12 @@ def child_setup(memory_mib, cpu_seconds, single_process=True):
     resource.setrlimit(resource.RLIMIT_FSIZE, (16 * 1024 * 1024,) * 2)
     resource.setrlimit(resource.RLIMIT_AS, (memory_mib * 1024 * 1024,) * 2)
     resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds + 1))
-    os.setgroups([])
-    os.setgid(10001)
-    os.setuid(10001)
+    if os.getuid() != 10001:
+        # Docker: the supervisor is root inside the container. bubblewrap already maps the
+        # whole sandbox to uid 10001 (and forbids setgroups), so there is nothing to drop.
+        os.setgroups([])
+        os.setgid(10001)
+        os.setuid(10001)
     if single_process:
         restrict_bot()
 
@@ -90,6 +137,8 @@ class Bot:
         self.frozen = False
         self.remaining_ns = None
         work = Path("/tmp/bot-work")
+        # The whole sandbox /tmp counts (cwd and TMPDIR alike), like cwd + TEMP on Windows.
+        self.scratch = Path("/tmp")
         # Single bot has its own container; allow its uid to write here without
         # granting the supervisor CAP_CHOWN. Nothing secret is stored in /tmp.
         work.mkdir(mode=0o777)
@@ -133,7 +182,7 @@ class Bot:
             raise Fault("protocol_error", "Unsolicited stdout or duplicate response")
         before = cgroup_metrics()
         # The same absolute deadline governs serialization, writes and reads.
-        started = time.monotonic_ns()
+        started = monotonic_ns()
         bank = kind == "action" and self.profile.get("match_ms") is not None
         if bank and self.remaining_ns is None:
             self.remaining_ns = self.profile["match_ms"] * 1_000_000
@@ -154,13 +203,17 @@ class Bot:
               "worker_unix_ms": time.time_ns() // 1_000_000})
         self.resume()
         offset = 0
+        quota_at = started + QUOTA_CHECK_NS
         try:
             while True:
-                now = time.monotonic_ns()
+                now = monotonic_ns()
                 if now >= deadline:
                     raise Fault("timeout", "Hard worker deadline reached")
                 if self.log_bytes > MAX_LOG:
                     raise Fault("output_limit", "Cumulative stderr limit exceeded")
+                if now >= quota_at:
+                    check_work_quota(self.scratch)
+                    quota_at = now + QUOTA_CHECK_NS
                 readers, writers, _ = select.select([self.p.stdout], [self.p.stdin] if offset < len(frame) else [], [],
                                                      min((deadline - now) / 1e9, 0.01))
                 if writers:
@@ -175,7 +228,7 @@ class Bot:
                         chunk = os.read(self.p.stdout.fileno(), MAX_LINE + 1)
                     except BlockingIOError:
                         continue
-                    received = time.monotonic_ns()
+                    received = monotonic_ns()
                     if not chunk:
                         raise Fault("crash", "Bot exited or closed stdout")
                     self.buffer.extend(chunk)
@@ -191,6 +244,7 @@ class Bot:
                         self.buffer.clear()
                         if trailing or offset != len(frame):
                             raise Fault("protocol_error", "Extra or premature response")
+                        check_work_quota(self.scratch)
                         msg = response(line, message, kind)
                         after = cgroup_metrics()
                         if bank:
@@ -203,7 +257,7 @@ class Bot:
                                 "memory_peak_bytes": after["memory_peak_bytes"]}
         finally:
             if bank and self.remaining_ns == allowance:
-                self.remaining_ns = max(0, allowance - (time.monotonic_ns() - started))
+                self.remaining_ns = max(0, allowance - (monotonic_ns() - started))
             self.freeze()
 
     def close(self):
@@ -267,7 +321,7 @@ def build():
                 command += ["/opt/pch/json.o"]
     else:
         raise Fault("unsupported_runtime", "Unknown runtime")
-    start = time.monotonic_ns()
+    start = monotonic_ns()
     p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                          env={"PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8"},
                          cwd="/tmp", preexec_fn=lambda: child_setup(900, 31, False))
@@ -275,7 +329,7 @@ def build():
     log = bytearray()
     error = None
     while p.poll() is None:
-        if time.monotonic_ns() - start >= 30_000_000_000:
+        if monotonic_ns() - start >= 30_000_000_000:
             error = "build_timeout"
             break
         if select.select([p.stdout], [], [], 0.05)[0]:
@@ -300,14 +354,18 @@ def build():
         error = "build_output_limit"
     ok = not error and p.returncode == 0 and artifact.is_file() and not artifact.is_symlink() and artifact.stat().st_size <= 16 * 1024 * 1024
     emit({"ok": ok, "code": error or (None if ok else "build_error"), "exit_code": p.returncode,
-          "wall_ms": (time.monotonic_ns() - start) / 1e6, "log": bytes(log[:MAX_LOG]).decode("utf-8", errors="replace"),
+          "wall_ms": (monotonic_ns() - start) / 1e6, "log": bytes(log[:MAX_LOG]).decode("utf-8", errors="replace"),
           "compiler": subprocess.check_output([{"cpp17":"g++","c11":"gcc","python3":PYTHON_INTERPRETER,"pypy3":"pypy3","cpython3":"python3"}[runtime], "--version"], text=True).splitlines()[0],
           "runtime": runtime, "cgroup": cgroup_metrics()})
 
 
-def run():
+def run(make_bot=None, metrics=None):
+    make_bot, metrics = make_bot or Bot, metrics or cgroup_metrics
     bot = None
-    emit({"type": "boot", "clock_id": CLOCK_ID, "cgroup": cgroup_metrics(), "time_controls": ["turn", "match"]})
+    if sys.platform.startswith("linux"):
+        # Same uid as the bot under bubblewrap: refuse /proc/<pid>/mem and ptrace attach.
+        ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)  # PR_SET_DUMPABLE = 0
+    emit({"type": "boot", "clock_id": CLOCK_ID, "cgroup": metrics(), "time_controls": ["turn", "match"]})
     try:
         while line := sys.stdin.buffer.readline(MAX_LINE + 1):
             if len(line) > MAX_LINE:
@@ -317,7 +375,7 @@ def run():
                 if cmd["op"] == "start":
                     if bot:
                         raise Fault("worker_error", "Bot already started")
-                    bot = Bot(cmd["profile"])
+                    bot = make_bot(cmd["profile"])
                     emit({"ok": True, "result": bot.exchange(cmd["message"], cmd["profile"]["startup_ms"], "ready")})
                 elif cmd["op"] == "turn":
                     emit({"ok": True, "result": bot.exchange(cmd["message"], cmd["budget_ms"], "action")})
@@ -326,22 +384,29 @@ def run():
                     bot = None
                     break
                 elif cmd["op"] == "probe":
-                    emit({"ok": True, "result": {"mono_ns": str(time.monotonic_ns()), "unix_ns": str(time.time_ns()), "clock_id": CLOCK_ID}})
+                    emit({"ok": True, "result": {"mono_ns": str(monotonic_ns()), "unix_ns": str(time.time_ns()), "clock_id": CLOCK_ID}})
                 else:
                     raise Fault("worker_error", "Unknown control operation")
             except Fault as exc:
                 emit({"ok": False, "code": exc.code, "detail": exc.detail,
                       **({"remaining_ms": bot.remaining_ns / 1e6} if bot and bot.remaining_ns is not None else {}),
-                      "worker_mono_ns": str(time.monotonic_ns()), "cgroup": cgroup_metrics()})
+                      "worker_mono_ns": str(monotonic_ns()), "cgroup": metrics()})
     finally:
         if bot:
             bot.close()
 
 
-if __name__ == "__main__":
-    if sys.argv[1:2] == ["build"]:
+def main(argv):
+    if argv[1:2] == ["windows"]:
+        from arena import supervisor_windows
+        supervisor_windows.main(argv[2:])
+    elif argv[1:2] == ["build"]:
         build()
-    elif sys.argv[1:] == ["run"]:
+    elif argv[1:] == ["run"]:
         run()
     else:
-        raise SystemExit("Expected build or run")
+        raise SystemExit("Expected build, run or windows")
+
+
+if __name__ == "__main__":
+    main(sys.argv)

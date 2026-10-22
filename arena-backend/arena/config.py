@@ -83,3 +83,18 @@ BUILD_FLAGS = ["-std=c++17", "-O2", "-pipe", "-Wall", "-Wextra"]
 def runtime_flags(runtime):
     return {"cpp17":list(BUILD_FLAGS),"c11":["-std=c11","-O2","-pipe","-Wall","-Wextra","-lm"],
             "python3":[PYTHON_INTERPRETER,"-I","-S"]}[runtime]
+
+
+# Linux charges resident pages (cgroup MemoryMax) and address space (RLIMIT_AS); Windows
+# charges committed memory. Measured with tests/sandbox_suite/suite.py --calibrate (22/10/2026,
+# limit 256 MiB): on Linux PyPy itself reserves ~186 MiB of address space, so a bot can still
+# allocate 70 MiB; C++ can allocate 240 MiB. On Windows PyPy commits ~49 MiB at start and
+# bytearray(N) commits ~2.15 N. These Windows limits reproduce the Linux thresholds.
+WINDOWS_MEMORY = {"python3": lambda base: 49 + round(2.15 * (base - 181)),
+                  "cpp17": lambda base: base - 6, "c11": lambda base: base - 6}
+
+
+def memory_limit_mib(platform, runtime, base_mib):
+    if platform != "windows":
+        return base_mib
+    return WINDOWS_MEMORY.get(runtime, lambda base: base)(base_mib)
