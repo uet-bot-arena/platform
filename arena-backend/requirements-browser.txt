@@ -1,0 +1,5 @@
+# Kiểm tra giao diện bằng trình duyệt (tests/browser_*.py). Không cần cho hub hay máy chấm.
+greenlet==3.5.6
+playwright==1.64.0
+pyee==14.0.0
+typing_extensions==4.16.0
