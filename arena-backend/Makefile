@@ -16,7 +16,8 @@ serve:
 	cd "$(CURDIR)" && $(PYTHON) -m arena_api serve
 
 test:
-	cd "$(CURDIR)" && $(PYTHON) -m unittest discover -s tests -v
+	# Hermetic: never read the operator's ~/.uet-arena config or secrets during unit tests.
+	cd "$(CURDIR)" && ARENA_CONFIG=none ARENA_SECRETS=none $(PYTHON) -m unittest discover -s tests -v
 
 integration:
 	cd "$(CURDIR)" && docker build -t uet-arena-worker:v1 -t uet-arena-worker:clock-v2 -t uet-arena-worker:experimental-v1 -t uet-arena-worker:experimental-clock-v2 .

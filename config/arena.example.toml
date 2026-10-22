@@ -1,0 +1,80 @@
+# Cấu hình hub UET Bot Arena. KHÔNG chứa bí mật (bí mật nằm ở secrets.toml).
+# Chép thành ~/.uet-arena/config.toml hoặc đặt ARENA_CONFIG=<đường dẫn>.
+# Biến môi trường ARENA_* (xem docs/DEPLOY.md) vẫn đè được các giá trị trong [hub].
+# Đường dẫn tương đối tính từ thư mục chứa file này; C:/... tự đổi thành /mnt/c/... khi chạy trong WSL.
+
+[hub]
+origin = "http://127.0.0.1:4181"      # công khai thì phải https và cookie_secure = true
+port = 4181
+bind = "127.0.0.1"
+data_dir = "/home/ten-ban/uet-arena-data"
+cookie_secure = false
+session_seconds = 1209600             # 14 ngày; cho phép 300..2592000
+trusted_proxies = []                  # ví dụ ["127.0.0.1/32"] khi đứng sau cloudflared/nginx
+connection_limit = 1024
+thread_limit = 256
+hash_workers = 4
+
+# Dịch vụ gửi thư, thử lần lượt từ trên xuống. user_secret/password_secret là TÊN khóa trong secrets.toml.
+[[email.providers]]
+name = "mailjet"
+host = "in-v3.mailjet.com"
+port = 587
+tls = "starttls"                      # starttls | ssl | none
+user_secret = "mailjet_api_key"
+password_secret = "mailjet_secret_key"
+sender = "no-reply@example.org"
+sender_name = "UET Bot Arena"
+daily_limit = 200
+hourly_limit = 60
+
+[[email.providers]]
+name = "gmail"
+host = "smtp.gmail.com"
+port = 465
+tls = "ssl"
+user_secret = "gmail_user"
+password_secret = "gmail_app_password"
+sender = "ban-to-chuc@example.org"
+daily_limit = 400
+hourly_limit = 100
+
+# Chỉ dùng khi chạy test: Mailpit nhận mọi thư, không gửi ra ngoài.
+# [[email.providers]]
+# name = "mailpit"
+# host = "127.0.0.1"
+# port = 1025
+# tls = "none"
+# sender = "no-reply@arena.test"
+# daily_limit = 100000
+# hourly_limit = 100000
+
+[accounts]
+student_email = '^\d{8}@vnu\.edu\.vn$'   # MSSV 8 số, không lọc mã đơn vị
+staff_domains = ["vnu.edu.vn"]           # địa chỉ khác cùng đuôi này thành tài khoản cán bộ
+block_plus = true
+cohort_base = 2000                       # khóa = 2000 + hai số đầu MSSV
+freshman_cohort = 0                      # 0 = tự tính theo năm học hiện tại
+team_size = 4
+name_max = 40
+
+[verification]
+code_ttl_seconds = 600        # mã hết hạn 10 phút sau lúc gửi
+resend_seconds = 60
+drop_after_seconds = 1800     # yêu cầu chờ trong hàng quá 30 phút thì bỏ
+max_attempts = 5
+
+[grader]
+lease_seconds = 30
+heartbeat_seconds = 5
+max_attempts = 3              # số lần tự chạy lại trận chính thức khi lỗi hạ tầng
+long_poll_seconds = 25
+
+[publisher]
+interval_seconds = 5
+output_dir = "/home/ten-ban/uet-arena-data/snapshots"
+
+[github]
+api_url = "https://api.github.com"
+webhook_hosts = []            # ví dụ ["ten-ngau-nhien.trycloudflare.com"]; chỉ nhận ở đường dẫn webhook
+max_tarball_bytes = 10485760

@@ -1,7 +1,9 @@
 import argparse
 import getpass
+import os
 import sys
 
+from arena.conf import ConfigError
 from arena.store import Store
 from arena_api.accounts import Accounts
 from arena_api.settings import Lease, Settings
@@ -15,12 +17,18 @@ def main():
     admin.add_argument("--username", required=True)
     admin.add_argument("--password-stdin", action="store_true", help="Read one password line from stdin; never from argv")
     serve = sub.add_parser("serve")
-    serve.add_argument("--port", type=int, default=4181)
+    serve.add_argument("--port", type=int, help="Ghi đè hub.port trong file cấu hình")
     args = parser.parse_args()
-    settings = Settings()
+    if getattr(args, "port", None):
+        # The app factory builds its own Settings; pass the override through the environment.
+        os.environ["ARENA_PORT"] = str(args.port)
+    try:
+        settings = Settings()
+    except ConfigError as exc:
+        parser.exit(2, f"Lỗi cấu hình: {exc}\n")
     if args.action == "serve":
         import uvicorn
-        uvicorn.run("arena_api.app:create_app", factory=True, host="127.0.0.1", port=args.port, workers=1,
+        uvicorn.run("arena_api.app:create_app", factory=True, host=settings.bind, port=settings.port, workers=1,
                     access_log=False, proxy_headers=False, limit_concurrency=settings.connection_limit,
                     timeout_keep_alive=5, timeout_graceful_shutdown=400)
         return

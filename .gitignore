@@ -40,6 +40,12 @@ arena-backend/downloads/
 .env
 .env.*
 !.env.example
+secrets.toml
+*secrets*.toml
+!config/secrets.example.toml
+*.pem
+*.key
+grader-token
 **/.sites/
 **/.openai/
 **/.codex/
