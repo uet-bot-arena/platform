@@ -15,7 +15,7 @@
   --space: 8px;
 }
 @media (prefers-color-scheme: dark) {
-  :root:has(#grader-form) {
+  :root:has(#grader-form, #email-state, #email-admin) {
     color-scheme: dark;
     --ink: #e2eae4; --muted: #b0c0b5; --green: #9ad7b6; --green-soft: #263d32;
     --navy: #9ad7b6; --line: #3e5146; --paper: #1d2c24; --bg: #142019;
@@ -117,8 +117,8 @@ details>summary { cursor: pointer; color: var(--green); }.empty-state { padding:
 .guest-intro { display: flex; align-items: flex-start; justify-content: space-between; gap: 32px; padding: 24px 0 32px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }.guest-intro p { color: var(--muted); margin-top: 12px; max-width: 620px; }.guest-intro .page-actions { flex-shrink: 0; }
 .onboarding { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; padding: 8px 0; margin: 24px 0; list-style: none; }.onboarding li { display: flex; gap: 14px; }.onboarding li>span { color: var(--green); font-size: 14px; padding-top: 2px; }.onboarding p { color: var(--muted); font-size: 13px; margin-top: 6px; }
 .real-auth { min-height: 100vh; display: grid; grid-template-columns: minmax(320px, .85fr) minmax(440px, 1.15fr); background: white; }
-.auth-brand-panel { background: var(--green); color: white; padding: 40px 48px; display: flex; flex-direction: column; justify-content: space-between; position: sticky; top: 0; height: 100vh; }.auth-brand-panel .brand { color: white; padding: 0; }.auth-brand-panel .brand small { color: #cadbd0; }.auth-brand-panel .brand-mark { background: #fff; }.auth-brand-panel .brand-mark i { background: var(--green); }.auth-brand-panel>small { color: #cadbd0; font-size: 12px; }
-.auth-story { max-width: 420px; margin: 48px 0; }.auth-story h1 { font-size: 34px; letter-spacing: -.7px; }.auth-story p { color: #d3e0d7; margin-top: 20px; font-size: 15px; line-height: 1.8; }.auth-facts { margin: 32px 0; font-size: 13px; }.auth-facts>div { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid #ffffff25; }.auth-facts dt { color: #cadbd0; }.auth-public-link { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; color: #fff; }
+.auth-brand-panel { background: var(--green); color: white; padding: 40px 48px; display: flex; flex-direction: column; justify-content: space-between; position: sticky; top: 0; height: 100vh; }.auth-brand-panel .brand { color: white; padding: 0; }.auth-brand-panel .brand small { color: #d6e5dc; }.auth-brand-panel .brand-mark { background: #fff; }.auth-brand-panel .brand-mark i { background: var(--green); }.auth-brand-panel>small { color: #d6e5dc; font-size: 12px; }
+.auth-story { max-width: 420px; margin: 48px 0; }.auth-story h1 { font-size: 34px; letter-spacing: -.7px; }.auth-story p { color: #d3e0d7; margin-top: 20px; font-size: 15px; line-height: 1.8; }.auth-facts { margin: 32px 0; font-size: 13px; }.auth-facts>div { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid #ffffff25; }.auth-facts dt { color: #d6e5dc; }.auth-public-link { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; color: #fff; }
 .real-auth-content { width: 100%; max-width: 640px; margin: auto; padding: 56px 48px; align-self: center; }.real-auth-content>h2 { font-size: 28px; letter-spacing: -.5px; margin-bottom: 12px; }.real-auth-content>p { color: var(--muted); margin-bottom: 24px; }.real-auth-content>.text-link { margin-top: 24px; }.real-auth-content .real-form>.btn[type=submit] { width: 100%; min-height: 44px; }.real-auth-content .section-head { margin: 0; }.real-auth-content .info-note { margin: 24px 0; }
 .real-auth-tabs { display: flex; gap: 28px; border-bottom: 1px solid var(--line); margin-bottom: 28px; }.real-auth-tabs a { padding: 12px 0; color: var(--muted); font-size: 14px; }.real-auth-tabs .active { border-bottom: 2px solid var(--green); color: var(--green); font-weight: 600; }
 .modal-overlay { position: fixed; inset: 0; z-index: 100; background: #172d2466; display: flex; align-items: center; justify-content: center; padding: 24px; }.modal { width: 100%; max-width: 620px; max-height: calc(100vh - 48px); overflow-y: auto; border-radius: 10px; border: 1px solid var(--line); background: white; box-shadow: 0 16px 48px #152c241a; }.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 24px; border-bottom: 1px solid var(--line); }.modal-body { padding: 24px; }.modal-body p { color: var(--muted); font-size: 13px; margin-bottom: 18px; }.modal-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 24px; }.modal-open { overflow: hidden; }
@@ -473,23 +473,30 @@ details>summary { cursor: pointer; color: var(--green); }.empty-state { padding:
 .rule-resources .icon { width:15px; height:15px; }
 .rule-map-cell .icon { width:18px; height:18px; }
 
-/* Shared controls used by the grader page; the full theme switch is planned in M1 package 9. */
+/* Native grader and email pages; the complete theme switch follows in package 9. */
 @media (prefers-color-scheme: dark) {
-  :root:has(#grader-form) .workspace { background: var(--bg); }
-  :root:has(#grader-form) :is(.sidebar, .topbar, .page-heading, .person-avatar,
+  :root:has(#grader-form, #email-state, #email-admin) .workspace { background: var(--bg); }
+  :root:has(#grader-form, #email-state, #email-admin) :is(.sidebar, .topbar, .page-heading, .person-avatar,
   .panel, .stat, .admin-kpis .stat, .real-card, .modal, .input, .select, .btn) {
     background: var(--paper); color: var(--ink); border-color: var(--line);
   }
-  :root:has(#grader-form) .nav-item { color: var(--muted); }
-  :root:has(#grader-form) :is(.nav-item:hover, .icon-btn:hover, th, .report-json, .credential-value) { background: #26382d; }
-  :root:has(#grader-form) .nav-item.active { color: var(--green); background: var(--green-soft); }
-  :root:has(#grader-form) .btn:hover { background: #304837; border-color: #759981; }
-  :root:has(#grader-form) .btn.primary { background: #9ad7b6; border-color: #9ad7b6; color: #142019; }
-  :root:has(#grader-form) .btn.primary:hover { background: #b5e6cb; }
-  :root:has(#grader-form) :is(.btn.danger, .btn.danger-button) { color: #f0b2a8; border-color: #96675e; background: var(--paper); }
-  :root:has(#grader-form) .skip-link { color: #142019; }
-  :root:has(#grader-form) .badge { color: #c4d4c9; background: #34483b; }
-  :root:has(#grader-form) :is(.badge.success, .badge.live) { color: #b0e6c3; background: #264a34; }
-  :root:has(#grader-form) .badge.danger { color: #f3b9ae; background: #512f29; }
-  :root:has(#grader-form) .badge.warning { color: #eed29c; background: #4e4028; }
+  :root:has(#grader-form, #email-state, #email-admin) .nav-item { color: var(--muted); }
+  :root:has(#grader-form, #email-state, #email-admin) :is(.nav-item:hover, .icon-btn:hover, th, .report-json, .credential-value) { background: #26382d; }
+  :root:has(#grader-form, #email-state, #email-admin) .nav-item.active { color: var(--green); background: var(--green-soft); }
+  :root:has(#grader-form, #email-state, #email-admin) .btn:hover { background: #304837; border-color: #759981; }
+  :root:has(#grader-form, #email-state, #email-admin) .btn.primary { background: #9ad7b6; border-color: #9ad7b6; color: #142019; }
+  :root:has(#grader-form, #email-state, #email-admin) .btn.primary:hover { background: #b5e6cb; }
+  :root:has(#grader-form, #email-state, #email-admin) :is(.btn.danger, .btn.danger-button) { color: #f0b2a8; border-color: #96675e; background: var(--paper); }
+  :root:has(#grader-form, #email-state, #email-admin) .skip-link { color: #142019; }
+  :root:has(#grader-form, #email-state, #email-admin) .badge { color: #c4d4c9; background: #34483b; }
+  :root:has(#grader-form, #email-state, #email-admin) :is(.badge.success, .badge.live) { color: #b0e6c3; background: #264a34; }
+  :root:has(#grader-form, #email-state, #email-admin) .badge.danger { color: #f3b9ae; background: #512f29; }
+  :root:has(#grader-form, #email-state, #email-admin) .badge.warning { color: #eed29c; background: #4e4028; }
 }
+
+@media (prefers-color-scheme: dark) {
+  :root:has(#email-state) .real-auth { background: var(--bg); }
+  :root:has(#email-state) .real-auth-content { background: var(--paper); border-color: var(--line); }
+}
+/* The gradients are opaque; declare their lightest stop for text contrast checks. */
+.auth-brand-panel { background-color: #326951; }

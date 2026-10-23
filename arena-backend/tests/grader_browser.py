@@ -25,6 +25,23 @@ from arena_api.settings import Settings
 PASSWORD = "grader-browser-test-password"
 
 
+def text_contrast(page):
+    return page.locator("body").evaluate("""root=>{
+                      const rgb=s=>(s.match(/[\\d.]+/g)||[]).map(Number);
+                      const luminance=c=>c.slice(0,3).map(x=>{x/=255;return x<=.04045?x/12.92:((x+.055)/1.055)**2.4}).reduce((s,x,i)=>s+x*[.2126,.7152,.0722][i],0);
+                      const out=[];
+                      for(const e of root.querySelectorAll('*')){
+                        if(!e.getClientRects().length||!Array.from(e.childNodes).some(n=>n.nodeType===3&&n.textContent.trim()))continue;
+                        const fg=rgb(getComputedStyle(e).color); let parent=e,bg;
+                        while(parent){bg=rgb(getComputedStyle(parent).backgroundColor);if(bg.length===3||bg[3]>=.99)break;parent=parent.parentElement;}
+                        if(!parent)continue;
+                        const a=luminance(fg),b=luminance(bg),ratio=(Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+                        out.push({text:e.textContent.trim().slice(0,70),ratio:Math.round(ratio*100)/100});
+                      }
+                      return out;
+                    }""")
+
+
 def main():
     output = ROOT / "test-results/m1/graders-ui"
     output.mkdir(parents=True, exist_ok=True)
@@ -78,20 +95,7 @@ def main():
                     background = page.locator("body").evaluate("e=>getComputedStyle(e).backgroundColor")
                     assert background == ("rgb(20, 32, 25)" if scheme == "dark" else "rgb(240, 244, 241)"), background
                     # Compute rendered text contrast against the nearest opaque ancestor.
-                    contrast = page.locator("body").evaluate("""root=>{
-                      const rgb=s=>(s.match(/[\\d.]+/g)||[]).map(Number);
-                      const luminance=c=>c.slice(0,3).map(x=>{x/=255;return x<=.04045?x/12.92:((x+.055)/1.055)**2.4}).reduce((s,x,i)=>s+x*[.2126,.7152,.0722][i],0);
-                      const out=[];
-                      for(const e of root.querySelectorAll('*')){
-                        if(!e.getClientRects().length||!Array.from(e.childNodes).some(n=>n.nodeType===3&&n.textContent.trim()))continue;
-                        const fg=rgb(getComputedStyle(e).color); let parent=e,bg;
-                        while(parent){bg=rgb(getComputedStyle(parent).backgroundColor);if(bg.length===3||bg[3]>=.99)break;parent=parent.parentElement;}
-                        if(!parent)continue;
-                        const a=luminance(fg),b=luminance(bg),ratio=(Math.max(a,b)+.05)/(Math.min(a,b)+.05);
-                        out.push({text:e.textContent.trim().slice(0,70),ratio:Math.round(ratio*100)/100});
-                      }
-                      return out;
-                    }""")
+                    contrast = text_contrast(page)
                     failures = [item for item in contrast if item["ratio"] < 4.5]
                     assert not failures, (scheme, failures)
                     results["checks"].append({"scheme": scheme, "contrast_min": min(x["ratio"] for x in contrast), "text_elements": len(contrast)})

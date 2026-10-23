@@ -4,6 +4,8 @@ Nền tảng cho các đội nộp bot **Python, C hoặc C++** và cho bot đ�
 
 Tài liệu: [Cài đặt chi tiết](INSTALL.md) · [Hướng dẫn viết bot](uet-bot-arena/dist/live/bot-guide.md) · [Thể thức giải](arena-backend/docs/COMPETITIONS.md) · [Giao thức bot](arena-backend/docs/PROTOCOL.md) · [Bảo mật](arena-backend/docs/SECURITY.md)
 
+Vận hành Mốc 1: [triển khai](docs/DEPLOY.md), [máy chấm](docs/MAY-CHAM.md), [email và hàng đợi SMTP](docs/EMAIL.md), [thay đổi](CHANGELOG.md).
+
 ## Tính năng
 
 - **Ba vai:** ban tổ chức (BTC) quản lý đội, giải, bot mẫu; đội nộp bot, benchmark, luyện tập; khách xem giải, trực tiếp, replay, bảng xếp hạng.

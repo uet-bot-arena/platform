@@ -14,7 +14,8 @@ import {readRuleForm,ruleEditor,rulePreviewMarkup,botRulesetField,botRulesetSele
 
 const api=new ArenaAPI(),app=document.getElementById('app'),modalRoot=document.getElementById('modal-root');
 const defaults=()=>({team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
-const s={...defaults(),user:null,route:'home',ids:[],loading:false,adminTab:'accounts',registrationStatus:'pending',adminVisibility:'active',adminSearch:'',adminPage:1,opsTab:'jobs',opsPage:1,opsSearch:'',opsStatus:'',opsKind:'',opsTeam:''};
+const s={...defaults(),user:null,emailRequest:null,emailAddress:'',route:'home',ids:[],loading:false,adminTab:'accounts',registrationStatus:'pending',adminVisibility:'active',adminSearch:'',adminPage:1,opsTab:'jobs',opsPage:1,opsSearch:'',opsStatus:'',opsKind:'',opsTeam:''};
+let emailPoll;
 let generation=0,board,competitionFeed,jobFeed,toastTimer,modalFocus,returnTo='home',issued=null,issuedGrader=null,refreshingGeneration=null;
 const authChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('uet-arena-session'):null;
 authChannel?.addEventListener('message',async()=>{try{const session=await api.request('/auth/me');Object.assign(s,defaults(),{user:session.user});openRoute();}catch(e){if(e.status===401){clearAccount();go('login');}else handleError(e);}});
@@ -23,12 +24,12 @@ const terminal=status=>['completed','failed','aborted'].includes(status);
 const uuid=()=>crypto.randomUUID();
 const enc=encodeURIComponent;
 function toast(message){const el=document.getElementById('toast');el.className='toast show';el.textContent=message;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),6000);}
-function clearView(){competitionFeed?.close();competitionFeed=null;board?.close();board=null;jobFeed?.close();jobFeed=null;closeModal();}
+function clearView(){clearTimeout(emailPoll);competitionFeed?.close();competitionFeed=null;board?.close();board=null;jobFeed?.close();jobFeed=null;closeModal();}
 function render(){app.innerHTML=page(s);const title={home:'UET Bot Arena',login:'Đăng nhập',register:'Đăng ký đội',recover:'Cấp lại mật khẩu','change-password':'Đổi mật khẩu'}[s.route]||document.querySelector('#main h1')?.textContent||'UET Bot Arena';document.title=title==='UET Bot Arena'?title:title+' · UET Bot Arena';mobileSidebar();}
 function mobileSidebar(){const sidebar=document.querySelector('.sidebar');if(sidebar)sidebar.inert=matchMedia('(max-width:760px)').matches&&!s.menuOpen;}
 matchMedia('(max-width:760px)').addEventListener('change',mobileSidebar);
 function go(route){if(location.hash==='#/'+route)openRoute();else location.hash='/'+route;}
-function clearAccount(){Object.assign(s,defaults(),{user:null});api.csrf=null;issued=null;}
+function clearAccount(){Object.assign(s,defaults(),{user:null,emailRequest:null,emailAddress:''});api.csrf=null;issued=null;}
 function expired(){clearAccount();toast('Phiên đã hết hạn. Hãy đăng nhập lại.');go('login');}
 function handleError(e){if(e.status===401&&s.user)expired();else if(e.code==='password_change_required')go('change-password');else toast(e.message);}
 function parseRoute(){const raw=location.hash.replace(/^#\/?/,'')||'home',[path,query='']=raw.split('?'),parts=path.split('/');return{route:parts[0],ids:parts.slice(1),query:new URLSearchParams(query),raw};}
@@ -61,6 +62,7 @@ async function loadData(route,ids,q){
     work.push(api.all('/admin/accounts').then(x=>data.accounts=x));
   }
   if(route==='audit')work.push(api.all('/admin/audit').then(x=>data.audit=x));
+  if(route==='email')work.push(api.request('/admin/email').then(x=>data.mail=x));
   if(route==='graders')work.push(api.request('/admin/graders').then(x=>data.graders=x));
   const settled=await Promise.allSettled(work);for(const item of settled)if(item.status==='rejected')throw item.reason;
   const cid=route==='competitions'?ids[0]:['arena','replay'].includes(route)?ids[0]==='practice'?null:ids[0]:route==='benchmark'?q.get('competition'):['schedule','live','standings'].includes(route)?q.get('competition')||data.competitions?.find(c=>!c.archived_ms)?.id:null;
@@ -76,12 +78,12 @@ async function loadData(route,ids,q){
 async function openRoute(){
   const parsed=parseRoute(),id=++generation;clearView();
   if(parsed.route==='experimental'){history.replaceState(null,'','#/rulesets');openRoute();return;}
-  const supported=['home','login','register','recover','change-password','guide','team','submissions','benchmark','practice','competitions','jobs','admin','operations','graders','rulesets','audit','schedule','live','standings','arena','replay'];
+  const supported=['home','login','verify-email','email','register','recover','change-password','guide','team','submissions','benchmark','practice','competitions','jobs','admin','operations','graders','rulesets','audit','schedule','live','standings','arena','replay'];
   if(!supported.includes(parsed.route)){go('home');return;}
   if(!s.user&&!publicRoute(parsed.route,parsed.ids)){returnTo=parsed.raw;go('login');return;}
   if(s.user?.must_change_password&&parsed.route!=='change-password'){go('change-password');return;}
   if(s.user&&['login','register'].includes(parsed.route)){go('home');return;}
-  if(s.user?.role!=='admin'&&['admin','audit','operations','graders'].includes(parsed.route)){go('home');return;}
+  if(s.user?.role!=='admin'&&['admin','audit','operations','graders','email'].includes(parsed.route)){go('home');return;}
   if(s.user?.role==='admin'&&['team','submissions','benchmark','practice','jobs'].includes(parsed.route)){go('home');return;}
   Object.assign(s,defaults(),parsed,{loading:!['login','register','recover','change-password'].includes(parsed.route),error:null,menuOpen:false});render();
   if(parsed.route==='admin'&&['accounts','registrations','recoveries'].includes(parsed.query.get('tab')))s.adminTab=parsed.query.get('tab');
@@ -120,8 +122,14 @@ async function openRoute(){
         competitionFeed.start();
       }
       mountBoard(fixture);
-    }else{render();if(s.route==='jobs')watchJob(id);}
+    }else{render();if(s.route==='jobs')watchJob(id);if(s.route==='verify-email')watchEmail(id);}
   }catch(e){if(id!==generation)return;if(e.status===401){expired();return;}Object.assign(s,{loading:false,error:e.message,offline:!e.status});render();}
+}
+function watchEmail(id){
+  clearTimeout(emailPoll);
+  const r=s.emailRequest;
+  if(id!==generation||s.route!=='verify-email'||!r||r.verified_ms||r.status==='dropped'||r.status==='sent'&&!r.resend_after_seconds)return;
+  emailPoll=setTimeout(async()=>{try{const next=await api.request('/auth/email/requests/'+r.id);if(id===generation&&s.emailRequest?.id===r.id&&!s.emailRequest.verified_ms){s.emailRequest=next;patchPage();watchEmail(id);}}catch(e){handleError(e);}},3000);
 }
 function connectionStatus(offline){const el=document.querySelector('.connection-label'),text=offline?'Đang nối lại máy chủ':'Kết nối máy chủ';if(el&&el.textContent!==text){el.innerHTML='<i></i>'+text;el.classList.toggle('offline',offline);}}
 function patchPage(){
@@ -176,6 +184,10 @@ document.addEventListener('submit',e=>{
       const draft=draftRegistration();s.registrationDraft=draft;
       const ids=draft.members.map(m=>m.student_id.toLowerCase());if(new Set(ids).size!==ids.length)throw new Error('Mã sinh viên của các thành viên phải khác nhau.');
       s.registrationReceipt=await api.post('/registrations',{...draft,confirmed:data.get('confirmed')==='on'});s.registrationDraft=null;render();
+    }else if(form.id==='email-request-form'){
+      s.emailAddress=v('email');s.emailRequest=await api.post('/auth/email/request',{email:s.emailAddress,purpose:'verify'});render();watchEmail(generation);
+    }else if(form.id==='email-code-form'){
+      clearTimeout(emailPoll);s.emailRequest=await api.post('/auth/email/verify',{request_id:s.emailRequest.id,code:v('email-code')});render();
     }else if(form.id==='recovery-form'){await api.post('/auth/recovery',{username:v('username'),email:v('email')});s.recoverySent=true;render();
     }else if(form.id==='password-form'){
       const pw=data.get('new-password');if(pw.length<8)throw new Error('Mật khẩu mới phải có ít nhất 8 ký tự.');if(pw!==data.get('confirm-password'))throw new Error('Hai lần nhập mật khẩu mới chưa khớp.');

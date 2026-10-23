@@ -4715,6 +4715,148 @@
           }
         ]
       }
+    },
+    "/api/v1/auth/email/request": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Xếp hàng gửi mã; không gửi SMTP trong request",
+        "operationId": "request_code_api_v1_auth_email_request_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/email/requests/{ident}": {
+      "get": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Trạng thái yêu cầu có mã định danh ngẫu nhiên; không trả mã xác minh",
+        "operationId": "request_status_api_v1_auth_email_requests__ident__get",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/email/verify": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Kiểm mã HMAC, tối đa số lần sai được cấu hình",
+        "operationId": "verify_code_api_v1_auth_email_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailCode"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/email": {
+      "get": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Hàng đợi, gửi lại và hạn mức dịch vụ; chỉ ban tổ chức",
+        "operationId": "mail_summary_api_v1_admin_email_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -5267,6 +5409,55 @@
           "definition"
         ],
         "title": "Definition"
+      },
+      "EmailCode": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "title": "Request Id"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 6,
+            "minLength": 6,
+            "format": "password",
+            "title": "Code",
+            "writeOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "request_id",
+          "code"
+        ],
+        "title": "EmailCode"
+      },
+      "EmailRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 3,
+            "title": "Email"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "verify",
+              "reset"
+            ],
+            "title": "Purpose",
+            "default": "verify"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "EmailRequest"
       },
       "Enabled": {
         "properties": {

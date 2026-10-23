@@ -17,7 +17,7 @@ from arena.service import Service, TERMINAL
 from arena.store import Store
 from arena_api.accounts import Accounts
 from arena_api.settings import Lease, Settings
-from arena_api import auth_routes, admin_routes, arena_routes, competition_routes, ui_routes, ruleset_routes, sample_bots, grader_routes
+from arena_api import auth_routes, admin_routes, arena_routes, competition_routes, ui_routes, ruleset_routes, sample_bots, grader_routes, email_routes
 from arena_api.competitions import Competitions
 from arena_api.dependencies import SPECTATOR_PATHS
 
@@ -26,7 +26,7 @@ ERROR_STATUS = {"not_found": 404, "unauthorized": 401, "forbidden": 403, "passwo
                 "idempotency_conflict": 409, "version_conflict": 409, "account_conflict": 409, "admin_conflict": 409,
                 "registration_conflict": 409, "report_unavailable": 409, "competition_conflict": 409,
                 "qualification_required": 409, "provenance_mismatch": 409, "ruleset_conflict": 409,
-                "experimental_disabled": 409, "stale_lease": 409}
+                "experimental_disabled": 409, "stale_lease": 409, "email_unavailable": 503}
 GRADER_PREFIX = "/api/v1/grader/"
 MIB = 1024 * 1024
 
@@ -126,6 +126,8 @@ def create_app(settings=None, start_worker=True):
             import anyio.to_thread
             anyio.to_thread.current_default_thread_limiter().total_tokens = settings.thread_limit
             app.state.accounts = Accounts(store, settings.session_seconds, settings.hash_workers)
+            from arena_api.outbox import MailQueue
+            app.state.mail = MailQueue(store, settings)
             app.state.clock_id = secrets.token_hex(16)
             service = Service(store, start_worker=start_worker, grader=settings.grader)
             app.state.service = service
@@ -169,6 +171,7 @@ def create_app(settings=None, start_worker=True):
     app.include_router(ruleset_routes.router)
     app.include_router(sample_bots.router)
     app.include_router(grader_routes.router)
+    app.include_router(email_routes.router)
 
     def error_body(request, code, detail):
         return {"error": {"code": code, "detail": detail}, "request_id": getattr(request.state, "request_id", None)}
@@ -200,7 +203,7 @@ def create_app(settings=None, start_worker=True):
         schema.setdefault("components", {}).setdefault("securitySchemes", {}).update({
             "cookieAuth": {"type": "apiKey", "in": "cookie", "name": "arena_web_session"},
             "csrfAuth": {"type": "apiKey", "in": "header", "name": "X-CSRF-Token"}})
-        public = {"/api/v1/registrations", "/api/v1/auth/login", "/api/v1/auth/recovery", "/api/v1/time", "/api/v1/health/live", "/api/v1/health/ready", "/api/v1/platform", "/api/v1/rules", "/api/v1/experimental/guide"}
+        public = {"/api/v1/registrations", "/api/v1/auth/login", "/api/v1/auth/recovery", "/api/v1/auth/email/request", "/api/v1/auth/email/requests/{ident}", "/api/v1/auth/email/verify", "/api/v1/time", "/api/v1/health/live", "/api/v1/health/ready", "/api/v1/platform", "/api/v1/rules", "/api/v1/experimental/guide"}
         schema["components"]["securitySchemes"]["graderToken"] = {"type": "http", "scheme": "bearer", "description": "Mã máy chấm, chỉ hiện một lần khi admin tạo"}
         for path, methods in schema["paths"].items():
             for method, operation in methods.items():
