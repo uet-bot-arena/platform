@@ -7,7 +7,7 @@ import sys
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'arena-backend'))
-from arena.elo import apply_round,rank,round_robin_rank
+from arena.elo import apply_round,rank,round_robin_rank,select
 from arena.protocol import strict_json
 
 
@@ -40,8 +40,21 @@ def recompute(record):
             started=True
             ratings,official,_=apply_round(ratings,games,official,official=record.get('official_k',True))
             official_games.extend(games)
-    return dict(ratings=ratings,ladder_played=ladder,official_played=official,change_remaining=changes,
-                standings=standings if standings is not None else rank(ratings,official_games))
+    standings=standings if standings is not None else rank(ratings,official_games)
+    excluded=set(record.get('excluded_teams',[]))
+    previous=None;number=0;position=0
+    for row in standings:
+        if row['team_id'] in excluded:
+            row.update(excluded=True,rank=None)
+            continue
+        position+=1;original=row['rank']
+        if original!=previous:number=position
+        row['rank']=number;previous=original
+    result=dict(ratings=ratings,ladder_played=ladder,official_played=official,change_remaining=changes,standings=standings)
+    if 'finalist_count' in record:
+        result['finalists']=select([r for r in standings if not r.get('excluded')],record['finalist_count'])
+    return result
+
 
 
 def main():

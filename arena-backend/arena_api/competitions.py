@@ -195,6 +195,9 @@ class Competitions:
                     # Resuming retries the Swiss pairing once on the next scheduler tick.
                     self.db.execute("UPDATE competitions SET config=? WHERE id=?", (json.dumps(item["config"]), ident))
             self.db.execute("UPDATE competitions SET status=?,revision=revision+1 WHERE id=?", (target, ident))
+            if target=='open' and item['config']['format']=='elo':
+                from arena.ladder_clock import boundary
+                self.db.execute('INSERT OR IGNORE INTO elo_calendar VALUES(?,?)',(ident,boundary(now_ms(),item['config']['ladder']['round_hours'])))
             return self.get(ident)
         return self.command(actor, target + ":" + ident, key, {}, action)
 

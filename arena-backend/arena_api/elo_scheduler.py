@@ -79,7 +79,7 @@ class EloScheduler:
         rules=config['official']
         rr=self.comp.one("SELECT id FROM elo_rounds WHERE competition_id=? AND phase='round_robin'",(ident,))
         if rr:
-            finalists=select(self.book.get(rr['id'])['after_state']['standings'],rules['finalists'])
+            finalists=select(self.eligible_rows(ident,self.book.get(rr['id'])['after_state']['standings']),rules['finalists'])
             with self.store.transaction():
                 cfg=self.comp.get(ident)['config'];cfg['finalists']=finalists
                 self.db.execute("UPDATE competitions SET status='completed',completed_ms=?,config=?,revision=revision+1 WHERE id=?",(now,json.dumps(cfg),ident))
@@ -187,13 +187,14 @@ class EloScheduler:
         baseline=self.book.ladder_at(ident,int(monday.timestamp()*1000))
         if ranking=='elo':
             for row in rows:row['sprint_gain']=row['rating']-baseline.get(row['team_id'],INITIAL)
+        exclusions=self.exclusions(ident)
         names={r['id']:r for r in self.comp.rows('SELECT id,name,is_guest FROM teams')}
         for row in rows:
-            team=names[row['team_id']];row.update(name=team['name'],is_guest=bool(team['is_guest']))
+            team=names[row['team_id']];row.update(name=team['name'],is_guest=bool(team['is_guest']),excluded=row['team_id'] in exclusions)
         # Guest display never awards an official rank.
         index=0;previous=None;rank=0
         for row in rows:
-            if row['is_guest']:row['rank']=None;continue
+            if row['is_guest'] or row['excluded']:row['rank']=None;continue
             index+=1
             key=(row.get('points'),row.get('head_to_head'),row.get('wins'),row['rating']) if rr else (row['rating'],)
             if key!=previous:rank=index
@@ -225,3 +226,32 @@ class EloScheduler:
             result.append(dict(ladder_open=ladder_open,history=history,competition_id=ident,title=item['title'],current=current,next_sha=passed['github_sha'] if passed else None,
                 latest_sha=newest['sha'] if newest else None,check_state=newest['state'] if newest else None))
         return dict(items=result)
+
+    def exclusions(self,ident):
+        return {r['team_id'] for r in self.comp.rows('SELECT e.team_id,e.excluded FROM elo_exclusions e WHERE competition_id=? AND e.id=(SELECT MAX(x.id) FROM elo_exclusions x WHERE x.competition_id=e.competition_id AND x.team_id=e.team_id)',(ident,)) if r['excluded']}
+
+    def eligible_rows(self,ident,rows):
+        excluded=self.exclusions(ident)
+        result=[];previous=None;rank=0
+        for row in rows:
+            if row['team_id'] in excluded:continue
+            if row['rank']!=previous:rank=len(result)+1
+            previous=row['rank'];result.append(dict(row,rank=rank))
+        return result
+
+    def exclude(self,actor,ident,team,body,key):
+        def action():
+            item=self.comp.get(ident)
+            self.comp.require_status(item,'draft','open','locked','running','paused','completed')
+            if item['config']['format']!='elo':raise Fault('competition_conflict','Chỉ áp dụng cho giải Elo')
+            self.comp.accounts.team(team)
+            if len(body['reason'].strip())<3:raise Fault('invalid_request','Cần lý do ít nhất ba ký tự')
+            self.db.execute('INSERT INTO elo_exclusions(competition_id,team_id,excluded,reason,actor,created_ms) VALUES(?,?,?,?,?,?)',
+                (ident,team,int(body['excluded']),body['reason'],actor,time.time_ns()//1_000_000))
+            if item['status']=='completed':
+                rr=self.comp.one("SELECT id FROM elo_rounds WHERE competition_id=? AND phase='round_robin'",(ident,))
+                config=item['config'];rows=self.book.get(rr['id'])['after_state']['standings']
+                config['finalists']=select(self.eligible_rows(ident,rows),config['official']['finalists'])
+                self.db.execute('UPDATE competitions SET config=?,revision=revision+1 WHERE id=?',(json.dumps(config),ident))
+            return dict(id=ident,team_id=team,excluded=body['excluded'])
+        return self.comp.command(actor,'elo_exclude:'+ident+':'+team,key,body,action)

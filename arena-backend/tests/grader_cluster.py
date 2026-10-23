@@ -350,7 +350,7 @@ class Cluster:
                 self.results.setdefault("logs", {})[name] = item["log"].read_text(errors="replace")[-4000:]
         out = ROOT / "test-results" / "m1"
         out.mkdir(parents=True, exist_ok=True)
-        filename = {"lease-probe": "grader-lease-probe.json", "installers": "grader-installers.json", "hub-restart": "hub-restart.json", "github": "github-native.json", "elo-timing": "elo-windows-timing-cluster.json", "elo-native": "elo-native-cluster.json"}.get(
+        filename = {"lease-probe": "grader-lease-probe.json", "installers": "grader-installers.json", "hub-restart": "hub-restart.json", "github": "github-native.json", "elo-timing": "elo-windows-timing-cluster.json", "elo-native": "elo-native-cluster.json", "elo-scheduler": "elo-scheduler-cluster.json"}.get(
             self.results.get("mode"), "grader-cluster.json")
         (out / filename).write_text(json.dumps(self.results, ensure_ascii=False, indent=2), encoding="utf-8")
         shutil.rmtree(self.shared, ignore_errors=True)

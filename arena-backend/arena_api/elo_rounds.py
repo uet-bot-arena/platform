@@ -120,6 +120,11 @@ class RoundBook:
             initial={t:INITIAL for row in rows for t in row['snapshot']['ratings']} if stage=='ladder' else rows[0]['snapshot']['ratings']
             schedule=rows[0]['config'].get('official',{}).get('k',OFFICIAL_K)
             result=dict(initial_ratings=initial,official_k=schedule,rounds=[])
+            excluded=self.comp.elo.exclusions(ident)
+            if excluded:result['excluded_teams']=sorted(excluded)
+            item=self.comp.get(ident)
+            if stage=='official' and item['status']=='completed' and item['config']['format']=='elo':
+                result['finalist_count']=item['config']['official']['finalists']
             for row in rows:
                 current=row['config'].get('official',{}).get('k',OFFICIAL_K)
                 if stage=='official' and json.dumps(current)!=json.dumps(schedule):

@@ -3,12 +3,13 @@ import json
 import time
 
 from fastapi import APIRouter, Depends, Header, Query, Request
+from pydantic import Field
 from starlette.responses import StreamingResponse
 from arena.protocol import Fault
 from arena.service import TERMINAL
 from arena_api.dependencies import spectator_admin, admin_principal, team_principal
 from arena_api.schemas import CompetitionCreate, CompetitionEntry
-from arena_api.schemas import CompetitionEdit, Revision
+from arena_api.schemas import CompetitionEdit, Revision, Model
 
 router = APIRouter(prefix="/api/v1", tags=["competitions"])
 
@@ -211,3 +212,20 @@ def elo_export(ident: str,request: Request,stage: str=Query('official',pattern='
 def team_elo(request: Request,auth=Depends(team_principal)):
     with request.app.state.store.lock:
         return request.app.state.competitions.elo.team_view(auth['user']['team_id'])
+
+
+
+class EloExclusion(Model):
+    excluded: bool
+    reason: str = Field(min_length=3,max_length=300)
+
+
+@router.post('/admin/competitions/{ident}/teams/{team}/exclude',summary='BTC loại/khôi phục đội khỏi xếp hạng và suất chung kết, giữ kết quả và lịch sử lý do')
+def elo_exclude(ident: str,team: str,body: EloExclusion,request: Request,idempotency_key: str=Header(),auth=Depends(admin_principal)):
+    return request.app.state.competitions.elo.exclude(auth['user']['id'],ident,team,body.model_dump(),idempotency_key)
+
+
+@router.get('/admin/competitions/{ident}/exclusions',summary='BTC xem lịch sử loại/khôi phục đội và lý do; không công khai')
+def elo_exclusions(ident: str,request: Request,auth=Depends(admin_principal)):
+    comp=request.app.state.competitions;comp.get(ident)
+    return dict(items=comp.rows('SELECT * FROM elo_exclusions WHERE competition_id=? ORDER BY id',(ident,)))

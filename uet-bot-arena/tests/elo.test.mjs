@@ -32,3 +32,17 @@ test('form serializes the approved 20/64/16 rule and two K tiers',()=>{
  assert.deepEqual(options.official,{general_rounds:20,group_size:64,finalists:16,k:[[20,32],[null,16]]});
  f.delete('submission_deadline');assert.throws(()=>readTournamentOptions(f),/hạn nộp/);
 });
+
+test('team round-robin view explains frozen Elo while points are being played',()=>{
+ const html=eloTeam({user:{team_id:'a'},teamElo:{items:[{title:'Cup',competition_id:'cup',ladder_open:false,current:{phase:'round_robin',number:1,status:'running',sha:'sha',elo_before:1600,elo_after:null,games:[]}}]}});
+ assert.match(html,/Elo sau vòng chung: 1600.00 · giữ nguyên/);
+ assert.doesNotMatch(html,/chờ cả đợt xong/);
+});
+
+test('only BTC can exclude/restore and public table preserves a removed team without a rank',()=>{
+ const data={ranking:'elo',items:[{team_id:'a',name:'Removed',rating:1500,rank:null,played:2,excluded:true}]};
+ const publicHtml=eloStandings({standings:data});
+ assert.match(publicHtml,/BTC loại khỏi xếp hạng/);assert.doesNotMatch(publicHtml,/data-action="elo-exclude"/);
+ assert.match(eloStandings({user:{role:'admin'},standings:data}),/data-action="elo-exclude"/);
+ assert.match(eloStandings({user:{role:'admin'},standings:data}),/Khôi phục/);
+});

@@ -4209,6 +4209,125 @@
         ]
       }
     },
+    "/api/v1/admin/competitions/{ident}/teams/{team}/exclude": {
+      "post": {
+        "tags": [
+          "competitions"
+        ],
+        "summary": "BTC loại/khôi phục đội khỏi xếp hạng và suất chung kết, giữ kết quả và lịch sử lý do",
+        "operationId": "elo_exclude_api_v1_admin_competitions__ident__teams__team__exclude_post",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          },
+          {
+            "name": "team",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Team"
+            }
+          },
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EloExclusion"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/competitions/{ident}/exclusions": {
+      "get": {
+        "tags": [
+          "competitions"
+        ],
+        "summary": "BTC xem lịch sử loại/khôi phục đội và lý do; không công khai",
+        "operationId": "elo_exclusions_api_v1_admin_competitions__ident__exclusions_get",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/platform": {
       "get": {
         "tags": [
@@ -6730,6 +6849,27 @@
           "definition"
         ],
         "title": "Definition"
+      },
+      "EloExclusion": {
+        "properties": {
+          "excluded": {
+            "type": "boolean",
+            "title": "Excluded"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "excluded",
+          "reason"
+        ],
+        "title": "EloExclusion"
       },
       "EmailCode": {
         "properties": {

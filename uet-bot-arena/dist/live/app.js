@@ -252,6 +252,8 @@ document.addEventListener('submit',e=>{
     }else if(form.id==='competition-form'){
       if(s.selectedRuleset&&(!s.rulesetCatalog?.enabled||!s.rulesetCatalog.items.some(r=>r.id===s.selectedRuleset&&r.status==='published')))throw new Error('Ruleset trong liên kết đang tắt hoặc chưa công bố. Bật add-on/chọn luật khả dụng trước; mở lại trang Giải đấu nếu muốn tạo giải tiêu chuẩn.');
       const c=await api.post('/admin/competitions',{title:v('title'),...timeBody(data),max_teams:Number(v('max_teams')),...readTournamentOptions(data),...(data.get('use-experimental')==='on'?{ruleset_id:v('ruleset_id')}: {})},keyFor(form));go('competitions/'+c.id);
+    }else if(form.id==='elo-exclude-form'){
+      await api.post('/admin/competitions/'+form.dataset.competition+'/teams/'+form.dataset.team+'/exclude',{excluded:form.dataset.excluded==='true',reason:v('reason')},keyFor(form));closeModal();toast('Đã cập nhật xếp hạng và ghi lý do.');openRoute();
     }else if(form.id==='competition-edit-form'){
       await api.post('/admin/competitions/'+form.dataset.id+'/edit',{title:v('title'),...timeBody(data),max_teams:Number(v('max_teams')),expected_revision:Number(form.dataset.revision)},keyFor(form));closeModal();toast('Đã sửa giải.');openRoute();
     }else if(form.id==='admin-team-form'){
@@ -406,6 +408,10 @@ document.addEventListener('click',async e=>{
     }
     if(action==='admin-job-download'){saveBlob('job-'+short(b.dataset.id)+'.json',new Blob([JSON.stringify(await api.request('/admin/jobs/'+enc(b.dataset.id)),null,2)],{type:'application/json'}));return;}
     if(action==='submission-manifest'){const item=s.adminSubmissions.find(x=>x.id===b.dataset.id);modal('Source · '+item.version,`<pre class="report-json">${esc(JSON.stringify(item,null,2))}</pre>`);return;}
+    if(action==='elo-exclude'){
+      const excluded=b.dataset.excluded!=='true';
+      modal(excluded?'Loại đội khỏi xếp hạng':'Khôi phục đội',`<form class="real-form" id="elo-exclude-form" data-competition="${esc(s.competition.id)}" data-team="${esc(b.dataset.team)}" data-excluded="${excluded}">${note('Giữ nguyên các ván đã đấu; cập nhật hạng và suất chung kết. Lý do được lưu riêng cho BTC và ghi nhật ký.')}${field('Lý do','reason','required minlength="3" maxlength="300"')}${errors()}${submit('Áp dụng và ghi nhật ký')}</form>`);
+    }
     if(['competition-edit','competition-archive','competition-restore'].includes(action)){
       const c=s.competitions.find(x=>x.id===b.dataset.id)||s.competition;
       if(action==='competition-edit')modal('Sửa giải · '+c.title,`<form class="real-form" id="competition-edit-form" data-id="${c.id}" data-revision="${c.revision}">${field('Tên giải','title','required minlength="3" maxlength="100"','text',c.title)}${timeField(c.config.profile)}${field('Số đội tối đa','max_teams','required min="2" max="4096"','number',c.config.max_teams)}${note('Chỉ đổi thời gian ở bản nháp chưa có đội. Khi mở đăng ký, có thể sửa tên và giới hạn đội trước khi chốt lịch.')}${errors()}${submit('Lưu cấu hình')}</form>`);

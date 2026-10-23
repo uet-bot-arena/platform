@@ -121,3 +121,48 @@ class EloScheduling(EloFixture):
         self.assertEqual(self.comp.rows('SELECT * FROM competition_fixtures'),[])
         self.comp.elo.advance(self.comp.get(self.ident),2001)
         self.assertEqual(self.comp.one('SELECT phase FROM elo_rounds')['phase'],'round_robin')
+
+    def test_open_just_before_fixed_hour_does_not_miss_first_round_if_tick_is_late(self):
+        start=boundary(1_792_728_000_000)
+        item=self.post(self.client,'/admin/competitions',dict(title='Boundary opening',format='elo',submission_deadline=9_000_000_000_000),expected=201)
+        with patch('arena_api.competitions.now_ms',return_value=start+7_200_000-1):
+            self.post(self.client,'/admin/competitions/'+item['id']+'/open')
+        self.assertEqual(self.comp.one('SELECT last_due_ms FROM elo_calendar WHERE competition_id=?',(item['id'],))['last_due_ms'],start)
+        with patch.object(self.comp.elo.book,'latest_passes',return_value=self.entries) as latest:
+            self.comp.elo.advance(self.comp.get(item['id']),start+7_200_100)
+            latest.assert_called_once_with(item['id'],start+7_200_000)
+        self.assertEqual(self.comp.one('SELECT number FROM elo_rounds WHERE competition_id=?',(item['id'],))['number'],1)
+
+    def test_btc_exclusion_is_audited_keeps_games_and_recomputes_finalist_seeds(self):
+        self.configure(deadline=1000,group=64)
+        self.book.seed_official(self.ident,self.entries,0)
+        rid=self.book.start(self.ident,'round_robin',1,2000,self.entries)
+        with self.store.transaction():
+            for game in self.book.games(rid):
+                winner='red' if game['red_team_id']<game['blue_team_id'] else 'blue'
+                self.store.db.execute("UPDATE elo_games SET status='completed',result=? WHERE id=?",(json.dumps(dict(winner=winner,reason='base_capture')),game['id']))
+            self.store.db.execute("UPDATE competitions SET status='running' WHERE id=?",(self.ident,))
+        self.book.finish(rid,3000)
+        first=min(self.entries);path=f'/admin/competitions/{self.ident}/teams/{first}/exclude'
+        self.post(self.client,path,dict(excluded=True,reason='Synthetic fixture violation'))
+        self.comp.elo.advance(self.comp.get(self.ident),4000)
+        final=self.comp.get(self.ident)
+        self.assertEqual([r['team_id'] for r in final['config']['finalists']],sorted(self.entries)[1:3])
+        self.assertEqual([r['rank'] for r in final['config']['finalists']],[1,2])
+        self.assertEqual(len(self.book.games(rid)),12)
+        guest=self.other_client()
+        public=guest.get('/api/v1/competitions/'+self.ident+'/standings').json()
+        removed=next(r for r in public['items'] if r['team_id']==first)
+        self.assertTrue(removed['excluded']);self.assertIsNone(removed['rank'])
+        self.assertNotIn('violation',json.dumps(public))
+        import test_recompute_elo as tool
+        exported=self.book.export(self.ident,'official')
+        replayed=tool.module.recompute(exported)
+        self.assertEqual(replayed['finalists'],final['config']['finalists'])
+        self.assertEqual([(r['team_id'],r['rank']) for r in replayed['standings']],[(r['team_id'],r['rank']) for r in public['items']])
+        self.assertEqual(guest.get('/api/v1/admin/competitions/'+self.ident+'/exclusions').status_code,401)
+        self.post(self.client,path,dict(excluded=False,reason='BTC restores fixture'))
+        self.assertEqual(self.comp.get(self.ident)['config']['finalists'][0]['team_id'],first)
+        history=self.client.get('/api/v1/admin/competitions/'+self.ident+'/exclusions').json()['items']
+        self.assertEqual([r['excluded'] for r in history],[1,0])
+        self.assertTrue(all(r['actor'] for r in history))

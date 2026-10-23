@@ -5,8 +5,9 @@ const compatible=(a,b)=>a&&a.nodeType===b.nodeType&&a.nodeName===b.nodeName;
 function patchNode(current,next){
   if(current.isEqualNode(next))return;
   if(current.nodeType!==1){current.nodeValue=next.nodeValue;return;}
-  for(const attr of [...current.attributes])if(!next.hasAttribute(attr.name))current.removeAttribute(attr.name);
-  for(const attr of next.attributes)if(current.getAttribute(attr.name)!==attr.value)current.setAttribute(attr.name,attr.value);
+  const userOpen=attr=>current.nodeName==='DETAILS'&&attr.name==='open';
+  for(const attr of [...current.attributes])if(!userOpen(attr)&&!next.hasAttribute(attr.name))current.removeAttribute(attr.name);
+  for(const attr of next.attributes)if(!userOpen(attr)&&current.getAttribute(attr.name)!==attr.value)current.setAttribute(attr.name,attr.value);
   patchChildren(current,next);
 }
 export function patchChildren(current,next){

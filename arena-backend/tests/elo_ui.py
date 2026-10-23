@@ -102,6 +102,21 @@ def main():
                             expect(page.locator('#elo-page').first).to_contain_text('vòng tròn')
                             page.locator('.elo-matrix summary').click()
                             expect(page.locator('.elo-matrix a')).to_have_count(24)
+                            with page.expect_response(lambda response:'/standings' in response.url):
+                                pass
+                            page.evaluate('()=>new Promise(requestAnimationFrame)')
+                            expect(page.locator('.elo-matrix')).to_have_attribute('open','')
+                            page.locator('[data-action=elo-exclude]').first.click()
+                            page.locator('#elo-exclude-form [name=reason]').fill('Private fixture reason <script>')
+                            page.locator('#elo-exclude-form button[type=submit]').click()
+                            expect(page.locator('#elo-page')).to_contain_text('BTC loại khỏi xếp hạng')
+                            expect(page.locator('body')).not_to_contain_text('Private fixture reason')
+                            page.locator('[data-action=elo-exclude][data-excluded=true]').click()
+                            page.locator('#elo-exclude-form [name=reason]').fill('Fixture restored by BTC')
+                            page.locator('#elo-exclude-form button[type=submit]').click()
+                            expect(page.locator('#elo-page')).not_to_contain_text('BTC loại khỏi xếp hạng')
+                            page.locator('.elo-matrix summary').click()
+                            result['checks'].append(dict(route='exclude-restore',scheme=scheme,passed=True))
                         elif route==ladder_route:
                             expect(page.locator('#elo-page')).to_contain_text('Đếm ngược')
                             expect(page.locator('#elo-page')).to_contain_text('Tăng tuần này')

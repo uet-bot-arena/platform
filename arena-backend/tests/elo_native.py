@@ -1,10 +1,11 @@
-"""20-team Windows acceptance: real builds/checks/games, accelerated round calendar.
+"""20-team Windows acceptance with real builds/checks/games and frozen source SHAs.
 
-BTC-owned synthetic source fixtures, no GitHub calls, no mail. Pairing, frozen SHAs,
-ratings and exports use the production RoundBook/arena.elo code. Scheduler/UI acceptance
-is separate: this harness dispatches the prepared rounds explicitly.
+--scheduler: real deadline and production scheduler, 3 general rounds, top8 double
+round robin, select4 (116 games). Default: accelerated 3-round ladder prelude and
+explicit round dispatch (176 games). BTC fixtures replace GitHub delivery; no mail.
 """
 import io
+import argparse
 import json
 from pathlib import Path
 import statistics
@@ -43,11 +44,57 @@ def source_fixture(number):
     return raw.getvalue(),hashlib.sha1(source.encode()).hexdigest()
 
 
+def run_scheduler(cluster,app,entries,item,result,output):
+    comp=app.state.competitions;book=comp.elo.book;store=app.state.store;ident=item['id']
+    with store.transaction():
+        for team,entry in entries.items():
+            saved=dict(entry);saved.pop('bot_hash',None)
+            store.db.execute('INSERT INTO competition_entries VALUES(?,?,?,?,?,?)',(ident,team,entry['submission_id'],entry['benchmark_id'],json.dumps(saved),time.time_ns()//1_000_000))
+        store.db.execute('UPDATE competitions SET submission_deadline=? WHERE id=?',(time.time_ns()//1_000_000-1,ident))
+    seen=set();reported=set();until=time.monotonic()+1200
+    while time.monotonic()<until:
+        for row in comp.rows('SELECT id FROM elo_rounds WHERE competition_id=? ORDER BY started_ms',(ident,)):
+            round_item=book.get(row['id'])
+            for game in book.games(row['id']):
+                if game['status']!='completed' or game['id'] in seen:continue
+                assert game['red_sha']==entries[game['red_team_id']]['github_sha']
+                assert game['blue_sha']==entries[game['blue_team_id']]['github_sha']
+                job=store.get(game['current_job_id'])
+                assert comp.valid_report(job,item['config'])
+                timing=comp.one('SELECT duration_ms FROM duration_samples WHERE job=?',(job['id'],))
+                assert timing is not None
+                result['games'].append(dict(phase=round_item['phase'],round=round_item['number'],seconds=timing['duration_ms']/1000,result=json.loads(game['result'])))
+                seen.add(game['id'])
+            if round_item['status']=='completed' and row['id'] not in reported:
+                result['rounds'].append(dict(phase=round_item['phase'],number=round_item['number'],games=len(book.games(row['id'])),wall_seconds=(round_item['completed_ms']-round_item['started_ms'])/1000))
+                print('PASS SCHEDULER',json.dumps(result['rounds'][-1]),flush=True);reported.add(row['id'])
+        current=comp.get(ident)
+        assert current['status']!='paused',current['config'].get('elo_error')
+        if current['status']=='completed' and len(seen)==116 and len(reported)==4:break
+        time.sleep(.2)
+    assert current['status']=='completed' and len(seen)==116
+    assert [r['phase'] for r in result['rounds']]==['general']*3+['round_robin']
+    rr=comp.one("SELECT id FROM elo_rounds WHERE competition_id=? AND phase='round_robin'",(ident,))
+    state=book.get(rr['id'])
+    assert state['snapshot']['ratings']==state['after_state']['ratings']
+    result['finalists']=current['config']['finalists'];assert len(result['finalists'])==4
+    sys.path.insert(0,str(ROOT.parent/'tools'))
+    from recompute_elo import recompute
+    exported=book.export(ident,'official');replayed=recompute(exported)
+    assert replayed['finalists']==result['finalists']
+    stored={r['team_id']:r['rating'] for r in comp.rows("SELECT * FROM elo_ratings WHERE competition_id=? AND stage='official'",(ident,))}
+    assert replayed['ratings']==stored
+    output.with_name('native20-scheduler-export.json').write_text(json.dumps(exported,indent=2),encoding='utf-8')
+    result['checks'].extend(['real wall-clock deadline auto lock/start','116/116 real native games dispatched/reconciled by production scheduler','3 general rounds +top8 double round robin56 games; selected4','Elo frozen in round robin; export ratings and finalist seeds match hub'])
+    print('ALL NATIVE SCHEDULER CHECKS PASSED',flush=True)
+
+
 def main():
-    cluster=Cluster();cluster.results['mode']='elo-native'
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--scheduler',action='store_true');args=parser.parse_args()
+    cluster=Cluster();cluster.results['mode']='elo-scheduler' if args.scheduler else 'elo-native'
     result=dict(backend='windows',slots=2,cpus=[0,2],teams=20,source_mode='BTC synthetic fixtures; source SHA labels, no GitHub network',
                 calendar='accelerated Vietnam fixed boundaries; real Windows execution',rounds=[],games=[],checks=[])
-    output=ROOT/'test-results/m1/g7b/native20.json';output.parent.mkdir(parents=True,exist_ok=True)
+    output=ROOT/('test-results/m1/g7b/native20-scheduler.json' if args.scheduler else 'test-results/m1/g7b/native20.json');output.parent.mkdir(parents=True,exist_ok=True)
     clients=[];server=None;thread=None
     try:
         store=Store(cluster.data);Accounts(store).bootstrap_admin('organizer',PASSWORD);store.db.close()
@@ -61,7 +108,7 @@ def main():
         cluster.admin.headers['X-CSRF-Token']=login['csrf_token']
         cluster.grader('elo-native-win','windows','0,2',slots=2);cluster.wait_online(['elo-native-win'])
         item=cluster.api(cluster.admin,'POST','/admin/competitions',expected=201,
-            json=dict(title='Windows 20-team Elo acceptance',max_teams=20,match_ms=60000,grader_platform='windows'))
+            json=dict(title='Windows 20-team Elo acceptance',max_teams=20,match_ms=60000,grader_platform='windows',**(dict(format='elo',submission_deadline=9_000_000_000_000,official=dict(general_rounds=3,group_size=8,finalists=4)) if args.scheduler else {})))
         ident=item['id'];cluster.api(cluster.admin,'POST','/admin/competitions/'+ident+'/open')
         comp=app.state.competitions;book=RoundBook(comp);store=app.state.store;service=app.state.service
         pending=[]
@@ -82,6 +129,10 @@ def main():
             entries[team]=dict(comp.qualification(item['config'],team,sub['id'],check['id']),github_sha=sha,bot_hash=sub['source']['zip_sha256'])
         result['checks'].append('20/20 real native 72-sample checks passed')
         print('PASS 20/20 Windows checks',flush=True)
+        if args.scheduler:
+            result['calendar']='real scheduler and deadline; native source fixtures replace GitHub delivery'
+            run_scheduler(cluster,app,entries,item,result,output)
+            return
         fake_now=boundary(time.time_ns()//1_000_000,next=True)
 
         def run_round(phase,number,participants):
