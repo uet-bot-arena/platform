@@ -8,6 +8,7 @@ from unittest.mock import patch
 from arena import basic_rules, engine
 from arena.config import match_profile, scale_profile, stored_profile
 from arena.protocol import Fault
+from arena.runner import LocalRunner
 from arena.service import MAX_QUEUED_PER_TEAM, Service
 from arena.store import Store
 from arena_api.arena_routes import PRIVATE_SAMPLE, public_job, private_event
@@ -25,7 +26,7 @@ class FlowHarness(APIHarness):
     def setUp(self):
         super().setUp()
         self.store, self.comp = self.app.state.store, self.app.state.competitions
-        image = patch("arena.sandbox.image_id", return_value="sha256:" + "1" * 64)
+        image = patch("arena.service.Service.runtime_for", return_value="sha256:" + "1" * 64)
         image.start()
         self.addCleanup(image.stop)
 
@@ -99,10 +100,11 @@ class QueueSlots(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.store = Store(self.tmp.name)
-        self.patch = patch("arena.sandbox.image_id", return_value="sha256:" + "1" * 64)
+        self.patch = patch("arena.service.Service.runtime_for", return_value="sha256:" + "1" * 64)
         self.patch.start()
         self.service = Service(self.store, start_worker=False)
-        self.service.competitions = type("Competitions", (), {"view": lambda _, ident: {"config": {"profile": match_profile(60_000).public()}}})()
+        config = {"profile": match_profile(60_000).public(), "grader_platform": "windows", "runtime_id": "sha256:" + "9" * 64}
+        self.service.competitions = type("Competitions", (), {"view": lambda _, ident: {"config": config}})()
 
     def tearDown(self):
         self.patch.stop()
@@ -149,20 +151,20 @@ class QueueSlots(unittest.TestCase):
         self.assertEqual(normal["profile"]["match_ms"], 300_000)
         self.assertEqual(self.store.get(bullet["id"])["error"]["code"], "superseded")
 
-    def test_unready_worker_runtime_refuses_work_without_creating_a_job(self):
-        submission = self.submission()
-        with patch.object(self.service.runtime_ready, "wait", return_value=False):
-            with self.assertRaises(Fault) as caught:
-                self.benchmark(submission)
-        self.assertEqual(caught.exception.code, "worker_unavailable")
-        self.assertEqual(self.store.list("job", "team-a"), [])
-        self.assertEqual(self.service.pending.qsize(), 0)
+    def test_competition_benchmark_requires_the_competition_platform(self):
+        job = self.benchmark(self.submission(), competition_id="c" * 32)
+        self.assertEqual(job["requires"], {"platform": "windows", "runtime_id": "sha256:" + "9" * 64})
+        with self.store.lock:
+            self.assertIsNone(self.service.pending.claim("linux", "sha256:" + "9" * 64))
+            self.assertIsNone(self.service.pending.claim("windows", "sha256:" + "8" * 64))
+            self.assertEqual(self.service.pending.claim("windows", "sha256:" + "9" * 64), job["id"])
 
     def test_in_place_retry_stops_once_the_board_is_public(self):
         job = self.benchmark(self.submission())
-        self.assertTrue(self.service.may_retry_in_place(job["id"]))
+        runner = LocalRunner(self.store)
+        self.assertFalse(runner.published_state(job["id"]))
         self.store.event(job["id"], "state", {"state": engine.initial_state()})
-        self.assertFalse(self.service.may_retry_in_place(job["id"]))
+        self.assertTrue(runner.published_state(job["id"]))
 
 
 class PracticeWithSampleBots(FlowHarness):

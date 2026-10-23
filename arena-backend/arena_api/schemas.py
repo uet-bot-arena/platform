@@ -182,6 +182,10 @@ class CompetitionCreate(TimeControl):
     rounds: int | None = Field(default=None, ge=1, le=64)
     basic_rules: dict | None = None
     ruleset_id: str | None = Field(default=None, pattern=r'^[0-9a-f]{32}$')
+    # Official matches run only on graders of this platform and toolchain (runtime_id);
+    # without runtime_id the hub pins the newest one reported by a grader of that platform.
+    grader_platform: Literal["windows", "linux"] = "windows"
+    runtime_id: str | None = Field(default=None, pattern=r'^sha256:[0-9a-f]{64}$')
 
     @model_validator(mode="after")
     def validate_options(self):

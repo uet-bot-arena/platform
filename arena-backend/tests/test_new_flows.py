@@ -15,7 +15,7 @@ class NewFlows(APIHarness):
     def setUp(self):
         super().setUp()
         self.store,self.comp=self.app.state.store,self.app.state.competitions
-        self.image_patch=patch('arena.sandbox.image_id',return_value='sha256:'+'1'*64)
+        self.image_patch=patch('arena.service.Service.runtime_for',return_value='sha256:'+'1'*64)
         self.image_patch.start();self.addCleanup(self.image_patch.stop)
 
     def test_swiss_round_barrier_byes_buchholz_and_restart(self):
@@ -40,8 +40,9 @@ class NewFlows(APIHarness):
                     self.store.update(ident,status='failed',error={'code':'worker_error'})
                     self.comp.reconcile()
                     self.assertEqual(self.comp.get(cid)['config']['current_round'],number)
-                    self.comp.retry(self.client.get('/api/v1/auth/me').json()['user']['id'],cid,f['id'],uuid.uuid4().hex)
+                    # Infrastructure failure: a new attempt is scheduled without the organiser.
                     self.comp.tick();ident=self.app.state.service.pending.get_nowait();self.app.state.service.pending.task_done();job=self.store.get(ident)
+                    self.assertEqual(job['official']['attempt'],2)
                 self.finish(job)
         final=self.comp.get(cid)
         self.assertEqual(final['status'],'completed')

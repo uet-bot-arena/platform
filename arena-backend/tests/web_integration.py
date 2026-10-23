@@ -17,6 +17,7 @@ from arena import engine, sandbox
 from arena.store import Store
 from arena_api.accounts import Accounts
 from arena_api.app import create_app
+from grader_harness import start_grader, stop_grader
 from arena_api.settings import Settings
 
 
@@ -38,7 +39,8 @@ def main():
         sock.bind(("127.0.0.1", 0))
         sock.listen(128)
         settings = Settings(data=Path(directory), origin=f"http://127.0.0.1:{sock.getsockname()[1]}")
-        server = uvicorn.Server(uvicorn.Config(create_app(settings), access_log=False, log_level="warning", proxy_headers=False))
+        app = create_app(settings)
+        server = uvicorn.Server(uvicorn.Config(app, access_log=False, log_level="warning", proxy_headers=False))
         thread = threading.Thread(target=server.run, kwargs={"sockets": [sock]}, daemon=True)
         thread.start()
         admin = httpx.Client(base_url=settings.origin, timeout=30)
@@ -48,6 +50,8 @@ def main():
             while not server.started and thread.is_alive() and time.monotonic() < until:
                 time.sleep(0.05)
             assert server.started, "Uvicorn did not start"
+            # The hub never runs bots: a Docker grader connects to it like a remote machine.
+            grader = start_grader(app, settings.origin, "docker", 2, backend_options={"image": "uet-arena-worker:clock-v2"})
 
             def request(client, method, path, expected=200, **kwargs):
                 response = client.request(method, "/api/v1" + path, **kwargs)
@@ -104,7 +108,7 @@ def main():
             benchmark = request(team, "POST", "/benchmarks", expected=202, json={"submission_id": source["id"]}, headers={"Idempotency-Key": uuid.uuid4().hex}).json()
             benchmark = wait(benchmark)["report"]
             assert benchmark["passed"] and benchmark["turn_wall_ms"]["samples"] == 72
-            assert benchmark["image_id"] == image
+            assert benchmark["runtime_id"] == image and benchmark["platform"] == "linux"
             report["benchmark"] = benchmark["turn_wall_ms"]
             checked("authenticated_native_cpp_benchmark_72_samples", summary=report["benchmark"])
 
@@ -123,7 +127,7 @@ def main():
             assert actual_report["result"] == match["report"]["result"]
             checked("authenticated_match_replay_and_sse_resume", result=actual_report["result"], plies=states[-1]["ply"])
             metrics = request(admin, 'GET', '/admin/metrics').json()
-            assert metrics['worker']['ready'] and metrics['jobs']['by_status']['completed'] == 2
+            assert metrics['worker']['ready'] and metrics['worker']['graders_online'] == 1 and metrics['jobs']['by_status']['completed'] == 2
             assert metrics['last_24h']['benchmark_pass_rate'] == 100
             assert metrics['last_24h']['benchmark_p95_max_ms'] == benchmark['turn_wall_ms']['p95_ms']
             all_jobs = request(admin, 'GET', '/admin/jobs?status=completed&kind=benchmark').json()
@@ -140,6 +144,8 @@ def main():
             checked("admin_password_reset_revokes_session_without_secret_audit")
             report["passed"] = True
         finally:
+            if 'grader' in locals():
+                stop_grader(grader)
             admin.close()
             team.close()
             server.should_exit = True

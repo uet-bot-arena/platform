@@ -19,6 +19,7 @@ from arena import engine, sandbox
 from arena.store import Store
 from arena_api.accounts import Accounts
 from arena_api.app import create_app
+from grader_harness import start_grader, stop_grader
 from arena_api.settings import Settings
 
 
@@ -50,6 +51,7 @@ def main():
             while not server.started and thread.is_alive() and time.monotonic() < end:
                 time.sleep(0.05)
             assert server.started, "Uvicorn did not start"
+            grader = start_grader(app, settings.origin, "docker", 2, backend_options={"image": "uet-arena-worker:clock-v2"})
 
             def request(client, method, path, expected=200, **kwargs):
                 if method == "POST":
@@ -96,8 +98,8 @@ def main():
             checked("two_independent_teams_upload_and_qualify_native_cpp", samples_per_team=72)
 
             key = uuid.uuid4().hex
-            comp = request(admin, "POST", "/admin/competitions", expected=201, json={"title": "Real OTTv2 two-leg cup", "max_teams": 2}, headers={"Idempotency-Key": key}).json()
-            duplicate = request(admin, "POST", "/admin/competitions", expected=201, json={"title": "Real OTTv2 two-leg cup", "max_teams": 2}, headers={"Idempotency-Key": key}).json()
+            comp = request(admin, "POST", "/admin/competitions", expected=201, json={"title": "Real OTTv2 two-leg cup", "max_teams": 2, "grader_platform": "linux"}, headers={"Idempotency-Key": key}).json()
+            duplicate = request(admin, "POST", "/admin/competitions", expected=201, json={"title": "Real OTTv2 two-leg cup", "max_teams": 2, "grader_platform": "linux"}, headers={"Idempotency-Key": key}).json()
             assert comp == duplicate
             ident = comp["id"]
             request(a, "GET", "/competitions/" + ident, expected=404)
@@ -208,7 +210,7 @@ json choose_repeat(const json& state, const json& legal) {
                     benchmark = request(client, 'POST', '/benchmarks', expected=202, json={'submission_id':source['id']}).json()
                     benchmark = wait_job(client, benchmark['id'])
                     qualified.append({'submission_id':source['id'],'benchmark_id':benchmark['id'],'delegate_timeout_claims':True})
-                special = request(admin,'POST','/admin/competitions',expected=201,json={'title':'Adjudication '+reason,'max_teams':2}).json()
+                special = request(admin,'POST','/admin/competitions',expected=201,json={'title':'Adjudication '+reason,'max_teams':2,'grader_platform':'linux'}).json()
                 sid = special['id']
                 assert special['config']['adjudication']['id']=='ottv2-match-v2'
                 request(admin,'POST',f'/admin/competitions/{sid}/open')
@@ -239,6 +241,8 @@ json choose_repeat(const json& state, const json& legal) {
                 checked('official_'+reason+'_completes_both_legs_with_correct_standings',scores=expected_scores)
             report["passed"] = True
         finally:
+            if 'grader' in locals():
+                stop_grader(grader)
             for client in (admin, a, b):
                 client.close()
             server.should_exit = True

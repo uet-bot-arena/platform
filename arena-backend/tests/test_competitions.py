@@ -12,6 +12,7 @@ from unittest.mock import patch
 from arena import engine
 from arena.config import BUILD_FLAGS
 from arena.protocol import Fault
+from arena.runner import LocalRunner
 from arena.service import Service
 from arena.store import Store
 from arena_api.accounts import Accounts, now_ms
@@ -24,7 +25,7 @@ class CompetitionAPI(APIHarness):
         super().setUp()
         self.comp = self.app.state.competitions
         self.store = self.app.state.store
-        self.image_patch = patch("arena.sandbox.image_id", return_value="sha256:" + "1" * 64)
+        self.image_patch = patch("arena.service.Service.runtime_for", return_value="sha256:" + "1" * 64)
         self.image_patch.start()
         self.addCleanup(self.image_patch.stop)
 
@@ -42,11 +43,11 @@ class CompetitionAPI(APIHarness):
         # These are unit fixtures, never reported as actual timing measurements.
         submission = self.store.create("submission", team, {"version": "v1.0.0", "runtime": "cpp17", "source_path": "/synthetic-only",
             "source": {"zip_sha256": "2" * 64, "files": {"bot.cpp": "3" * 64}}, "artifact": None})
-        artifact = {"artifact_sha256": "4" * 64, "source": submission["source"], "image_id": config["image_id"],
+        artifact = {"artifact_sha256": "4" * 64, "source": submission["source"], "runtime_id": config["runtime_id"],
                     "flags": BUILD_FLAGS, "sdk_sha256": config["sdk_sha256"]}
         benchmark = self.store.create("job", team, {"kind": "benchmark", "status": "completed", "submission_ids": [submission["id"]],
             "report": {"passed": True, "samples": [{"wall_ms": 1}] * 72, "turn_wall_ms": {"samples": 72},
-                "profile": config["profile"], "image_id": config["image_id"], "engine_sha256": config["engine_sha256"],
+                "profile": config["profile"], "runtime_id": config["runtime_id"], "engine_sha256": config["engine_sha256"],
                 "suite_id": config["suite_id"], "suite_sha256": config["suite_sha256"], "artifacts": [artifact]}})
         return {"submission_id": submission["id"], "benchmark_id": benchmark["id"], "delegate_timeout_claims": True}
 
@@ -73,7 +74,7 @@ class CompetitionAPI(APIHarness):
     def finish(self, job, winner="red", **extra):
         result = {"winner": winner, "reason": "base_capture"}
         report = {"eligible_for_tournament": True, "result": result, "final_state": {"result": result},
-                  "image_id": job["image_id"], "engine_sha256": job["engine_sha256"], "profile": job["profile"],
+                  "runtime_id": job["requires"]["runtime_id"], "engine_sha256": job["engine_sha256"], "profile": job["profile"],
                   "adjudication": job["official"]["adjudication"], **extra}
         self.store.update(job["id"], status="completed", report=report)
         self.store.event(job["id"], "completed", {"result": result})
@@ -210,7 +211,7 @@ class CompetitionAPI(APIHarness):
         team, credential = self.create_team()
         body = self.qualified(credential["account"]["team_id"], comp["config"])
         original = self.store.get(body["benchmark_id"])["report"]
-        mutations = [{"passed": False}, {"samples": []}, {"image_id": "sha256:" + "0" * 64},
+        mutations = [{"passed": False}, {"samples": []}, {"runtime_id": "sha256:" + "0" * 64},
                      {"engine_sha256": "other"}, {"suite_sha256": "other"}, {"error": {"code": "bad"}},
                      {"profile": {**original["profile"], "turn_ms": 30000}}]
         for mutation in mutations:
@@ -352,18 +353,19 @@ class CompetitionAPI(APIHarness):
         # Reports produced before this upgrade omitted the policy field.
         result = {'winner':'red','reason':'base_capture'}
         self.store.update(second['id'],status='completed',report={'eligible_for_tournament':True,'result':result,'final_state':{'result':result},
-            'image_id':second['image_id'],'engine_sha256':second['engine_sha256'],'profile':second['profile']})
+            'runtime_id':second['requires']['runtime_id'],'engine_sha256':second['engine_sha256'],'profile':second['profile']})
         self.comp.reconcile()
         self.assertEqual(self.comp.view(comp['id'])['fixture_counts']['completed'],1)
 
     def test_failed_attempt_is_unscored_retry_keeps_history_and_old_result_cannot_count(self):
         comp, _, _, _ = self.prepared()
         first = self.launch(comp)
-        self.store.update(first["id"], status="failed", error={"code": "worker_error", "detail": "private diagnostic"})
+        # Not an infrastructure failure (those retry by themselves): waits for the organiser.
+        self.store.update(first["id"], status="failed", error={"code": "artifact_missing", "detail": "private diagnostic"})
         self.comp.reconcile()
         self.assertTrue(all(s["played"] == 0 for s in self.comp.standings(comp["id"])["items"]))
         fixture = first["official"]["fixture_id"]
-        self.assertEqual(self.comp.attempts(comp["id"], fixture)["items"][0]["error_code"], "worker_error")
+        self.assertEqual(self.comp.attempts(comp["id"], fixture)["items"][0]["error_code"], "artifact_missing")
         path = f"/admin/competitions/{comp['id']}/fixtures/{fixture}/retry"
         one = self.post(self.client, path, key="retry-exactly-once")
         self.assertEqual(one, self.post(self.client, path, key="retry-exactly-once"))
@@ -401,8 +403,8 @@ class CompetitionAPI(APIHarness):
     def test_completed_report_with_invalid_provenance_never_scores(self):
         comp, _, _, _ = self.prepared()
         job = self.launch(comp)
-        mutations = [{"eligible_for_tournament": False}, {"image_id": "different"},
-                     {"final_state": {"result": None}}, {"error": {"code": "worker_error"}}]
+        mutations = [{"eligible_for_tournament": False}, {"runtime_id": "different"},
+                     {"final_state": {"result": None}}, {"error": {"code": "provenance_mismatch"}}]
         for mutation in mutations:
             with self.subTest(mutation=mutation):
                 self.finish(job, **mutation)
@@ -424,8 +426,11 @@ class CompetitionAPI(APIHarness):
             manager = Competitions(restarted, Service(restarted, start_worker=False), accounts)
             view = manager.view(comp["id"])
             self.assertEqual(view["status"], "paused")
-            self.assertEqual(view["fixture_counts"]["attention"], 1)
-            self.assertEqual(view["fixture_counts"]["pending"], 1)
+            # The unscored in-flight attempt is retried automatically (new attempt), not left for the organiser.
+            self.assertEqual(view["fixture_counts"]["attention"], 0)
+            self.assertEqual(view["fixture_counts"]["pending"], 2)
+            fixture = manager.rows("SELECT id FROM competition_fixtures WHERE competition_id=? ORDER BY ordinal", (comp["id"],))[0]["id"]
+            self.assertEqual(manager.attempts(comp["id"], fixture)["items"][0]["error_code"], "server_restart")
             self.assertTrue(all(s["played"] == 0 for s in manager.standings(comp["id"])["items"]))
         finally:
             restarted.db.close()
@@ -455,14 +460,15 @@ class CompetitionAPI(APIHarness):
     def test_official_worker_refuses_changed_binary_or_runtime(self):
         comp, _, _, _ = self.prepared()
         job = self.launch(comp)
-        with patch.object(self.app.state.service, "ensure_artifact", return_value=(None, {"artifact_sha256": "different"})), patch("arena.sandbox.Worker") as worker:
+        runner = LocalRunner(self.store)  # graders run the same Runner.execute checks
+        with patch.object(runner, "ensure_artifact", return_value=(None, {"artifact_sha256": "different"})), patch("arena.sandbox.Worker") as worker:
             with self.assertRaises(Fault) as failure:
-                self.app.state.service.execute(job)
+                runner.execute(job)
             self.assertEqual(failure.exception.code, "provenance_mismatch")
             worker.assert_not_called()
         job["official"]["engine_sha256"] = "different"
         with self.assertRaises(Fault) as failure:
-            self.app.state.service.execute(job)
+            runner.execute(job)
         self.assertEqual(failure.exception.code, "provenance_mismatch")
 
     def test_admin_mutations_are_idempotent_and_drafts_private(self):
@@ -471,7 +477,7 @@ class CompetitionAPI(APIHarness):
         first = self.post(self.client, "/admin/competitions", body, key="create-the-same-cup", expected=201)
         second = self.post(self.client, "/admin/competitions", body, key="create-the-same-cup", expected=201)
         self.assertEqual(first, second)
-        with patch("arena.sandbox.image_id", side_effect=Fault("worker_unavailable", "offline")):
+        with patch("arena.service.Service.runtime_for", return_value=None):  # no grader online: replay still answers
             self.assertEqual(first, self.post(self.client, "/admin/competitions", body, key="create-the-same-cup", expected=201))
         self.post(self.client, "/admin/competitions", {"title": "A different cup"}, key="create-the-same-cup", expected=409)
         self.assertEqual(team.get("/api/v1/competitions").json()["items"], [])

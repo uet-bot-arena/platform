@@ -25,7 +25,8 @@ class Store:
         """)
         self.db.commit()
         for job in self.list("job") if recover_jobs else []:
-            if job["status"] not in ("queued", "completed", "failed", "aborted"):
+            # Leased jobs run on remote graders and outlive a hub restart (lease reaper decides).
+            if job["status"] not in ("queued", "completed", "failed", "aborted") and not job.get("lease_id"):
                 self.update(job["id"], status="aborted", error={"code": "server_restart", "detail": "Controller restarted; no competitive result awarded"})
                 self.event(job["id"], "aborted", {"code": "server_restart"})
 

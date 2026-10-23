@@ -1,5 +1,10 @@
-"""Durable priority queue: official games, benchmarks, then practice."""
+"""Durable priority queue: official games, benchmarks, then practice.
+
+Each waiting job may require a grader platform (linux/windows) and runtime_id; graders claim
+only jobs they are allowed to run (Service.try_lease).
+"""
 import queue
+import sqlite3
 import time
 from arena.protocol import Fault
 
@@ -14,29 +19,54 @@ class DurableJobQueue:
         with store.lock, store.db:
             store.db.execute("CREATE TABLE IF NOT EXISTS job_queue(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE, priority INTEGER)")
             store.db.execute("CREATE INDEX IF NOT EXISTS job_queue_order ON job_queue(priority,seq)")
+            for column in ("platform", "runtime_id"):
+                try:
+                    store.db.execute(f"ALTER TABLE job_queue ADD COLUMN {column} TEXT")
+                except sqlite3.OperationalError:
+                    pass  # already migrated
             for job in reversed(store.list("job")):
                 if job["status"] == "queued":
-                    self.put(job["id"], official=bool(job.get("official")), kind=job.get("kind"))
+                    requires = job.get("requires") or {}
+                    self.put(job["id"], official=bool(job.get("official")), kind=job.get("kind"),
+                             platform=requires.get("platform"), runtime_id=requires.get("runtime_id"))
                 else:
                     self.remove(job["id"])
 
-    def put(self, ident, block=True, timeout=None, *, official=False, kind=None):
+    def put(self, ident, block=True, timeout=None, *, official=False, kind=None, platform=None, runtime_id=None, front=False):
         with self.store.lock, self.store.db:
             if kind is None:
                 try:
-                    kind = self.store.get(ident).get("kind")
+                    job = self.store.get(ident)
+                    kind, official = job.get("kind"), official or bool(job.get("official"))
                 except Fault as exc:
                     if exc.code != 'not_found':
                         raise
                     kind = "match"
-            self.store.db.execute("INSERT OR IGNORE INTO job_queue(id,priority) VALUES(?,?)",
-                                  (ident, 0 if official else 1 if kind == "benchmark" else 2))
+            priority = 0 if official else 1 if kind == "benchmark" else 2
+            if front:
+                # A job handed back by a lost grader keeps its turn instead of rejoining the end.
+                first = self.store.db.execute("SELECT MIN(seq) FROM job_queue").fetchone()[0]
+                self.store.db.execute("INSERT OR IGNORE INTO job_queue(seq,id,priority,platform,runtime_id) VALUES(?,?,?,?,?)",
+                                      ((first or 1) - 1, ident, priority, platform, runtime_id))
+            else:
+                self.store.db.execute("INSERT OR IGNORE INTO job_queue(id,priority,platform,runtime_id) VALUES(?,?,?,?)",
+                                      (ident, priority, platform, runtime_id))
 
     def put_nowait(self, ident):
         self.put(ident, False)
 
-    def put_official(self, ident):
-        self.put(ident, official=True)
+    def put_official(self, ident, platform=None, runtime_id=None):
+        self.put(ident, official=True, platform=platform, runtime_id=runtime_id)
+
+    def claim(self, platform, runtime_id):
+        """Remove and return the best job this grader may run, or None. Caller holds store.lock."""
+        row = self.store.db.execute(
+            "SELECT id FROM job_queue WHERE (platform IS NULL OR platform=?) AND (runtime_id IS NULL OR runtime_id=?) "
+            "ORDER BY priority,seq LIMIT 1", (platform, runtime_id)).fetchone()
+        if not row:
+            return None
+        self.store.db.execute("DELETE FROM job_queue WHERE id=?", (row[0],))
+        return row[0]
 
     def get(self, block=True, timeout=None):
         until = time.monotonic() + timeout if timeout is not None else None

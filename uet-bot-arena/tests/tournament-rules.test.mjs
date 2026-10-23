@@ -7,7 +7,7 @@ import {policyLabel} from '../dist/live/result.js';
 test('Swiss accepts large capacity and sends normalized rectangular rules',()=>{
   const fields=new Map(Object.entries({format:'swiss',max_teams:'200',rounds:'10','custom-basic':'on',
     'board-rows':'10','board-cols':'12','base-red':'b1','base-blue':'','eliminate-types':'2','base-capture':'on',placement:''}));
-  assert.deepEqual(readTournamentOptions(fields),{format:'swiss',rounds:10,basic_rules:{rows:10,cols:12,
+  assert.deepEqual(readTournamentOptions(fields),{format:'swiss',grader_platform:'windows',rounds:10,basic_rules:{rows:10,cols:12,
     bases:{red:'b1',blue:'l10'},eliminate_types:2,base_capture:true,placement:'auto'}});
   fields.set('format','double_round_robin');
   assert.throws(()=>readTournamentOptions(fields),/32/);

@@ -17,7 +17,7 @@ from arena.service import Service, TERMINAL
 from arena.store import Store
 from arena_api.accounts import Accounts
 from arena_api.settings import Lease, Settings
-from arena_api import auth_routes, admin_routes, arena_routes, competition_routes, ui_routes, ruleset_routes, sample_bots
+from arena_api import auth_routes, admin_routes, arena_routes, competition_routes, ui_routes, ruleset_routes, sample_bots, grader_routes
 from arena_api.competitions import Competitions
 from arena_api.dependencies import SPECTATOR_PATHS
 
@@ -26,7 +26,20 @@ ERROR_STATUS = {"not_found": 404, "unauthorized": 401, "forbidden": 403, "passwo
                 "idempotency_conflict": 409, "version_conflict": 409, "account_conflict": 409, "admin_conflict": 409,
                 "registration_conflict": 409, "report_unavailable": 409, "competition_conflict": 409,
                 "qualification_required": 409, "provenance_mismatch": 409, "ruleset_conflict": 409,
-                "experimental_disabled": 409}
+                "experimental_disabled": 409, "stale_lease": 409}
+GRADER_PREFIX = "/api/v1/grader/"
+MIB = 1024 * 1024
+
+
+def body_limit(method, path):
+    """(bytes, binary?) accepted for a mutation on this path."""
+    if path in ("/api/v1/submissions", "/api/v1/admin/sample-bots"):
+        return 10 * MIB, True
+    if method == "PUT" and path.startswith(GRADER_PREFIX + "artifacts/"):
+        return 17 * MIB, True  # compiled bot (<= 16 MiB)
+    if path.startswith(GRADER_PREFIX):
+        return 8 * MIB, False  # match reports and event batches
+    return 16_384, False
 
 
 class RequestBoundary:
@@ -57,8 +70,7 @@ class RequestBoundary:
         if headers.get("origin") not in (None, self.settings.origin) or headers.get("sec-fetch-site") == "cross-site":
             return await reject(403, "forbidden", "Cross-origin request rejected")
         if scope["method"] in ("POST", "PUT", "PATCH"):
-            archive = scope["path"] in ("/api/v1/submissions", "/api/v1/admin/sample-bots")
-            limit = 10 * 1024 * 1024 if archive else 16_384
+            limit, archive = body_limit(scope["method"], scope["path"])
             length = headers.get("content-length", "")
             if not length.isascii() or not length.isdigit() or headers.get("transfer-encoding"):
                 return await reject(411, "invalid_request", "Content-Length required; chunked bodies unsupported")
@@ -115,12 +127,12 @@ def create_app(settings=None, start_worker=True):
             anyio.to_thread.current_default_thread_limiter().total_tokens = settings.thread_limit
             app.state.accounts = Accounts(store, settings.session_seconds, settings.hash_workers)
             app.state.clock_id = secrets.token_hex(16)
-            service = Service(store, start_worker=start_worker)
+            service = Service(store, start_worker=start_worker, grader=settings.grader)
             app.state.service = service
             from arena_api.rulesets import RuleCatalog
             app.state.rulesets = RuleCatalog(store, app.state.accounts)
             service.rulesets = app.state.rulesets
-            competitions = Competitions(store, service, app.state.accounts)
+            competitions = Competitions(store, service, app.state.accounts, settings.grader.max_attempts)
             app.state.competitions = competitions
             from arena_api.broadcast import Snapshots
             app.state.broadcast = Snapshots()
@@ -136,13 +148,9 @@ def create_app(settings=None, start_worker=True):
                     await asyncio.to_thread(competitions.thread.join)
             if service:
                 service.stop.set()
-                # Finish the bounded in-flight operation before closing SQLite
-                # or releasing its lease. No second controller can race it.
+                # Jobs run on remote graders; their leases survive a hub restart and simply
+                # expire (and are retried) if the grader is gone when the hub comes back.
                 await asyncio.to_thread(service.join)
-                for job in store.list("job"):
-                    if job["status"] not in (*TERMINAL, "queued"):
-                        store.update(job["id"], status="aborted", error={"code": "server_shutdown", "detail": "Controller stopped; no result awarded"})
-                        store.event(job["id"], "aborted", {"code": "server_shutdown"})
                 if competitions:
                     competitions.reconcile()
             if store:
@@ -161,6 +169,7 @@ def create_app(settings=None, start_worker=True):
     app.include_router(ui_routes.router)
     app.include_router(ruleset_routes.router)
     app.include_router(sample_bots.router)
+    app.include_router(grader_routes.router)
 
     def error_body(request, code, detail):
         return {"error": {"code": code, "detail": detail}, "request_id": getattr(request.state, "request_id", None)}
@@ -193,9 +202,12 @@ def create_app(settings=None, start_worker=True):
             "cookieAuth": {"type": "apiKey", "in": "cookie", "name": "arena_web_session"},
             "csrfAuth": {"type": "apiKey", "in": "header", "name": "X-CSRF-Token"}})
         public = {"/api/v1/registrations", "/api/v1/auth/login", "/api/v1/auth/recovery", "/api/v1/time", "/api/v1/health/live", "/api/v1/health/ready", "/api/v1/platform", "/api/v1/rules", "/api/v1/experimental/guide"}
+        schema["components"]["securitySchemes"]["graderToken"] = {"type": "http", "scheme": "bearer", "description": "Mã máy chấm, chỉ hiện một lần khi admin tạo"}
         for path, methods in schema["paths"].items():
             for method, operation in methods.items():
-                if method == "get" and path in SPECTATOR_PATHS:
+                if path.startswith(GRADER_PREFIX):
+                    operation["security"] = [{"graderToken": []}]
+                elif method == "get" and path in SPECTATOR_PATHS:
                     operation["security"] = [{}, {"cookieAuth": []}]
                 elif path not in public:
                     operation["security"] = [{"cookieAuth": [], **({"csrfAuth": []} if method == "post" else {})}]

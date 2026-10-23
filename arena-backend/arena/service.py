@@ -1,25 +1,46 @@
+"""Hub service: submissions, the durable job queue and leases for remote graders.
+
+The hub never runs a bot. Graders (arena.grader) lease jobs over HTTP, stream events back and
+submit a report guarded by a fencing token; the hub replays the moves before accepting it
+(arena.verify). A lease that is not renewed expires: the job goes back to the queue, or an
+official fixture gets a new attempt (Competitions.reconcile).
+"""
 import hashlib
 import json
-import math
 import os
 from pathlib import Path
-import queue
-import random
 import re
+import secrets
 import threading
 import time
+import uuid
 
-from arena import engine, sandbox, experimental, basic_rules
-from arena.adjudication import CURRENT, BOT_FAULTS, policy, position_key
+from arena import engine, experimental, basic_rules
+from arena.adjudication import CURRENT
 from arena.job_queue import DurableJobQueue
 from arena.archive import unpack
-from arena.config import BUILD_FLAGS, profile, request_profile, stored_profile, worker_image, scale_profile, runtime_flags
+from arena.config import profile, request_profile, stored_profile, scale_profile
 from arena.protocol import Fault
-
-TERMINAL = ("completed", "failed", "aborted")
-
+from arena.runner import TERMINAL, digest, engine_for, fixtures, summary  # noqa: F401 (re-exported)
+from arena.verify import verify
 
 MAX_QUEUED_PER_TEAM = 4
+PLATFORMS = ("linux", "windows")
+RUNTIME_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
+ONLINE_MS = 20_000
+# Grader-reported event types the hub accepts; terminal events come only from the result call.
+EVENT_TYPES = {"phase", "build", "state", "turn_started", "timeout_pending", "timeout_claimed", "progress",
+               "infrastructure_retry"}
+MAX_EVENTS_PER_CALL = 600
+
+
+def now_ms():
+    return time.time_ns() // 1_000_000
+
+
+def token_hash(token):
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def queue_slot(job):
@@ -36,133 +57,98 @@ def queue_slot(job):
                                      (job.get("basic_rules") or {}).get("hash") or ""))
 
 
-def engine_for(job):
-    return experimental.provider(job["ruleset"]) if job.get("ruleset") else basic_rules.provider(job.get("basic_rules"))
-
-
-def digest(data):
-    return hashlib.sha256(json.dumps(data, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-
-
-def fixtures(move_engine=None):
-    move_engine = move_engine or engine
-    rng, state, cases = random.Random(20261010), move_engine.initial_state(), []
-    for index in range(24):
-        for _ in range(3):
-            if state["result"] or not move_engine.legal_moves(state):
-                state = move_engine.initial_state()
-            state = move_engine.apply(state, rng.choice(move_engine.legal_moves(state)))
-        if state["result"] or not move_engine.legal_moves(state):
-            state = move_engine.initial_state()
-        if state["to_move"] != "red":
-            state = move_engine.apply(state, rng.choice(move_engine.legal_moves(state)))
-            if state["result"] or not move_engine.legal_moves(state):
-                state = move_engine.initial_state()
-        cases.append({"id": f"public-{index:02}", "state": state})
-    return cases
-
-
-def summary(samples):
-    values = sorted(s["wall_ms"] for s in samples)
-    if not values:
-        return None
-    middle = len(values) // 2
-    return {"samples": len(values), "median_ms": values[middle] if len(values) % 2 else (values[middle - 1] + values[middle]) / 2,
-            "p95_ms": values[math.ceil(len(values) * 0.95) - 1], "max_ms": values[-1]}
+class GraderDefaults:
+    lease_seconds, heartbeat_seconds, max_attempts, long_poll_seconds = 30, 5, 3, 25
 
 
 class Service:
-    def __init__(self, store, start_worker=True, workers=None):
+    def __init__(self, store, start_worker=True, workers=None, grader=None, artifacts=None):
         self.store = store
         self.rulesets = None
         self.competitions = None
+        self.grader = grader or GraderDefaults()
+        self.artifacts = Path(artifacts or store.root / "grader-artifacts")
+        with store.lock, store.db:
+            store.db.executescript("""
+              CREATE TABLE IF NOT EXISTS graders(id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
+                created_ms INTEGER NOT NULL, created_by TEXT NOT NULL, revoked_ms INTEGER, platform TEXT, backend TEXT,
+                runtime_id TEXT, slots INTEGER, version TEXT, hello_ms INTEGER, last_seen_ms INTEGER,
+                jobs_done INTEGER NOT NULL DEFAULT 0);
+              CREATE TABLE IF NOT EXISTS grader_leases(id TEXT PRIMARY KEY, job_id TEXT NOT NULL, grader_id TEXT NOT NULL,
+                fencing INTEGER NOT NULL UNIQUE, created_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('active','completed','expired','released','revoked','rejected')),
+                ended_ms INTEGER, reason TEXT);
+              CREATE INDEX IF NOT EXISTS grader_leases_active ON grader_leases(status, expires_ms);
+              CREATE TABLE IF NOT EXISTS builds(submission_id TEXT NOT NULL, platform TEXT NOT NULL, runtime_id TEXT NOT NULL,
+                artifact_sha256 TEXT NOT NULL, grader_id TEXT, created_ms INTEGER NOT NULL,
+                PRIMARY KEY(submission_id, platform, runtime_id));
+            """)
         self.pending = DurableJobQueue(store)
         self.before_next = None
         self.stop = threading.Event()
-        self.active = None
-        self.active_jobs = {}
-        self.active_lock = threading.Lock()
-        self.build_locks = {}
-        self.build_lock = threading.Lock()
-        self.compile_slots = threading.BoundedSemaphore(max(1,int(os.environ.get("ARENA_BUILD_WORKERS","2"))))
-        cpus = sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else list(range(os.cpu_count() or 1))
-        count = workers if workers is not None else int(os.environ.get("ARENA_WORKERS", str(max(1, len(cpus)-2)) if start_worker else "1"))
-        if not 1 <= count <= len(cpus):
-            raise ValueError("ARENA_WORKERS must be 1..available logical CPUs")
-        self.worker_count = count
         self.started_workers = start_worker
-        self.worker_threads = [threading.Thread(target=self.loop, args=(cpu,), daemon=True, name=f"arena-worker-{cpu}") for cpu in cpus[-count:]]
-        self.worker_thread = self.worker_threads[0]
-        self.heartbeat_thread = threading.Thread(target=self.heartbeat, daemon=True)
-        self.runtime_ready = threading.Event()
-        self.bootstrap_thread = threading.Thread(target=self.bootstrap, daemon=True, name="arena-runtime-bootstrap")
+        self.reaper_thread = threading.Thread(target=self.reap_loop, daemon=True, name="lease-reaper")
         if start_worker:
-            self.bootstrap_thread.start()
-            for worker in self.worker_threads:
-                worker.start()
-            self.heartbeat_thread.start()
-        else:
-            self.runtime_ready.set()
+            self.reaper_thread.start()
 
-    def bootstrap(self):
-        while not self.stop.is_set():
-            try:
-                sandbox.cleanup_orphans(self.store.root)
-                for image in (None,"uet-arena-worker:clock-v2","uet-arena-worker:experimental-v1","uet-arena-worker:experimental-clock-v2"):
-                    sandbox.image_id(image)
-                self.runtime_ready.set()
-                return
-            except Fault:
-                sandbox.invalidate_images()
-                if self.stop.wait(2):
-                    return
+    # ---- compatibility for dashboards ---------------------------------------------------
+    @property
+    def worker_count(self):
+        """Grader slots online now (at least 1, so the scheduler keeps one official job ready)."""
+        return max(1, sum(g["slots"] or 0 for g in self.graders(online_only=True)))
+
+    @property
+    def active_jobs(self):
+        with self.store.lock:
+            rows = self.store.db.execute("SELECT grader_id, job_id FROM grader_leases WHERE status='active'").fetchall()
+        return {grader + ":" + job: job for grader, job in rows}
+
+    @property
+    def active(self):
+        return next(iter(self.active_jobs.values()), None)
 
     def join(self):
-        for worker in [*self.worker_threads, self.heartbeat_thread,self.bootstrap_thread]:
-            if worker.is_alive():
-                worker.join()
-
-    def heartbeat(self):
-        while not self.stop.wait(5):
-            with self.active_lock:
-                identifiers = list(self.active_jobs.values())
-            for ident in identifiers:
-                if self.store.get(ident)["status"] not in TERMINAL:
-                    self.store.update(ident, heartbeat_ms=int(time.time()*1000), lease_until_ms=int(time.time()*1000)+30000)
+        if self.reaper_thread.is_alive():
+            self.reaper_thread.join()
 
     def health(self):
-        try:
-            if not self.runtime_ready.is_set():
-                raise Fault("worker_unavailable","Runtime cleanup/image verification is pending")
-            if self.started_workers and not all(worker.is_alive() for worker in self.worker_threads):
-                raise Fault("worker_unavailable","A worker thread stopped; inspect controller diagnostics")
-            image = sandbox.image_id(worker_image(request_profile({})))
-            return {"ready": True, "image_id": image, "runtime": "cpp17", "codon_enabled": False}
-        except Fault as exc:
-            return {"ready": False, "code": exc.code, "detail": exc.detail, "runtime": "cpp17", "codon_enabled": False}
+        online = self.graders(online_only=True)
+        platforms = {}
+        for g in online:
+            item = platforms.setdefault(g["platform"], {"graders": 0, "slots": 0, "runtime_ids": []})
+            item["graders"] += 1
+            item["slots"] += g["slots"] or 0
+            if g["runtime_id"] not in item["runtime_ids"]:
+                item["runtime_ids"].append(g["runtime_id"])
+        # The hub is ready without any grader: jobs wait in the queue until one connects.
+        return {"ready": True, "runtime": "remote-graders", "graders_online": len(online),
+                "grader_slots": sum(g["slots"] or 0 for g in online), "platforms": platforms, "codon_enabled": False}
 
+    # ---- submissions --------------------------------------------------------------------
     def submit(self, team, version, runtime, raw, key, protocol_version=2):
-        if type(protocol_version) is not int or protocol_version not in (2,3):
-            raise Fault('unsupported_protocol','Chỉ hỗ trợ SDK v2 (OTTv2) hoặc v3 (Experimental)')
+        if type(protocol_version) is not int or protocol_version not in (2, 3):
+            raise Fault('unsupported_protocol', 'Chỉ hỗ trợ SDK v2 (OTTv2) hoặc v3 (Experimental)')
         if runtime not in ("cpp17", "c11", "python3"):
             raise Fault("unsupported_runtime", "Choose cpp17, c11 or python3")
         if not re.fullmatch(r"v?\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]{1,24})?", version):
             raise Fault("invalid_request", "Expected semantic version, e.g. v1.0.0")
         source_hash = hashlib.sha256(raw).hexdigest()
         operation_hash = digest({"version": version, "runtime": runtime, "zip_sha256": source_hash,
-                                 **({'protocol_version':3} if protocol_version==3 else {})})
+                                 **({'protocol_version': 3} if protocol_version == 3 else {})})
+
         def check():
             if len(self.store.list("submission", team)) >= 20:
                 raise Fault("quota_exceeded", "Local beta allows 20 submissions per team")
             if any(s["version"] == version for s in self.store.list("submission", team)):
                 raise Fault("version_conflict", "Version already exists; submit a new version")
+
         def prepare():
             with self.store.lock:
                 check()
-            import uuid
             directory = self.store.root / "sources" / uuid.uuid4().hex
             manifest = unpack(raw, directory, profile(), runtime)
             return directory, manifest
+
         def create(prepared):
             check()
             directory, manifest = prepared
@@ -176,12 +162,15 @@ class Service:
     def enqueue(self, team, kind, body, key):
         if kind not in ("benchmark", "match"):
             raise Fault("invalid_request", "Unknown job kind")
+        # Practice runs on any grader; a competition's benchmark must use its platform and toolchain.
+        platform = runtime_id = None
         try:
             ruleset_id = body.get('ruleset_id')
             p = request_profile(body)
             pack = basic_rules.validated_snapshot(body["basic_rules"]) if body.get("basic_rules") else None
             if body.get("competition_id"):
                 config = self.competitions.view(body["competition_id"])["config"]
+                platform, runtime_id = config.get("grader_platform", "linux"), config.get("runtime_id") or config.get("image_id")
                 pack = config.get("basic_rules")
                 pinned_ruleset = (config.get('ruleset') or {}).get('id')
                 if ruleset_id and ruleset_id != pinned_ruleset:
@@ -192,7 +181,7 @@ class Service:
                 p = stored_profile(config["profile"])
             elif pack:
                 d = pack["definition"]
-                p = scale_profile(p, d["rows"]*d["cols"])
+                p = scale_profile(p, d["rows"] * d["cols"])
             if pack and ruleset_id:
                 raise ValueError("Basic v2 rules cannot combine with SDK v3 add-ons")
         except ValueError as exc:
@@ -227,6 +216,7 @@ class Service:
             self.store.get(ident, sample["owner"] if sample and index == sample_index else team, "submission")
         slot = queue_slot({"kind": kind, "profile": p.public(), "competition_id": body.get("competition_id"),
                            "basic_rules": pack, "ruleset": {"id": ruleset_id} if ruleset_id else None})
+
         def check(replaced=0):
             jobs = self.store.list("job", team)
             if len(jobs) >= 200:
@@ -236,23 +226,21 @@ class Service:
                 raise Fault("quota_exceeded", "At most four running jobs per team")
             if sum(j["status"] == "queued" for j in jobs) - replaced >= MAX_QUEUED_PER_TEAM:
                 raise Fault("quota_exceeded", f"At most {MAX_QUEUED_PER_TEAM} waiting jobs per team; wait for one to start")
+
         def prepare():
-            # Startup checks images for a few seconds; after that, readiness already reports the
-            # problem and work that no worker can start is refused instead of queued forever.
-            if not self.runtime_ready.wait(10):
-                raise Fault("worker_unavailable", "Worker runtime is not ready (Docker or worker images unavailable)")
             with self.store.lock:
                 check(replaced=len(waiting_in_slot()))
             snapshot = self.rulesets.resolve(ruleset_id) if self.rulesets else None
-            if ruleset_id and not snapshot:raise Fault('invalid_request','Experimental catalog is unavailable')
-            if snapshot and any(self.store.get(ident).get('protocol_version')!=3 for ident in ids):
-                raise Fault('unsupported_protocol','Experimental cần bot SDK v3. Nộp một version mới và chọn SDK Experimental khi tải ZIP lên.')
-            image = sandbox.image_id(worker_image(p, bool(snapshot)))
-            return snapshot, image
+            if ruleset_id and not snapshot:
+                raise Fault('invalid_request', 'Experimental catalog is unavailable')
+            if snapshot and any(self.store.get(ident).get('protocol_version') != 3 for ident in ids):
+                raise Fault('unsupported_protocol', 'Experimental cần bot SDK v3. Nộp một version mới và chọn SDK Experimental khi tải ZIP lên.')
+            return snapshot
+
         def waiting_in_slot():
             return [j for j in self.store.list("job", team) if j["status"] == "queued" and queue_slot(j) == slot]
-        def create(prepared):
-            snapshot, image = prepared
+
+        def create(snapshot):
             waiting = waiting_in_slot()
             identity = (ids, (sample or {}).get("id"), p.public()["id"], (pack or {}).get("hash"), (snapshot or {}).get("hash"))
             for old in waiting:
@@ -269,332 +257,301 @@ class Service:
                 self.store.update(old["id"], status="aborted", error={"code": "superseded", "detail": "Replaced by the team's newer request for the same purpose before it started"})
                 self.store.event(old["id"], "aborted", {"code": "superseded"})
             job = self.store.create("job", team, {"kind": kind, "status": "queued", "submission_ids": ids,
-                "profile": p.public(), "image_id": image, "engine_id": engine.ENGINE_ID,
-                "engine_sha256": engine.ENGINE_SHA256, "adjudication": dict(CURRENT), "report": None, "error": None,
-                **({"competition_id":body['competition_id']} if body.get('competition_id') else {}),
-                **({"basic_rules":pack} if pack else {}),
-                **({"sample_bot":{"id":sample["id"],"owner":sample["owner"],"submission_id":sample["submission_id"],
-                                  "side":engine.SIDES[sample_index]}} if sample else {}),
-                **({"ruleset":snapshot,"protocol_version":3,"engine_id":experimental.ENGINE_ID,"engine_sha256":experimental.ENGINE_SHA256} if snapshot else {})})
+                "profile": p.public(), "requires": {"platform": platform, "runtime_id": runtime_id},
+                "engine_id": engine.ENGINE_ID, "engine_sha256": engine.ENGINE_SHA256, "adjudication": dict(CURRENT),
+                "report": None, "error": None,
+                **({"competition_id": body['competition_id']} if body.get('competition_id') else {}),
+                **({"basic_rules": pack} if pack else {}),
+                **({"sample_bot": {"id": sample["id"], "owner": sample["owner"], "submission_id": sample["submission_id"],
+                                   "side": engine.SIDES[sample_index]}} if sample else {}),
+                **({"ruleset": snapshot, "protocol_version": 3, "engine_id": experimental.ENGINE_ID, "engine_sha256": experimental.ENGINE_SHA256} if snapshot else {})})
             self.store.event(job["id"], "queued", {"kind": kind})
-            self.pending.put(job["id"], kind=kind)
+            self.pending.put(job["id"], kind=kind, platform=platform, runtime_id=runtime_id)
             return {**job, "queue_position": self.pending.position(job["id"])}
         return self.store.deduplicate(team, kind, key, digest(body), create, prepare)
 
-    def phase(self, job, phase, **data):
-        self.store.update(job["id"], status=phase)
-        self.store.event(job["id"], "phase", {"phase": phase, **data})
+    # ---- grader registry ----------------------------------------------------------------
+    def create_grader(self, name, actor):
+        name = (name or "").strip()
+        if not 1 <= len(name) <= 60 or any(ord(c) < 32 for c in name):
+            raise Fault("invalid_request", "Tên máy chấm 1..60 ký tự")
+        token = "uag_" + secrets.token_urlsafe(32)
+        ident = uuid.uuid4().hex
+        with self.store.lock, self.store.db:
+            self.store.db.execute("INSERT INTO graders(id,name,token_hash,created_ms,created_by) VALUES(?,?,?,?,?)",
+                                  (ident, name, token_hash(token), now_ms(), actor))
+        return {**self.grader_view(self.grader_row(ident)), "token": token, "token_visibility": "this_response_only"}
 
-    def ensure_artifact(self, job, submission, p, require_existing=False):
-        key = digest({"source": submission["source"], "image": job["image_id"], "runtime": submission.get("runtime", "cpp17")})
-        with self.lock_for_build(key):
-            return self._ensure_artifact(job, submission, p, require_existing)
+    def revoke_grader(self, ident, actor):
+        with self.store.lock, self.store.db:
+            row = self.grader_row(ident)
+            if row["revoked_ms"] is None:
+                self.store.db.execute("UPDATE graders SET revoked_ms=? WHERE id=?", (now_ms(), ident))
+            leases = self.store.db.execute("SELECT id FROM grader_leases WHERE grader_id=? AND status='active'", (ident,)).fetchall()
+        for (lease_id,) in leases:
+            self.end_lease(lease_id, "revoked", "grader_revoked")
+        return self.grader_view(self.grader_row(ident))
 
-    def lock_for_build(self,key):
-        with self.build_lock:
-            return self.build_locks.setdefault(key,threading.Lock())
+    def grader_row(self, ident):
+        with self.store.lock:
+            cursor = self.store.db.execute("SELECT * FROM graders WHERE id=?", (ident,))
+            row = cursor.fetchone()
+            if not row:
+                raise Fault("not_found", "Grader not found")
+            return dict(zip([c[0] for c in cursor.description], row))
 
-    def _ensure_artifact(self, job, submission, p, require_existing=False):
-        # Build per immutable submission AND image/flags/SDK, never silently reuse
-        # an artifact produced under a different toolchain.
-        sdk_hash = experimental.sdk_hash() if job.get("ruleset") else sandbox.sdk_hash()
-        runtime = submission.get("runtime", "cpp17")
-        flags = runtime_flags(runtime)
-        build_key = digest({"source": submission["source"], "image": job["image_id"], "flags": flags, "sdk": sdk_hash, "runtime": runtime})
-        folder = self.store.root / "artifacts" / build_key
-        artifact = folder / "bot"
-        manifest_file = folder / "manifest.json"
-        if manifest_file.is_file() and artifact.is_file():
-            manifest = json.loads(manifest_file.read_text())
-            if hashlib.sha256(artifact.read_bytes()).hexdigest() == manifest["artifact_sha256"]:
-                return folder, manifest
-            raise Fault("artifact_corrupt", "Stored binary hash mismatch")
-        if require_existing:
-            raise Fault("artifact_missing", "Locked binary/manifest missing; restore the verified artifact before retry")
-        if folder.exists():
-            # Interrupted output is retained for inspection; a retry gets a
-            # fresh, controlled staging directory, not a recursive deletion.
-            folder.rename(folder.with_name(build_key + "-interrupted-" + str(time.time_ns())))
-        folder.parent.mkdir(parents=True, exist_ok=True)
-        source = Path(submission["source_path"])
-        if runtime == "cpp17" and len(list(source.glob("*.cpp"))) == 1:
-            result = sandbox.cached_cpp_build(source,folder,p,job["image_id"],self.store.root/"compiled-cache",self.lock_for_build,self.compile_slots)
-        else:
-            with self.compile_slots:
-                result = sandbox.build(source,folder,p,job["image_id"],runtime=runtime)
-        self.store.event(job["id"], "build", {"submission_id": submission["id"], **result})
-        if not result["ok"]:
-            raise Fault(result["code"], result["log"] or "Compilation failed")
-        manifest = {**result, "runtime": runtime, "build_key": build_key, "source": submission["source"], "image_id": job["image_id"],
-                    "flags": flags, "sdk_sha256": sdk_hash}
-        manifest_file.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-        self.store.update(submission["id"], artifact={k: v for k, v in manifest.items() if k != "log"})
-        return folder, manifest
+    def grader_view(self, row):
+        online = row["revoked_ms"] is None and row["last_seen_ms"] is not None and now_ms() - row["last_seen_ms"] < ONLINE_MS
+        with self.store.lock:
+            running = self.store.db.execute("SELECT COUNT(*) FROM grader_leases WHERE grader_id=? AND status='active'", (row["id"],)).fetchone()[0]
+        return {k: row[k] for k in ("id", "name", "created_ms", "revoked_ms", "platform", "backend", "runtime_id", "slots",
+                                    "version", "hello_ms", "last_seen_ms", "jobs_done")} | {"online": online, "running": running}
 
-    def loop(self, cpu=None):
-        sandbox.controller_scope(self.store.root, cpu)
-        while not self.stop.is_set():
-            if not self.runtime_ready.wait(0.2):
-                continue
-            if self.before_next:
-                self.before_next()
-            try:
-                ident = self.pending.get(timeout=0.2)
-            except queue.Empty:
-                continue
+    def graders(self, online_only=False):
+        with self.store.lock:
+            cursor = self.store.db.execute("SELECT * FROM graders ORDER BY created_ms DESC")
+            keys = [c[0] for c in cursor.description]
+            rows = [dict(zip(keys, r)) for r in cursor.fetchall()]
+        views = [self.grader_view(r) for r in rows]
+        return [v for v in views if v["online"]] if online_only else views
+
+    def runtime_for(self, platform):
+        """runtime_id of the newest grader seen for a platform (pinned when a competition is created)."""
+        with self.store.lock:
+            row = self.store.db.execute("SELECT runtime_id FROM graders WHERE platform=? AND revoked_ms IS NULL AND runtime_id IS NOT NULL "
+                                        "ORDER BY last_seen_ms DESC LIMIT 1", (platform,)).fetchone()
+        return row[0] if row else None
+
+    def authenticate(self, token):
+        if not isinstance(token, str) or not 20 <= len(token) <= 128:
+            raise Fault("unauthorized", "Grader token required")
+        with self.store.lock:
+            cursor = self.store.db.execute("SELECT * FROM graders WHERE token_hash=?", (token_hash(token),))
+            row = cursor.fetchone()
+            if not row:
+                raise Fault("unauthorized", "Unknown grader token")
+            grader = dict(zip([c[0] for c in cursor.description], row))
+            if grader["revoked_ms"] is not None:
+                raise Fault("unauthorized", "Grader token revoked")
+            with self.store.db:
+                self.store.db.execute("UPDATE graders SET last_seen_ms=? WHERE id=?", (now_ms(), grader["id"]))
+        return grader
+
+    def hello(self, grader, info):
+        platform, runtime_id = info.get("platform"), info.get("runtime_id")
+        if platform not in PLATFORMS or not isinstance(runtime_id, str) or not RUNTIME_ID.match(runtime_id):
+            raise Fault("invalid_request", "platform must be linux|windows and runtime_id sha256:<64 hex>")
+        slots, backend, version = info.get("slots"), info.get("backend"), info.get("version")
+        if type(slots) is not int or not 1 <= slots <= 64 or backend not in ("docker", "bwrap", "windows") or not isinstance(version, str) or len(version) > 40:
+            raise Fault("invalid_request", "slots 1..64, backend docker|bwrap|windows, version <= 40 chars")
+        with self.store.lock, self.store.db:
+            self.store.db.execute("UPDATE graders SET platform=?,backend=?,runtime_id=?,slots=?,version=?,hello_ms=?,last_seen_ms=? WHERE id=?",
+                                  (platform, backend, runtime_id, slots, version, now_ms(), now_ms(), grader["id"]))
+            # A restarted grader cannot still be running its old leases.
+            leases = self.store.db.execute("SELECT id FROM grader_leases WHERE grader_id=? AND status='active'", (grader["id"],)).fetchall()
+        for (lease_id,) in leases:
+            self.end_lease(lease_id, "released", "grader_restarted")
+        return {"grader_id": grader["id"], "name": grader["name"], "lease_seconds": self.grader.lease_seconds,
+                "heartbeat_seconds": self.grader.heartbeat_seconds, "long_poll_seconds": self.grader.long_poll_seconds,
+                "hub_time_ms": now_ms()}
+
+    # ---- leases -------------------------------------------------------------------------
+    def try_lease(self, grader):
+        """Claim the best eligible queued job for this grader, or None."""
+        if self.before_next:
+            self.before_next()
+        if not grader.get("platform"):
+            raise Fault("invalid_request", "Call /grader/hello first")
+        with self.store.lock, self.store.db:
+            ident = self.pending.claim(grader["platform"], grader["runtime_id"])
+            if ident is None:
+                return None
             job = self.store.get(ident)
-            with self.active_lock:
-                self.active_jobs[threading.current_thread().name] = ident
-                self.active = ident
-            try:
-                for attempt in range(2):
-                    self.store.update(ident, worker=threading.current_thread().name, attempt=attempt+1,
-                                      lease_until_ms=int(time.time()*1000)+30000)
-                    try:
-                        self.execute(job)
-                        break
-                    except Fault as exc:
-                        if exc.code not in ("worker_error", "worker_unavailable") or attempt or self.stop.is_set():
-                            raise
-                        if not self.may_retry_in_place(ident):
-                            raise
-                        sandbox.invalidate_images()
-                        self.store.event(ident, "infrastructure_retry", {"attempt": attempt+1, "code": exc.code})
-                        self.store.update(ident, report=None, error=None)
-                        if self.stop.wait(0.5):
-                            raise
-            except Exception as exc:
-                code = exc.code if isinstance(exc, Fault) else "worker_error"
-                detail = str(exc)[:4000]
-                phase = self.store.get(ident).get("status")
-                if code in ("worker_unavailable", "worker_error"):
-                    sandbox.invalidate_images()
-                error = {"code": code, "detail": detail, "stage": {"building": "build", "validating": "startup", "playing": "turn", "benchmarking": "benchmark"}.get(phase, "preflight")}
-                if getattr(exc, "side", None):
-                    error["side"] = exc.side
-                self.store.update(ident, status="failed", error=error)
-                self.store.event(ident, "failed", error)
-            finally:
-                with self.active_lock:
-                    self.active_jobs.pop(threading.current_thread().name, None)
-                    self.active = next(iter(self.active_jobs.values()), None)
-                self.pending.task_done()
+            fencing = self.store.db.execute("SELECT COALESCE(MAX(fencing),0)+1 FROM grader_leases").fetchone()[0]
+            lease_id = uuid.uuid4().hex
+            expires = now_ms() + self.grader.lease_seconds * 1000
+            self.store.db.execute("INSERT INTO grader_leases(id,job_id,grader_id,fencing,created_ms,expires_ms,status) VALUES(?,?,?,?,?,?,'active')",
+                                  (lease_id, ident, grader["id"], fencing, now_ms(), expires))
+            job = self.store.update(ident, status="starting", lease_id=lease_id, fencing=fencing, lease_until_ms=expires,
+                                    worker=grader["name"], grader_id=grader["id"],
+                                    runtime={"platform": grader["platform"], "runtime_id": grader["runtime_id"], "backend": grader["backend"]},
+                                    leases=job.get("leases", 0) + 1)
+            self.store.event(ident, "leased", {"grader": grader["name"], "platform": grader["platform"], "fencing": fencing})
+            submissions = [self.lease_submission(job, index, ident_, grader) for index, ident_ in enumerate(job["submission_ids"])]
+        return {"lease_id": lease_id, "fencing": fencing, "expires_ms": expires, "heartbeat_seconds": self.grader.heartbeat_seconds,
+                "job": {k: v for k, v in job.items() if k not in ("report", "error")}, "submissions": submissions}
 
-    def may_retry_in_place(self, ident):
-        """Infrastructure retries reuse the job only before its first board state is published.
-
-        Once a match is visible, a second run under the same job would splice two games into one
-        replay. Such jobs fail instead; official fixtures go to "attention" and the organiser
-        retries them as a new attempt with its own event log.
-        """
-        return not any(e["type"] == "state" for e in self.store.events(ident))
-
-    def execute(self, job):
-        p = stored_profile(job["profile"])
-        move_engine = engine_for(job)
-        expected_engine = experimental.ENGINE_SHA256 if job.get("ruleset") else engine.ENGINE_SHA256
-        expected_sdk = experimental.sdk_hash() if job.get("ruleset") else sandbox.sdk_hash()
+    def lease_submission(self, job, index, ident, grader):
         official = job.get("official")
-        rules = policy(official.get("adjudication") if official else job.get("adjudication"))
         if official:
-            # Only the trusted competition scheduler can create this scope.
-            # Practice HTTP inputs never accept owners or official metadata.
-            if (job["kind"] != "match" or job["team_id"] != "competition:" + official["competition_id"]
-                    or len(official["entries"]) != 2 or official["engine_sha256"] != expected_engine
-                    or len(job["submission_ids"]) != 2 or job["profile"] != p.public()
-                    or official["sdk_sha256"] != expected_sdk
-                    or official.get("ruleset") != job.get("ruleset")
-                    or official.get("basic_rules") != job.get("basic_rules")
-                    or official.get("runtime_flags") is not None and official["runtime_flags"] != {r:runtime_flags(r) for r in ("cpp17","c11","python3")}
-                    or official["build_flags"] != BUILD_FLAGS):
-                raise Fault("provenance_mismatch", "Competition runtime no longer matches its locked configuration")
-            submissions = [self.store.get(s, entry["team_id"], "submission")
-                           for s, entry in zip(job["submission_ids"], official["entries"])]
-            if len(submissions) != 2 or any(s["source"] != entry["source"] for s, entry in zip(submissions, official["entries"])):
-                raise Fault("provenance_mismatch", "Locked source manifest changed")
+            owner = official["entries"][index]["team_id"]
+        elif job.get("sample_bot") and engine.SIDES[index] == job["sample_bot"].get("side", "blue"):
+            owner = job["sample_bot"]["owner"]
         else:
-            sample_side = (job.get("sample_bot") or {}).get("side", "blue")
-            submissions = [self.store.get(s, job["sample_bot"]["owner"] if job.get("sample_bot") and engine.SIDES[i] == sample_side else job["team_id"], "submission")
-                           for i,s in enumerate(job["submission_ids"])]
-        self.phase(job, "building")
-        built = []
-        for i, s in enumerate(submissions):
-            try:
-                built.append(self.ensure_artifact(job, s, p, require_existing=bool(official) and rules == CURRENT))
-            except Fault as exc:
-                if len(submissions) == 2:
-                    exc.side = engine.SIDES[i]  # lets the API hide only an organiser bot's build log
-                raise
-        if official and any(b[1]["artifact_sha256"] != entry["artifact_sha256"] for b, entry in zip(built, official["entries"])):
-            raise Fault("provenance_mismatch", "Competition must use the exact benchmarked binary")
-        report = {"job_id": job["id"], "kind": job["kind"], "engine_id": job.get("engine_id", engine.ENGINE_ID),
-                  "engine_sha256": expected_engine, "image_id": job["image_id"], "profile": p.public(),
-                  "artifacts": [b[1] for b in built], "samples": [], "startup": [], "sandbox_metrics": [],
-                  "clock_authority": "trusted-worker-monotonic", "eligible_for_tournament": bool(official), "adjudication": rules,
-                  "memory_scope": "whole container, including trusted Python supervisor",
-                  "cpu_scope": "whole container CPU delta; diagnostic, wall deadline decides timeout"}
-        if job.get("ruleset"):report.update(ruleset=job["ruleset"],protocol_version=3)
-        if job.get("basic_rules"):report["basic_rules"] = job["basic_rules"]
-        workers = []
-        startup_faults = []
+            owner = job["team_id"]
+        item = self.store.get(ident, owner, "submission")
+        build = self.store.db.execute("SELECT artifact_sha256 FROM builds WHERE submission_id=? AND platform=? AND runtime_id=?",
+                                      (ident, grader["platform"], grader["runtime_id"])).fetchone()
+        required = official["entries"][index]["artifact_sha256"] if official else None
+        artifact = required or (build[0] if build and (self.artifacts / grader["platform"] / build[0]).is_file() else None)
+        return {"id": ident, "team_id": owner, "version": item.get("version"), "runtime": item.get("runtime", "cpp17"),
+                "protocol_version": item.get("protocol_version", 2), "source": item["source"],
+                "source_url": f"/api/v1/grader/sources/{ident}",
+                "artifact_sha256": artifact, "artifact_required": bool(required),
+                "artifact_url": f"/api/v1/grader/artifacts/{grader['platform']}/{artifact}" if artifact else None}
+
+    def active_lease(self, grader, lease_id, fencing):
+        with self.store.lock:
+            row = self.store.db.execute("SELECT job_id,grader_id,fencing,status,expires_ms FROM grader_leases WHERE id=?", (lease_id,)).fetchone()
+        if not row or row[1] != grader["id"]:
+            raise Fault("not_found", "Lease not found")
+        if row[3] != "active" or row[2] != fencing or row[4] < now_ms():
+            raise Fault("stale_lease", "Lease is no longer held by this grader; stop the job")
+        return row[0]
+
+    def heartbeat(self, grader, lease_id, fencing):
+        job_id = self.active_lease(grader, lease_id, fencing)
+        expires = now_ms() + self.grader.lease_seconds * 1000
+        with self.store.lock, self.store.db:
+            self.store.db.execute("UPDATE grader_leases SET expires_ms=? WHERE id=?", (expires, lease_id))
+            self.store.update(job_id, lease_until_ms=expires, heartbeat_ms=now_ms())
+        return {"ok": True, "expires_ms": expires}
+
+    def post_events(self, grader, lease_id, fencing, events):
+        job_id = self.active_lease(grader, lease_id, fencing)
+        if not isinstance(events, list) or len(events) > MAX_EVENTS_PER_CALL:
+            raise Fault("invalid_request", f"events must be a list of at most {MAX_EVENTS_PER_CALL}")
+        for item in events:
+            if not isinstance(item, dict) or item.get("type") not in EVENT_TYPES or not isinstance(item.get("data"), dict):
+                raise Fault("invalid_request", "Unknown or malformed event")
+        with self.store.lock:
+            for item in events:
+                if item["type"] == "phase":
+                    phase = item["data"].get("phase")
+                    if phase not in ("building", "validating", "benchmarking", "playing"):
+                        raise Fault("invalid_request", "Unknown phase")
+                    self.store.update(job_id, status=phase)
+                self.store.event(job_id, item["type"], item["data"])
+        return {"ok": True, "accepted": len(events)}
+
+    def store_artifact(self, grader, lease_id, fencing, submission_id, sha256, data):
+        job_id = self.active_lease(grader, lease_id, fencing)
+        job = self.store.get(job_id)
+        if submission_id not in job["submission_ids"] or not SHA256.match(sha256 or ""):
+            raise Fault("invalid_request", "Artifact is not part of this lease")
+        if hashlib.sha256(data).hexdigest() != sha256 or not data or len(data) > 16 * 1024 * 1024:
+            raise Fault("invalid_request", "Artifact SHA-256 or size mismatch")
+        folder = self.artifacts / grader["platform"]
+        folder.mkdir(parents=True, exist_ok=True)
+        target = folder / sha256
+        if not target.is_file():
+            partial = folder / (sha256 + "." + uuid.uuid4().hex + ".part")
+            partial.write_bytes(data)
+            partial.replace(target)
+        with self.store.lock, self.store.db:
+            self.store.db.execute("INSERT OR REPLACE INTO builds VALUES(?,?,?,?,?,?)",
+                                  (submission_id, grader["platform"], grader["runtime_id"], sha256, grader["id"], now_ms()))
+        return {"ok": True, "artifact_sha256": sha256}
+
+    def artifact_path(self, grader, platform, sha256):
+        if platform not in PLATFORMS or not SHA256.match(sha256 or ""):
+            raise Fault("not_found", "Artifact not found")
+        path = self.artifacts / platform / sha256
+        if not path.is_file():
+            raise Fault("not_found", "Artifact not found")
+        return path
+
+    def source_archive(self, grader, submission_id):
+        """Source files of a submission in an active lease of this grader, as a ZIP."""
+        import io
+        import zipfile
+        with self.store.lock:
+            rows = self.store.db.execute("SELECT job_id FROM grader_leases WHERE grader_id=? AND status='active'", (grader["id"],)).fetchall()
+        for (job_id,) in rows:
+            job = self.store.get(job_id)
+            if submission_id in job["submission_ids"]:
+                item = self.store.get(submission_id, kind="submission")
+                folder = Path(item["source_path"])
+                buffer = io.BytesIO()
+                with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as bundle:
+                    for path in sorted(folder.iterdir()):
+                        if path.is_file() and not path.is_symlink():
+                            bundle.write(path, path.name)
+                return buffer.getvalue()
+        raise Fault("not_found", "Source not part of an active lease")
+
+    def submit_result(self, grader, lease_id, fencing, status, report, error):
+        job_id = self.active_lease(grader, lease_id, fencing)
+        if status not in TERMINAL:
+            raise Fault("invalid_request", "status must be completed, failed or aborted")
+        job = self.store.get(job_id)
+        if status == "failed" and not (isinstance(error, dict) and isinstance(error.get("code"), str)):
+            raise Fault("invalid_request", "failed needs error.code")
+        if report is not None and not isinstance(report, dict):
+            raise Fault("invalid_request", "report must be an object")
+        if report:
+            # The grader's identity is authoritative only as the hub recorded it at lease time.
+            report.update(job.get("runtime") or {})
         try:
-            self.phase(job, "validating")
-            for i, (artifact, _) in enumerate(built):
-                if self.stop.is_set():
-                    raise Fault("worker_error", "Controller stopped during startup; no result awarded")
-                w = sandbox.Worker(artifact, p, job["image_id"])
-                workers.append(w)
-                side = ("red", "blue")[i]
-                try:
-                    report["startup"].append({"side": side, **w.start(job["id"], side, {"kind": job["kind"], "adjudication": rules, **({"ruleset":job["ruleset"]} if job.get("ruleset") else {}), **({"basic_rules":job["basic_rules"]} if job.get("basic_rules") else {})})})
-                except Fault as exc:
-                    # Only a trusted supervisor response can establish a bot
-                    # fault. Transport/Docker/artifact failures never award wins.
-                    if (job["kind"] != "match" or rules != CURRENT or exc.code not in BOT_FAULTS
-                            or not hasattr(exc, "worker_data")):
-                        raise
-                    startup_faults.append({"side": side, "stage": "startup", "code": exc.code, "detail": exc.detail})
-            if job["kind"] == "benchmark":
-                self.run_benchmark(job, workers[0], report, p)
-            elif startup_faults:
-                if self.stop.is_set():
-                    raise Fault("worker_error", "Controller stopped during startup; no result awarded")
-                report["startup_faults"] = startup_faults
-                state = move_engine.initial_state()
-                clocks = {side:p.match_ms for side in engine.SIDES} if p.match_ms is not None else None
-                self.emit_state(job, state, clocks=clocks)
-                winner = engine.other(startup_faults[0]["side"]) if len(startup_faults) == 1 else None
-                reason = "startup_failure" if winner else "double_startup_failure"
-                state = engine.finish(state, winner, reason)
-                report["result"], report["final_state"] = state["result"], state
-                self.emit_state(job, state, clocks=clocks)
-                if clocks is not None:report["clocks"] = clocks
-            else:
-                self.run_match(job, workers, report, p)
+            verify(job, status, report)
         except Fault as exc:
-            report["error"] = {"code": exc.code, "detail": exc.detail}
-            raise
-        finally:
-            for w in workers:
-                report["sandbox_metrics"].append(w.close())
-            report["turn_wall_ms"] = summary(report["samples"])
-            self.store.update(job["id"], report=report)
-        status = "aborted" if report.get("aborted") else "completed"
-        self.store.update(job["id"], status=status)
-        self.store.event(job["id"], status, {"result": report.get("result"), "summary": report["turn_wall_ms"], "reason": report.get("aborted")})
-
-    def emit_state(self, job, state, trace=None, clocks=None):
-        data = {"state":state,"counts":engine.counts(state)}
-        if clocks is not None:data["clocks"] = dict(clocks)
-        if job.get('ruleset'):data.update(ruleset=job['ruleset'],events=trace or [])
-        self.store.event(job['id'],'state',data)
-
-    def message(self, job, turn_id, state, clocks=None):
-        payload = engine_for(job).observation(state)
-        if job.get("basic_rules"):payload["basic_rules"] = job["basic_rules"]
-        payload["adjudication"] = policy(job.get("official", {}).get("adjudication") if job.get("official") else job.get("adjudication"))
-        if clocks is not None:payload["clocks"] = dict(clocks)
-        return {"protocol_version": 3 if job.get("ruleset") else 2, "type": "observation", "match_id": job["id"],
-                "turn_id": str(turn_id), "state_version": state["ply"], "payload": payload}
-
-    def run_benchmark(self, job, worker, report, p):
-        move_engine = engine_for(job)
-        cases = fixtures(move_engine)
-        report["suite_id"] = "ottv2-experimental-smoke-v1" if job.get("ruleset") else "ottv2-public-smoke-v1"
-        report["suite_sha256"] = digest(cases)
-        report["warmups"] = 0
-        clocks = {side:p.match_ms for side in engine.SIDES} if p.match_ms is not None else None
-        if clocks is not None:report["clock_scope"] = "one cumulative bank across all 72 benchmark samples"
-        self.phase(job, "benchmarking", total=len(cases) * 3)
-        for index, case in enumerate(cases * 3):
-            if self.stop.is_set():
-                raise Fault("worker_error", "Controller stopping")
-            result = worker.turn(self.message(job, index + 1, case["state"], clocks))
-            if clocks is not None:clocks["red"] = result["remaining_ms"]
-            action = result.pop("message")["payload"]
-            if isinstance(action, dict) and "resign" in action:
-                raise Fault("illegal_action", "Benchmark expects a legal move, not resignation")
-            try:
-                move_engine.apply(case["state"], action)
-            except ValueError as exc:
-                raise Fault("illegal_action", str(exc)) from exc
-            report["samples"].append({"case_id": case["id"], "repeat": index // len(cases), **result})
-            self.store.event(job["id"], "progress", {"completed": index + 1, "total": len(cases) * 3})
-        report["passed"] = True
-        if clocks is not None:report["clocks"] = clocks
-
-    def run_match(self, job, workers, report, p):
-        self.phase(job, "playing")
-        move_engine = engine_for(job)
-        key_of = move_engine.position_key if job.get("ruleset") else position_key
-        state = move_engine.initial_state()
-        rules = policy(job.get("official", {}).get("adjudication") if job.get("official") else job.get("adjudication"))
-        seen = {key_of(state): 1}
-        started = time.monotonic_ns()
-        clocks = {side:p.match_ms for side in engine.SIDES} if p.match_ms is not None else None
-        self.emit_state(job, state, clocks=clocks)
-        for turn in range(1, p.max_plies + 1):
-            if self.stop.is_set():
-                report["aborted"] = "server_shutdown"
-                break
-            if (time.monotonic_ns() - started) / 1e6 >= p.job_wall_ms:
-                if rules == CURRENT:
-                    state = engine.finish(state, None, "wall_limit")
-                else:
-                    report["aborted"] = "job_wall_limit_or_shutdown"
-                break
-            side = state["to_move"]
-            worker = workers[0 if side == "red" else 1]
-            def on_started(data):
-                self.store.event(job["id"], "turn_started", {"side": side, "turn_id": str(turn), **data,
-                    **({"clocks":dict(clocks)} if clocks is not None else {})})
-            action = None
-            trace = []
-            try:
-                result = worker.turn(self.message(job, turn, state, clocks), on_started)
-                if clocks is not None:clocks[side] = result["remaining_ms"]
-                action = result.pop("message")["payload"]
-                report["samples"].append({"side": side, "turn_id": str(turn), **result})
-                state, trace = move_engine.transition(state, action) if job.get("ruleset") else (engine.apply(state, action), [])
-            except (Fault, ValueError) as exc:
-                code = exc.code if isinstance(exc, Fault) else "illegal_action"
-                if code in ("worker_error", "worker_unavailable"):
-                    raise
-                if clocks is not None:
-                    clocks[side] = getattr(exc, "worker_data", {}).get("remaining_ms", clocks[side])
-                if code == "timeout":
-                    if clocks is not None:clocks[side] = 0
-                    # Grace is exclusively a delay before the opponent's
-                    # delegated claim; late actions never revive this turn.
-                    self.store.event(job["id"], "timeout_pending", {"side": side, "grace_ms": p.grace_ms,
-                        **({"clocks":dict(clocks)} if clocks is not None else {})})
-                    grace_started_ns = time.monotonic_ns()
-                    if self.stop.wait(p.grace_ms / 1000):
-                        raise Fault("worker_error", "Shutdown during grace; no time loss awarded")
-                    grace_waited_ms = (time.monotonic_ns() - grace_started_ns) / 1e6
-                    self.store.event(job["id"], "timeout_claimed", {"claimant": engine.other(side), "by": "server_delegate",
-                        "grace_waited_ms": grace_waited_ms, "grace_clock": "controller-monotonic"})
-                state = engine.finish(state, engine.other(side), code)
-                report["fault"] = {"side": side, "stage": "turn", "turn_id": str(turn), "state_version": state["ply"],
-                                   "code": code, "detail": str(exc), "action": action}
-            if not state["result"] and rules == CURRENT:
-                key = key_of(state)
-                seen[key] = seen.get(key, 0) + 1
-                if seen[key] >= rules["repetition_count"]:
-                    state = engine.finish(state, None, "threefold_repetition")
-            self.emit_state(job, state, trace, clocks=clocks)
-            if state["result"]:
-                report["result"] = state["result"]
-                break
-        else:
-            if rules == CURRENT:
-                state = engine.finish(state, None, "ply_limit")
+            status, error = "failed", {"code": exc.code, "detail": exc.detail[:500], "stage": "verify"}
+        with self.store.lock, self.store.db:
+            self.store.db.execute("UPDATE grader_leases SET status='completed',ended_ms=? WHERE id=?", (now_ms(), lease_id))
+            self.store.db.execute("UPDATE graders SET jobs_done=jobs_done+1 WHERE id=?", (grader["id"],))
+            fields = {"status": status, "report": report}
+            if status == "failed":
+                fields["error"] = error
+            self.store.update(job_id, **fields)
+            if status == "failed":
+                self.store.event(job_id, "failed", error)
             else:
-                report["aborted"] = "ply_limit"
-        # Limits are checked between turns, never by UTC or browser clocks.
-        # Emit the terminal board as well as completed for replay consistency.
-        if state["result"] and "result" not in report:
-            report["result"] = state["result"]
-            self.emit_state(job, state, clocks=clocks)
-        report["final_state"] = state
-        if clocks is not None:report["clocks"] = clocks
+                self.store.event(job_id, status, {"result": (report or {}).get("result"), "summary": (report or {}).get("turn_wall_ms"),
+                                                  "reason": (report or {}).get("aborted")})
+        if self.competitions and job.get("official"):
+            self.competitions.reconcile()
+        return {"ok": True, "status": status, **({"error": error} if status == "failed" else {})}
+
+    def release(self, grader, lease_id, fencing, reason="released"):
+        self.active_lease(grader, lease_id, fencing)
+        self.end_lease(lease_id, "released", reason if isinstance(reason, str) and len(reason) <= 60 else "released")
+        return {"ok": True}
+
+    def end_lease(self, lease_id, status, reason):
+        """Lease lost (expired, released, revoked): the job never keeps a half result."""
+        with self.store.lock, self.store.db:
+            row = self.store.db.execute("SELECT job_id,status FROM grader_leases WHERE id=?", (lease_id,)).fetchone()
+            if not row or row[1] != "active":
+                return
+            self.store.db.execute("UPDATE grader_leases SET status=?,ended_ms=?,reason=? WHERE id=?", (status, now_ms(), reason, lease_id))
+            job = self.store.get(row[0])
+            if job["status"] in TERMINAL or job.get("lease_id") != lease_id:
+                return
+            if job.get("official"):
+                # Infrastructure failure: no result. Competitions.reconcile schedules a new attempt.
+                self.store.update(job["id"], status="aborted", error={"code": "worker_lost", "detail": f"Grader lease {status}: {reason}"})
+                self.store.event(job["id"], "aborted", {"code": "worker_lost"})
+            else:
+                restarts = job.get("restarts", 0) + 1
+                self.store.update(job["id"], status="queued", report=None, error=None, lease_id=None, restarts=restarts)
+                self.store.event(job["id"], "requeued", {"reason": reason, "restart": restarts})
+                requires = job.get("requires") or {}
+                self.pending.put(job["id"], kind=job.get("kind"), platform=requires.get("platform"),
+                                 runtime_id=requires.get("runtime_id"), front=True)
+        if job.get("official") and self.competitions:
+            self.competitions.reconcile()
+
+    def reap(self):
+        with self.store.lock:
+            expired = [r[0] for r in self.store.db.execute("SELECT id FROM grader_leases WHERE status='active' AND expires_ms<?", (now_ms(),))]
+        for lease_id in expired:
+            self.end_lease(lease_id, "expired", "lease_expired")
+        return len(expired)
+
+    def reap_loop(self):
+        while not self.stop.wait(1):
+            try:
+                self.reap()
+            except Exception:  # pragma: no cover - logged by the caller's process
+                import logging
+                logging.getLogger("arena.service").exception("Lease reaper failed")

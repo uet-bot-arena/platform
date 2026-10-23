@@ -11,17 +11,25 @@ import uuid
 
 from arena import engine, sandbox, experimental, basic_rules
 from arena.adjudication import CURRENT, LEGACY, policy, valid_result
-from arena.config import BUILD_FLAGS, PYTHON_TOOLCHAIN, request_profile, stored_profile, worker_image, scale_profile, runtime_flags
+from arena.config import BUILD_FLAGS, PYTHON_TOOLCHAIN, request_profile, stored_profile, scale_profile, runtime_flags
 from arena.protocol import Fault
 from arena.service import TERMINAL, digest, fixtures
 from arena_api.accounts import now_ms
 
 SCORING = {'win': 3, 'draw': 1, 'loss': 0}
+# Attempt failures caused by the platform, never by a bot: retried automatically up to K times.
+INFRASTRUCTURE = ("worker_lost", "worker_error", "worker_unavailable", "server_restart", "server_shutdown")
+
+
+def runtime_of(report):
+    """runtime_id recorded in a report or build manifest (Docker-era reports used image_id)."""
+    return (report or {}).get("runtime_id") or (report or {}).get("image_id")
 
 
 class Competitions:
-    def __init__(self, store, service, accounts):
+    def __init__(self, store, service, accounts, max_attempts=3):
         self.store, self.service, self.accounts = store, service, accounts
+        self.max_attempts = max_attempts
         self.schedule_lock = threading.Lock()
         service.competitions = self
         self.db = store.db
@@ -83,16 +91,25 @@ class Competitions:
             self.db.execute("INSERT INTO competition_commands VALUES(?,?,?,?,?)", (actor, operation, key, hashed, json.dumps(result)))
             return result
 
+    @staticmethod
+    def platform_of(config):
+        """(grader_platform, runtime_id) official work must run on. Docker-era configs: linux + image."""
+        return config.get("grader_platform", "linux"), runtime_of(config)
+
     def create(self, actor, body, key):
         def prepare():
             snapshot = self.service.rulesets.resolve(body.get("ruleset_id")) if self.service.rulesets else None
+            platform = body.get("grader_platform", "windows")
+            runtime_id = body.get("runtime_id") or self.service.runtime_for(platform)
+            if not runtime_id:
+                raise Fault("competition_conflict", f"Chưa có máy chấm {platform} nào kết nối; chạy máy chấm trước hoặc ghi rõ runtime_id")
             config = {"format": "double_round_robin", "ranking": "points_shared_rank", "scoring": dict(SCORING), "max_teams": body["max_teams"], "adjudication": dict(CURRENT),
                       "profile": request_profile(body).public(), "runtime": "cpp17", "protocol_version": 2,
-                      "image_id": sandbox.image_id(worker_image(request_profile(body))), "engine_id": engine.ENGINE_ID, "engine_sha256": engine.ENGINE_SHA256,
+                      "grader_platform": platform, "runtime_id": runtime_id, "engine_id": engine.ENGINE_ID, "engine_sha256": engine.ENGINE_SHA256,
                       "sdk_sha256": sandbox.sdk_hash(),
                       "build_flags": BUILD_FLAGS, "suite_id": "ottv2-public-smoke-v1", "suite_sha256": self.suite_sha256}
             if snapshot:
-                config.update(ruleset=snapshot,protocol_version=3,image_id=sandbox.image_id(worker_image(request_profile(body), True)),engine_id=experimental.ENGINE_ID,
+                config.update(ruleset=snapshot,protocol_version=3,engine_id=experimental.ENGINE_ID,
                               engine_sha256=experimental.ENGINE_SHA256,sdk_sha256=experimental.sdk_hash(),suite_id='ottv2-experimental-smoke-v1',
                               suite_sha256=digest(fixtures(experimental.provider(snapshot))))
             if body.get("basic_rules"):
@@ -201,10 +218,10 @@ class Competitions:
                 or (report.get("basic_rules") or {}).get("hash") != (config.get("basic_rules") or {}).get("hash")
                 or report.get("error") or report.get("aborted") or len(report.get("samples", [])) != 72
                 or (report.get("turn_wall_ms") or {}).get("samples") != 72
-                or report.get("profile") != config["profile"] or report.get("image_id") != config["image_id"]
+                or report.get("profile") != config["profile"] or runtime_of(report) != runtime_of(config)
                 or report.get("engine_sha256") != config["engine_sha256"] or report.get("suite_sha256") != config["suite_sha256"]
                 or report.get("suite_id") != config["suite_id"] or artifact.get("source") != source.get("source")
-                or artifact.get("image_id") != config["image_id"] or artifact.get("sdk_sha256") != config["sdk_sha256"]
+                or runtime_of(artifact) != runtime_of(config) or artifact.get("sdk_sha256") != config["sdk_sha256"]
                 or artifact.get("flags") != config.get("runtime_flags",{"cpp17":config["build_flags"]}).get(source.get("runtime")) or not artifact.get("artifact_sha256")
                 or artifact.get("runtime", "cpp17") != source.get("runtime")):
             raise Fault("qualification_required", "A completed 72-sample benchmark under this exact competition profile/toolchain is required")
@@ -297,7 +314,8 @@ class Competitions:
             if row["status"] != "attention":
                 raise Fault("competition_conflict", "Only an unscored failed/aborted attempt can be retried")
             number = self.db.execute("SELECT COUNT(*) FROM competition_attempts WHERE fixture_id=?", (fixture_id,)).fetchone()[0]
-            self.db.execute("UPDATE competition_fixtures SET status='pending' WHERE id=?", (fixture_id,))
+            # A manual retry gives the fixture a fresh budget of automatic infrastructure retries.
+            self.db.execute("UPDATE competition_fixtures SET status='pending',auto_retries=0 WHERE id=?", (fixture_id,))
             return {"id": fixture_id, "status": "pending", "next_attempt": number + 1}
         return self.command(actor, "retry:" + fixture_id, key, {}, action)
 
@@ -319,12 +337,15 @@ class Competitions:
                          and (report.get("ruleset") or {}).get("hash") == (config.get("ruleset") or {}).get("hash")
                          and (report.get("basic_rules") or {}).get("hash") == (config.get("basic_rules") or {}).get("hash")
                          and report.get("engine_sha256") == config["engine_sha256"]
-                         and report.get("image_id") == config["image_id"] and report.get("profile") == config["profile"])
+                         and runtime_of(report) == runtime_of(config) and report.get("profile") == config["profile"])
                 status = "completed" if valid else "attention"
                 error = None if valid else (job.get("error") or report.get("error") or {}).get("code", "unscored_attempt")
-                self.db.execute("UPDATE competition_fixtures SET status=?,result=? WHERE id=?", (status, json.dumps(result) if valid else None, row["id"]))
+                retry = not valid and error in INFRASTRUCTURE and row["auto_retries"] < self.max_attempts
+                fixture_status = "pending" if retry else status
+                self.db.execute("UPDATE competition_fixtures SET status=?,result=?,auto_retries=auto_retries+? WHERE id=?",
+                                (fixture_status, json.dumps(result) if valid else None, int(retry), row["id"]))
                 self.db.execute("UPDATE competition_attempts SET status=?,error_code=? WHERE job_id=?", (status, error, job["id"]))
-                self.accounts.audit("system", "competition.result" if valid else "competition.attention", row["id"])
+                self.accounts.audit("system", "competition.result" if valid else "competition.retry" if retry else "competition.attention", row["id"])
             for row in self.rows("SELECT id FROM competitions WHERE status IN ('running','paused')"):
                 remaining = self.db.execute("SELECT COUNT(*) FROM competition_fixtures WHERE competition_id=? AND status<>'completed'", (row["id"],)).fetchone()[0]
                 if remaining == 0 and self.get(row["id"])["config"].get("format") == "swiss":
@@ -406,9 +427,10 @@ class Competitions:
             self.check_runtime(config)
             entries = [json.loads(self.one("SELECT snapshot FROM competition_entries WHERE competition_id=? AND team_id=?", (item["id"], row[side + "_team_id"]))["snapshot"]) for side in engine.SIDES]
             number = self.db.execute("SELECT COUNT(*)+1 FROM competition_attempts WHERE fixture_id=?", (row["id"],)).fetchone()[0]
+            platform, runtime_id = self.platform_of(config)
             job = {"id": uuid.uuid4().hex, "team_id": "competition:" + item["id"], "created_unix_ms": now_ms(),
                    "kind": "match", "status": "queued", "submission_ids": [e["submission_id"] for e in entries],
-                   "profile": config["profile"], "image_id": config["image_id"], "engine_id": config["engine_id"],
+                   "profile": config["profile"], "requires": {"platform": platform, "runtime_id": runtime_id}, "engine_id": config["engine_id"],
                    "engine_sha256": config["engine_sha256"], "report": None, "error": None,
                    **({"basic_rules":config["basic_rules"]} if config.get("basic_rules") else {}),
                    **({"ruleset":config["ruleset"],"protocol_version":3} if config.get("ruleset") else {}),
@@ -426,7 +448,7 @@ class Competitions:
                 self.db.execute("INSERT INTO events VALUES(?,?,?)", (job["id"], 1, json.dumps(event)))
             # Practice enqueue also holds store.lock; the only other queue
             # operation here is dequeue. A slot cannot be stolen after commit.
-            self.service.pending.put_official(job["id"])
+            self.service.pending.put_official(job["id"], platform, runtime_id)
 
     def loop(self):
         while not self.stop.wait(0.2):
@@ -461,7 +483,7 @@ class Competitions:
 
     @staticmethod
     def public_config(config):
-        value = {k:v for k,v in config.items() if k not in ("image_id", "engine_sha256", "sdk_sha256", "suite_sha256")}
+        value = {k:v for k,v in config.items() if k not in ("image_id", "runtime_id", "engine_sha256", "sdk_sha256", "suite_sha256")}
         if value.get("ruleset"):
             value["ruleset"] = {k:v for k,v in value["ruleset"].items() if k not in ("engine_sha256", "sdk_sha256")}
         return value

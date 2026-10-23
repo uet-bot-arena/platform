@@ -9,6 +9,7 @@ from arena.adjudication import CURRENT, LEGACY, policy, position_key, valid_resu
 from arena.config import profile
 from arena.job_queue import DurableJobQueue
 from arena.protocol import Fault
+from arena.runner import LocalRunner
 from arena.service import Service
 from arena.store import Store
 
@@ -20,6 +21,7 @@ class Adjudication(unittest.TestCase):
         self.store = Store(self.tmp.name, recover_jobs=False)
         self.addCleanup(self.store.db.close)
         self.service = Service(self.store, start_worker=False)
+        self.runner = LocalRunner(self.store)
 
     def job(self, rules=CURRENT):
         return self.store.create('job', 'unit-team', {'kind': 'match', 'status': 'queued',
@@ -32,7 +34,7 @@ class Adjudication(unittest.TestCase):
         workers = [Mock(turn=lambda *_: {'message': {'payload': next(red)}, 'wall_ms': 1}),
                    Mock(turn=lambda *_: {'message': {'payload': next(blue)}, 'wall_ms': 1})]
         report = {'samples': []}
-        self.service.run_match(job, workers, report, replace(profile(), **limits))
+        self.runner.run_match(job, workers, report, replace(profile(), **limits))
         return job, report
 
     def test_threefold_counts_initial_position_and_side_to_move(self):
@@ -52,7 +54,7 @@ class Adjudication(unittest.TestCase):
                 job, report = self.play(**limits)
                 self.assertEqual(report['result'], {'winner': None, 'reason': reason})
                 self.assertEqual([e['data']['state'] for e in self.store.events(job['id']) if e['type']=='state'][-1], report['final_state'])
-        self.service.stop.set()
+        self.runner.stop.set()
         _, report = self.play()
         self.assertEqual(report['aborted'], 'server_shutdown')
         self.assertNotIn('result', report)
@@ -72,7 +74,7 @@ class Adjudication(unittest.TestCase):
             with patch('arena.store.time.time_ns', return_value=wall):
                 return emit(ident, kind, data)
         with patch.object(self.store, 'event', side_effect=backward_wall):
-            self.service.run_match(job, [worker, worker], report, replace(profile(), grace_ms=20))
+            self.runner.run_match(job, [worker, worker], report, replace(profile(), grace_ms=20))
         events = self.store.events(job['id'])
         pending = next(e for e in events if e['type'] == 'timeout_pending')
         claimed = next(e for e in events if e['type'] == 'timeout_claimed')
@@ -84,9 +86,9 @@ class Adjudication(unittest.TestCase):
     def test_shutdown_during_grace_never_claims_or_awards_timeout(self):
         job, report = self.job(), {'samples': []}
         worker = Mock(turn=Mock(side_effect=Fault('timeout', 'unit deadline')))
-        with patch.object(self.service.stop, 'wait', return_value=True):
+        with patch.object(self.runner.stop, 'wait', return_value=True):
             with self.assertRaises(Fault) as caught:
-                self.service.run_match(job, [worker, worker], report, profile())
+                self.runner.run_match(job, [worker, worker], report, profile())
         self.assertEqual(caught.exception.code, 'worker_error')
         self.assertNotIn('result', report)
         self.assertFalse(any(e['type'] == 'timeout_claimed' for e in self.store.events(job['id'])))
@@ -96,8 +98,8 @@ class Adjudication(unittest.TestCase):
         state['board'][1][7] = {'side': 'red', 'kind': 'rock'}
         worker = Mock(turn=lambda *_: {'message': {'payload': {'from':'h8','to':'i9'}}, 'wall_ms':1})
         report = {'samples': []}
-        with patch('arena.service.engine.initial_state', return_value=state):
-            self.service.run_match(self.job(), [worker, worker], report, replace(profile(), max_plies=1))
+        with patch('arena.runner.engine.initial_state', return_value=state):
+            self.runner.run_match(self.job(), [worker, worker], report, replace(profile(), max_plies=1))
         self.assertEqual(report['result'], {'winner':'red','reason':'base_capture'})
 
     def execute_startup(self, faults, rules=CURRENT):
@@ -112,8 +114,8 @@ class Adjudication(unittest.TestCase):
             w.start.side_effect = fault
             w.start.return_value = {'wall_ms': 1}
             workers.append(w)
-        with patch.object(self.service, 'ensure_artifact', return_value=(Path(self.tmp.name), {})), patch('arena.sandbox.Worker', side_effect=workers):
-            self.service.execute(job)
+        with patch.object(self.runner, 'ensure_artifact', return_value=(Path(self.tmp.name), {})), patch('arena.sandbox.Worker', side_effect=workers):
+            self.runner.execute(job)
         return self.store.get(job['id'])
 
     @staticmethod
@@ -145,7 +147,7 @@ class Adjudication(unittest.TestCase):
 
     def test_missing_locked_artifact_requires_restore_without_build(self):
         with patch('arena.sandbox.build') as build, self.assertRaises(Fault) as raised:
-            self.service.ensure_artifact(self.job(), {'source':{}, 'source_path':self.tmp.name}, profile(), require_existing=True)
+            self.runner.ensure_artifact(self.job(), {'source':{}, 'source_path':self.tmp.name}, profile(), require_existing=True)
         self.assertEqual(raised.exception.code, 'artifact_missing')
         build.assert_not_called()
 

@@ -190,14 +190,17 @@ class Persistence(unittest.TestCase):
             self.assertEqual(reopened.get(a["id"])["source"], a["source"])
             reopened.db.close()
 
-    def test_worker_unavailable_fails_closed(self):
+    def test_jobs_wait_in_the_queue_while_no_grader_is_online(self):
+        # Gói 3: the hub never runs bots; without a grader the job simply waits (no Docker needed).
         with tempfile.TemporaryDirectory() as tmp:
             store = Store(tmp)
             service = Service(store, start_worker=False)
             s = service.submit("a", "v1.0.0", "cpp17", archive({"bot.cpp": "x"}), "source-key-1")
-            with patch("arena.sandbox.image_id", side_effect=Fault("worker_unavailable", "offline")), self.assertRaises(Fault):
-                service.enqueue("a", "benchmark", {"submission_id": s["id"]}, "job-key-1")
-            self.assertEqual(store.list("job"), [])
+            job = service.enqueue("a", "benchmark", {"submission_id": s["id"]}, "job-key-1")
+            self.assertEqual((job["status"], job["queue_position"]), ("queued", 1))
+            self.assertEqual(job["requires"], {"platform": None, "runtime_id": None})
+            self.assertEqual(service.health()["graders_online"], 0)
+            self.assertTrue(service.health()["ready"])
             store.db.close()
 
 

@@ -7,6 +7,7 @@ import {MatchBoard,boardPage} from './board.js';
 import {CompetitionFollow} from './follow.js';
 import {patchChildren} from './patch.js';
 import {adminTeamsBody,operationsBody} from './admin-ui.js';
+import {graderTokenModal} from './graders-ui.js';
 import {loadBotGuide} from './bot-guide.js';
 import {publicRoute} from './access.js';
 import {readRuleForm,ruleEditor,rulePreviewMarkup,botRulesetField,botRulesetSelection,ruleFingerprint} from './experimental-ui.js';
@@ -14,7 +15,7 @@ import {readRuleForm,ruleEditor,rulePreviewMarkup,botRulesetField,botRulesetSele
 const api=new ArenaAPI(),app=document.getElementById('app'),modalRoot=document.getElementById('modal-root');
 const defaults=()=>({team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
 const s={...defaults(),user:null,route:'home',ids:[],loading:false,adminTab:'accounts',registrationStatus:'pending',adminVisibility:'active',adminSearch:'',adminPage:1,opsTab:'jobs',opsPage:1,opsSearch:'',opsStatus:'',opsKind:'',opsTeam:''};
-let generation=0,board,competitionFeed,jobFeed,toastTimer,modalFocus,returnTo='home',issued=null,refreshingGeneration=null;
+let generation=0,board,competitionFeed,jobFeed,toastTimer,modalFocus,returnTo='home',issued=null,issuedGrader=null,refreshingGeneration=null;
 const authChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('uet-arena-session'):null;
 authChannel?.addEventListener('message',async()=>{try{const session=await api.request('/auth/me');Object.assign(s,defaults(),{user:session.user});openRoute();}catch(e){if(e.status===401){clearAccount();go('login');}else handleError(e);}});
 const authChanged=()=>authChannel?.postMessage({type:'changed'});
@@ -60,6 +61,7 @@ async function loadData(route,ids,q){
     work.push(api.all('/admin/accounts').then(x=>data.accounts=x));
   }
   if(route==='audit')work.push(api.all('/admin/audit').then(x=>data.audit=x));
+  if(route==='graders')work.push(api.request('/admin/graders').then(x=>data.graders=x));
   const settled=await Promise.allSettled(work);for(const item of settled)if(item.status==='rejected')throw item.reason;
   const cid=route==='competitions'?ids[0]:['arena','replay'].includes(route)?ids[0]==='practice'?null:ids[0]:route==='benchmark'?q.get('competition'):['schedule','live','standings'].includes(route)?q.get('competition')||data.competitions?.find(c=>!c.archived_ms)?.id:null;
   if(cid){
@@ -74,12 +76,12 @@ async function loadData(route,ids,q){
 async function openRoute(){
   const parsed=parseRoute(),id=++generation;clearView();
   if(parsed.route==='experimental'){history.replaceState(null,'','#/rulesets');openRoute();return;}
-  const supported=['home','login','register','recover','change-password','guide','team','submissions','benchmark','practice','competitions','jobs','admin','operations','rulesets','audit','schedule','live','standings','arena','replay'];
+  const supported=['home','login','register','recover','change-password','guide','team','submissions','benchmark','practice','competitions','jobs','admin','operations','graders','rulesets','audit','schedule','live','standings','arena','replay'];
   if(!supported.includes(parsed.route)){go('home');return;}
   if(!s.user&&!publicRoute(parsed.route,parsed.ids)){returnTo=parsed.raw;go('login');return;}
   if(s.user?.must_change_password&&parsed.route!=='change-password'){go('change-password');return;}
   if(s.user&&['login','register'].includes(parsed.route)){go('home');return;}
-  if(s.user?.role!=='admin'&&['admin','audit','operations'].includes(parsed.route)){go('home');return;}
+  if(s.user?.role!=='admin'&&['admin','audit','operations','graders'].includes(parsed.route)){go('home');return;}
   if(s.user?.role==='admin'&&['team','submissions','benchmark','practice','jobs'].includes(parsed.route)){go('home');return;}
   Object.assign(s,defaults(),parsed,{loading:!['login','register','recover','change-password'].includes(parsed.route),error:null,menuOpen:false});render();
   if(parsed.route==='admin'&&['accounts','registrations','recoveries'].includes(parsed.query.get('tab')))s.adminTab=parsed.query.get('tab');
@@ -200,6 +202,8 @@ document.addEventListener('submit',e=>{
       if(form.dataset.id){await api.post('/admin/teams/'+form.dataset.id+'/edit',{...profile,expected_revision:Number(form.dataset.revision)});closeModal();toast('Đã sửa thông tin đội.');}
       else{const body={profile,username:v('username')};if(data.get('temporary-password'))body.temporary_password=data.get('temporary-password');credentialModal(await api.post('/admin/teams',body));}
       await refreshAdmin();
+    }else if(form.id==='grader-form'){
+      const item=await api.post('/admin/graders',{name:v('name')});form.reset();issuedGrader=item;modal('Mã máy chấm',graderTokenModal(item));
     }else if(form.id==='entry-form'){
       const [submission_id,benchmark_id]=v('qualified').split(':');await api.post('/competitions/'+s.competition.id+'/entry',{submission_id,benchmark_id,delegate_timeout_claims:data.get('delegate')==='on'},keyFor(form));toast('Đã chọn bot dự giải.');openRoute();
     }else if(form.id==='approve-form'){
@@ -283,7 +287,7 @@ function modal(title,body){
   modalRoot.innerHTML=`<div class="modal-overlay"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-head"><h2 id="modal-title">${esc(title)}</h2><button class="icon-btn" data-action="close-modal" aria-label="Đóng">${icon('x')}</button></div><div class="modal-body">${body}</div></section></div>`;
   document.body.classList.add('modal-open');modalRoot.querySelector('input,button,a')?.focus();
 }
-function closeModal(){modalRoot.replaceChildren();document.body.classList.remove('modal-open');issued=null;if(modalFocus?.isConnected)modalFocus.focus();modalFocus=null;}
+function closeModal(){modalRoot.replaceChildren();document.body.classList.remove('modal-open');issued=null;issuedGrader=null;if(modalFocus?.isConnected)modalFocus.focus();modalFocus=null;}
 function confirmAction(title,text,task){modal(title,`<p>${esc(text)}</p><div class="form-error" role="alert"></div><div class="modal-actions">${button('Hủy','close-modal')}${button('Xác nhận','confirm-action','','primary')}</div>`);const b=modalRoot.querySelector('[data-action="confirm-action"]');b.addEventListener('click',async()=>{b.disabled=true;try{await task();closeModal();toast('Đã cập nhật.');openRoute();}catch(e){const el=modalRoot.querySelector('.form-error');el.textContent=e.message;el.classList.add('visible');b.disabled=false;if(e.status===401)expired();}});}
 function credentialModal(credential){issued=credential;modal('Tài khoản đã được cấp',`<p>Mật khẩu chỉ được trả ở lần cấp này. Hãy sao chép và phát qua kênh của ban tổ chức. Đội sẽ phải đổi khi đăng nhập.</p><label class="field"><span>Tên đăng nhập</span><div class="credential-value">${esc(credential.account.username)}</div></label><label class="field"><span>Mật khẩu tạm</span><div class="credential-value" id="issued-password">${esc(credential.temporary_password)}</div></label><div class="modal-actions">${button('Sao chép thông tin','copy-credential','','primary')}${button('Đã phát cho đội','credential-delivered')}${button('Đóng','close-modal')}</div>`);}
 function teamForm(account){
@@ -350,6 +354,8 @@ document.addEventListener('click',async e=>{
     }
     if(action==='account-lock'){const locked=b.dataset.locked!=='true';confirmAction(locked?'Khóa tài khoản?':'Mở khóa tài khoản?',locked?'Đội sẽ bị đăng xuất và không thể đăng nhập cho tới khi mở khóa.':'Đội có thể đăng nhập lại với mật khẩu hiện tại.',()=>api.post('/admin/accounts/'+b.dataset.id+'/lock',{locked}));return;}
     if(action==='delivered'){b.disabled=true;await api.post('/admin/accounts/'+b.dataset.id+'/delivered');await refreshAdmin();return;}
+    if(action==='copy-grader-token'){if(issuedGrader){await navigator.clipboard.writeText(issuedGrader.token);toast('Đã sao chép mã máy chấm.');}return;}
+    if(action==='revoke-grader'){if(!confirm('Thu hồi mã của máy chấm "'+b.dataset.name+'"? Máy này sẽ mất kết nối, trận đang chạy được giao lại máy khác.'))return;b.disabled=true;await api.post('/admin/graders/'+b.dataset.id+'/revoke');toast('Đã thu hồi mã máy chấm.');openRoute();return;}
     if(action==='copy-credential'){if(issued){await navigator.clipboard.writeText('Tài khoản: '+issued.account.username+'\nMật khẩu tạm: '+issued.temporary_password);toast('Đã sao chép. Hãy phát qua kênh của ban tổ chức.');}return;}
     if(action==='credential-delivered'){if(issued){b.disabled=true;await api.post('/admin/accounts/'+issued.account.id+'/delivered');toast('Đã đánh dấu phát tài khoản.');closeModal();await refreshAdmin();}return;}
     if(action==='competition-action'){

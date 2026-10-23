@@ -22,7 +22,9 @@ class RoleMatrix(APIHarness):
         archived,archive_issued=self.create_team("Archived Team","archive-team")
         self.app.state.accounts.lock_account(lock_issued['account']['id'],True,'matrix')
         self.app.state.operations.archive_team(archive_issued['account']['team_id'],1,True,'matrix')
-        clients={'guest':self.other_client(),'temporary':temporary,'team':team,'locked':locked,'archived':archived,'admin':self.client}
+        machine=self.other_client()
+        machine.headers['Authorization']='Bearer '+self.app.state.service.create_grader('matrix grader','matrix')['token']
+        clients={'guest':self.other_client(),'temporary':temporary,'team':team,'locked':locked,'archived':archived,'admin':self.client,'grader':machine}
         refs=self.app.openapi()['components']['schemas']
         def data(schema):
             if '$ref' in schema:return data(refs[schema['$ref'].split('/')[-1]])
@@ -36,6 +38,7 @@ class RoleMatrix(APIHarness):
             if kind=='boolean':return True
             if kind=='string':
                 pattern=schema.get('pattern','')
+                if 'sha256:' in pattern:return 'sha256:'+'a'*64
                 if '0-9a-f' in pattern:return 'a'*32
                 if 'A-Za-z0-9' in pattern:return 'matrixuser'
                 if schema.get('format')=='binary':return 'zip'
@@ -78,14 +81,16 @@ class RoleMatrix(APIHarness):
                         for csrf in (False,True):
                             h=dict(headers)
                             h['X-CSRF-Token']=client.headers.get('X-CSRF-Token','') if csrf else 'invalid'
-                            if route.path in public or method=='GET' and route.path in SPECTATOR_PATHS:expected=200
-                            elif role in ('guest','locked','archived'):expected=401
+                            # Grader endpoints accept only a grader token, never a session cookie.
+                            if route.path.startswith('/api/v1/grader/'):expected=200 if role=='grader' else 401
+                            elif route.path in public or method=='GET' and route.path in SPECTATOR_PATHS:expected=200
+                            elif role in ('guest','locked','archived','grader'):expected=401
                             elif method!='GET' and not csrf:expected=403
                             elif role=='temporary' and route.path not in principal_only:expected=403
                             elif '/admin/' in route.path and role!='admin':expected=403
                             elif role=='admin' and route.path not in principal_only and route.path not in shared and '/admin/' not in route.path:expected=403
                             else:expected=200
-                            response=client.request(method,path,headers=h,**({'json':body} if body is not None else {'content':b''} if method=='POST' else {}))
+                            response=client.request(method,path,headers=h,**({'json':body} if body is not None else {'content':b''} if method in ('POST','PUT') else {}))
                             rows.append({'method':method,'path':route.path,'role':role,'csrf':csrf,'expected':expected,'actual':response.status_code})
                             self.assertEqual(response.status_code,expected,(rows[-1],response.text))
             finally:route.dependant.call=original

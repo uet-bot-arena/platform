@@ -1,3 +1,4 @@
+import {gradersPage} from './graders-ui.js';
 import {sampleAdmin} from './sample-bots.js';
 import {tournamentOptions} from './tournament-options.js';
 import {addonPage,addonDetailPage} from './addon-ui.js';
@@ -104,6 +105,6 @@ function guide(s) {
 
 export function page(s) {
   if(['login','register','recover','change-password'].includes(s.route)) return authPage(s);
-  let content=s.loading?empty('Đang tải dữ liệu…'):s.error?`${head('Chưa tải được trang.')}<div class="form-error visible">${esc(s.error)}</div>${button('Thử lại','refresh')}`:({rulesets:x=>x.ids?.[0]?addonDetailPage(x):addonPage(x),home,submissions,benchmark,practice,competitions,standings,team,admin,operations:x=>adminOperations(x)+sampleAdmin(x),guide,jobs:job,live:x=>schedule(x,true),schedule:x=>schedule(x,false),audit:x=>head('Nhật ký quản trị.','Theo dõi thao tác; không ghi mật khẩu hoặc source.')+panel('Nhật ký',table(['Người thực hiện','Thao tác','Đối tượng','Thời gian'],x.audit.map(a=>`<tr><td class="mono">${esc(a.actor)}</td><td>${esc(a.action)}</td><td class="mono">${esc(a.target)}</td><td>${date(a.created_ms)}</td></tr>`)))}[s.route]?.(s)||'');
+  let content=s.loading?empty('Đang tải dữ liệu…'):s.error?`${head('Chưa tải được trang.')}<div class="form-error visible">${esc(s.error)}</div>${button('Thử lại','refresh')}`:({rulesets:x=>x.ids?.[0]?addonDetailPage(x):addonPage(x),graders:gradersPage,home,submissions,benchmark,practice,competitions,standings,team,admin,operations:x=>adminOperations(x)+sampleAdmin(x),guide,jobs:job,live:x=>schedule(x,true),schedule:x=>schedule(x,false),audit:x=>head('Nhật ký quản trị.','Theo dõi thao tác; không ghi mật khẩu hoặc source.')+panel('Nhật ký',table(['Người thực hiện','Thao tác','Đối tượng','Thời gian'],x.audit.map(a=>`<tr><td class="mono">${esc(a.actor)}</td><td>${esc(a.action)}</td><td class="mono">${esc(a.target)}</td><td>${date(a.created_ms)}</td></tr>`)))}[s.route]?.(s)||'');
   return shell(s,content);
 }

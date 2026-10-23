@@ -165,13 +165,16 @@ class WebAPI(APIHarness):
         result = b.post("/api/v1/benchmarks", json={"submission_id": result.json()["id"]}, headers={"Idempotency-Key": "web-unit-job"})
         self.assertEqual(result.status_code, 404)
 
-    def test_worker_offline_fails_closed_without_a_queued_job(self):
+    def test_benchmark_waits_in_queue_while_no_grader_is_online(self):
+        # Gói 3: no Docker on the hub; a request is queued and shown with its position.
         team, issued = self.create_team()
         source = self.app.state.store.create("submission", issued["account"]["team_id"], {"version": "v1.0.0"})
-        with patch("arena.sandbox.image_id", side_effect=Fault("worker_unavailable", "offline")):
-            result = team.post("/api/v1/benchmarks", json={"submission_id": source["id"]}, headers={"Idempotency-Key": "offline-key"})
-        self.assertEqual(result.status_code, 503)
-        self.assertEqual(self.app.state.store.list("job"), [])
+        result = team.post("/api/v1/benchmarks", json={"submission_id": source["id"]}, headers={"Idempotency-Key": "offline-key"})
+        self.assertEqual(result.status_code, 202, result.text)
+        self.assertEqual((result.json()["status"], result.json()["queue_position"]), ("queued", 1))
+        ready = self.client.get("/api/v1/health/ready")
+        self.assertEqual(ready.status_code, 200)
+        self.assertEqual(ready.json()["graders_online"], 0)
 
     def test_event_replay_sse_cursor_and_cross_team_privacy(self):
         a, issued = self.create_team()
@@ -245,7 +248,7 @@ class MigrationAndPersistence(unittest.TestCase):
             accounts = Accounts(store)
             self.assertEqual(accounts.principal("migration-only-existing-token")["user"]["id"], "existing-admin")
             self.assertTrue(accounts.verify(accounts.one("SELECT password_hash FROM accounts")["password_hash"], "migration-only-existing-password"))
-            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], [1, 2, 3, 4, 5])
+            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], [1, 2, 3, 4, 5, 6])
             self.assertEqual(store.db.execute("SELECT COUNT(*) FROM competitions").fetchone()[0], 0)
             store.db.close()
 
@@ -295,7 +298,7 @@ class MigrationAndPersistence(unittest.TestCase):
             store = Store(directory, recover_jobs=False)
             accounts = Accounts(store)
             self.assertEqual(accounts.principal(token)["user"]["role"], "admin")
-            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], [1, 2, 3, 4, 5])
+            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], [1, 2, 3, 4, 5, 6])
             store.db.close()
 
     def test_single_controller_lease_and_public_secure_cookie_config(self):

@@ -169,7 +169,7 @@ class ExperimentalAPI(APIHarness):
         source=team.post('/api/v1/submissions',content=starter.content,headers={'Idempotency-Key':uuid.uuid4().hex,'Content-Type':'application/zip','X-Submission-Version':'v1.0.0','X-Arena-Protocol':'3'})
         self.assertEqual(source.status_code,201,source.text);source=source.json()
         self.assertEqual(source['protocol_version'],3)
-        with patch('arena.sandbox.image_id',return_value='sha256:'+'1'*64):
+        with patch('arena.service.Service.runtime_for',return_value='sha256:'+'1'*64):
             job=self.post('/benchmarks',{'submission_id':source['id'],'ruleset_id':r['id']},202,client=team)
             comp=self.post('/admin/competitions',{'title':'Experimental test','max_teams':2,'ruleset_id':r['id']},201)
         self.assertEqual(job['ruleset'],comp['config']['ruleset'])
@@ -180,8 +180,8 @@ class ExperimentalAPI(APIHarness):
         tampered=deepcopy(job['ruleset']);tampered['definition']['energy']['cap']=9
         with self.assertRaises(Fault):experimental.provider(tampered)
         # Even matching runtime metrics must not qualify a different ruleset.
-        config=comp['config'];artifact=dict(source=source['source'],image_id=config['image_id'],sdk_sha256=config['sdk_sha256'],flags=config['build_flags'],artifact_sha256='a'*64)
-        report=dict(passed=True,samples=[{}]*72,turn_wall_ms={'samples':72},profile=config['profile'],image_id=config['image_id'],engine_sha256=config['engine_sha256'],suite_id=config['suite_id'],suite_sha256=config['suite_sha256'],artifacts=[artifact],ruleset=job['ruleset'])
+        config=comp['config'];artifact=dict(source=source['source'],runtime_id=config['runtime_id'],sdk_sha256=config['sdk_sha256'],flags=config['build_flags'],artifact_sha256='a'*64)
+        report=dict(passed=True,samples=[{}]*72,turn_wall_ms={'samples':72},profile=config['profile'],runtime_id=config['runtime_id'],engine_sha256=config['engine_sha256'],suite_id=config['suite_id'],suite_sha256=config['suite_sha256'],artifacts=[artifact],ruleset=job['ruleset'])
         store.update(job['id'],status='completed',report=report)
         self.app.state.competitions.qualification(config,team_id,source['id'],job['id'])
         report['ruleset']={**job['ruleset'],'hash':'0'*64};store.update(job['id'],report=report)

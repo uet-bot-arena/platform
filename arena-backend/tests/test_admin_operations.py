@@ -16,7 +16,7 @@ class AdminOperations(APIHarness):
         super().setUp()
         self.store = self.app.state.store
         self.comp = self.app.state.competitions
-        self.image_patch = patch('arena.sandbox.image_id', return_value='sha256:'+'1'*64)
+        self.image_patch = patch('arena.service.Service.runtime_for', return_value='sha256:'+'1'*64)
         self.image_patch.start();self.addCleanup(self.image_patch.stop)
 
     def create_direct(self, name='Direct Team', username='direct-team'):

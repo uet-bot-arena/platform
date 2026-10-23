@@ -240,6 +240,19 @@ class DockerBackend:
         return Worker(artifact, profile, image_id(self.image))
 
 
+def remove_tree(path):
+    """rmtree that also removes read-only files (sources are 0444; Windows refuses those)."""
+    import stat
+
+    def retry(function, target, _):
+        try:
+            os.chmod(target, stat.S_IWRITE | stat.S_IREAD)
+            function(target)
+        except OSError:
+            pass
+    shutil.rmtree(path, onexc=retry) if Path(path).exists() else None
+
+
 def get_backend(name, **options):
     """docker | bwrap | windows. Options are backend specific (see each module)."""
     if name == "docker":

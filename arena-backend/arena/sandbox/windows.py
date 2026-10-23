@@ -14,7 +14,7 @@ import sys
 import uuid
 
 from arena.protocol import Fault, strict_json
-from arena.sandbox import toolchain as toolchains
+from arena.sandbox import remove_tree, toolchain as toolchains
 from arena.sandbox.transport import SupervisorWorker, Transport
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -69,7 +69,7 @@ class WindowsBackend:
             built = run / "out" / ("bot" if python else "bot.exe")
             return seal(report, output, runtime, built=built, signature=b"PK\x03\x04" if python else b"MZ")
         finally:
-            shutil.rmtree(run, ignore_errors=True)
+            remove_tree(run)
 
     def worker(self, artifact, profile):
         return WindowsWorker(self, Path(artifact), profile)
@@ -88,6 +88,6 @@ class WindowsWorker(SupervisorWorker):
                    "cpu": backend.cpu}
             transport = Transport(SUPERVISOR + ["run", json.dumps(box)], cwd=str(ROOT))
         except BaseException:
-            shutil.rmtree(run, ignore_errors=True)
+            remove_tree(run)
             raise
-        super().__init__(transport, profile, cleanup=lambda: shutil.rmtree(run, ignore_errors=True))
+        super().__init__(transport, profile, cleanup=lambda: remove_tree(run))

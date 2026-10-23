@@ -8,7 +8,7 @@ from arena import engine
 from arena.adjudication import CURRENT
 from arena.config import match_profile, profile, request_profile, stored_profile
 from arena.protocol import Fault
-from arena.service import Service
+from arena.runner import LocalRunner
 from arena.store import Store
 from arena_api.schemas import Match, Benchmark, CompetitionCreate
 
@@ -37,7 +37,7 @@ class TimeBank(unittest.TestCase):
     def play(self,timeout=False):
         tmp=tempfile.TemporaryDirectory();self.addCleanup(tmp.cleanup)
         store=Store(tmp.name,recover_jobs=False);self.addCleanup(store.db.close)
-        service=Service(store,start_worker=False)
+        service=LocalRunner(store)
         p=replace(match_profile(60000),max_plies=3,grace_ms=1)
         job=store.create('job','clock-test',{'kind':'match','status':'queued','profile':p.public(),'adjudication':CURRENT})
         observations=[]
@@ -74,7 +74,7 @@ class TimeBank(unittest.TestCase):
     def test_benchmark_keeps_one_bank_across_independent_cases(self):
         tmp=tempfile.TemporaryDirectory();self.addCleanup(tmp.cleanup)
         store=Store(tmp.name,recover_jobs=False);self.addCleanup(store.db.close)
-        service=Service(store,start_worker=False)
+        service=LocalRunner(store)
         job=store.create('job','clock-test',{'kind':'benchmark','profile':match_profile(60000).public()})
         budgets=[]
         def turn(message):
