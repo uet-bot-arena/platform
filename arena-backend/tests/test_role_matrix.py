@@ -39,14 +39,14 @@ class RoleMatrix(APIHarness):
             if kind=='string':
                 pattern=schema.get('pattern','')
                 if 'sha256:' in pattern:return 'sha256:'+'a'*64
-                if '0-9a-f' in pattern:return 'a'*32
+                if '0-9a-f' in pattern:return 'a'*(64 if '{64}' in pattern else 32)
                 if 'A-Za-z0-9' in pattern:return 'matrixuser'
                 if schema.get('format')=='binary':return 'zip'
-                return 'matrix-value'[:schema.get('maxLength',1000)]
+                return 'matrix-value'.ljust(schema.get('minLength',0),'x')[:schema.get('maxLength',1000)]
             return {}
-        public={'/api/v1/registrations','/api/v1/auth/login','/api/v1/auth/recovery','/api/v1/auth/email/request','/api/v1/auth/email/requests/{ident}','/api/v1/auth/email/verify','/api/v1/time','/api/v1/health/live','/api/v1/health/ready','/api/v1/platform','/api/v1/rules','/api/v1/experimental/guide'}
+        public={'/api/v1/auth/enroll','/api/v1/auth/reset','/api/v1/registrations','/api/v1/auth/login','/api/v1/auth/recovery','/api/v1/auth/email/request','/api/v1/auth/email/requests/{ident}','/api/v1/auth/email/verify','/api/v1/time','/api/v1/health/live','/api/v1/health/ready','/api/v1/platform','/api/v1/rules','/api/v1/experimental/guide'}
         principal_only={'/api/v1/auth/me','/api/v1/auth/logout','/api/v1/auth/password'}
-        shared={'/api/v1/rulesets','/api/v1/rulesets/schema','/api/v1/rulesets/{ident}','/api/v1/rulesets/{ident}/preview','/api/v1/rulesets/{ident}/package.json','/api/v1/rulesets/{ident}/kit.zip','/api/v1/rulesets/{ident}/starter.zip','/api/v1/experimental/starter.zip'}
+        shared={'/api/v1/matching','/api/v1/rulesets','/api/v1/rulesets/schema','/api/v1/rulesets/{ident}','/api/v1/rulesets/{ident}/preview','/api/v1/rulesets/{ident}/package.json','/api/v1/rulesets/{ident}/kit.zip','/api/v1/rulesets/{ident}/starter.zip','/api/v1/experimental/starter.zip'}
         operations={(path,method.upper()):op for path,methods in self.app.openapi()['paths'].items() for method,op in methods.items()}
         rows=[]
         candidates=[]

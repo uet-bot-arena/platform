@@ -65,7 +65,9 @@ class Accounts:
     def public(account):
         return {"id": account["id"], "username": account["username"], "role": account["role"], "team_id": account["team_id"],
                 "must_change_password": bool(account["must_change"]), "locked": bool(account["locked"]),
-                "delivered": bool(account["delivered"]), "created_ms": account["created_ms"]}
+                "delivered": bool(account["delivered"]), "created_ms": account["created_ms"],
+                "email": account["email"], "display_name": account["display_name"], "cohort": account["cohort"],
+                "is_judge": bool(account["is_judge"])}
 
     def rate_limit(self, bucket, limit, window_seconds):
         key, current = token_hash(bucket), now_ms()
@@ -99,6 +101,13 @@ class Accounts:
         self.db.execute("INSERT INTO sessions VALUES(?,?,?,?)", (token_hash(token), account["id"], csrf, expires))
         return {"token": token, "csrf_token": csrf, "expires_ms": expires, "user": self.public(account)}
 
+    @staticmethod
+    def temporary_lock(account):
+        if account["invite_blocked_ms"] > now_ms():
+            fault = Fault("rate_limited", "Tài khoản tạm khóa do nhập sai mã mời quá nhiều lần")
+            fault.retry_after = (account["invite_blocked_ms"] - now_ms() + 999) // 1000
+            raise fault
+
     def login(self, username, password, peer):
         username = username.casefold().strip()
         self.rate_limit("login-ip:" + peer, 600, 900)
@@ -112,10 +121,11 @@ class Accounts:
             latest = self.one("SELECT * FROM accounts WHERE id=?", (account["id"],))
             if latest["locked"] or latest["password_hash"] != account["password_hash"]:
                 raise Fault("unauthorized", "Invalid username or password")
+            self.temporary_lock(latest)
             self.audit(account["id"], "auth.login", account["id"])
             return self.new_session(latest)
 
-    def principal(self, token):
+    def principal(self, token, allow_blocked=False):
         if not token or len(token) > 128:
             raise Fault("unauthorized", "Login required")
         with self.store.lock:
@@ -123,6 +133,8 @@ class Accounts:
                            (token_hash(token), now_ms()))
         if not row:
             raise Fault("unauthorized", "Session expired or revoked")
+        if not allow_blocked:
+            self.temporary_lock(row)
         return {"user": self.public(row), "csrf_token": row["csrf"], "expires_ms": row["expires_ms"], "token_hash": token_hash(token)}
 
     def logout(self, principal):
@@ -179,7 +191,8 @@ class Accounts:
                     raise Fault("registration_conflict", "Registration has already been reviewed")
                 data = json.loads(row["data"])
                 self.db.execute("INSERT INTO teams(id,name,name_key,email,phone,members,created_ms) VALUES(?,?,?,?,?,?,?)", (team_id, data["team"], row["team_key"], data["email"], data["phone"], json.dumps(data["members"], ensure_ascii=False), now_ms()))
-                self.db.execute("INSERT INTO accounts(id,username,password_hash,role,team_id,created_ms) VALUES(?,?,?,'team',?,?)", (account_id, username.casefold(), encoded, team_id, now_ms()))
+                self.db.execute("INSERT INTO accounts(id,username,password_hash,role,team_id,created_ms) VALUES(?,?,?,'guest',?,?)", (account_id, username.casefold(), encoded, team_id, now_ms()))
+                self.attach_legacy(account_id, team_id)
                 self.db.execute("UPDATE registrations SET status='approved',team_id=? WHERE id=?", (team_id, ident))
                 self.audit(actor, "registration.approved", ident)
                 account = self.public(self.one("SELECT * FROM accounts WHERE id=?", (account_id,)))
@@ -207,17 +220,22 @@ class Accounts:
         row["members"] = json.loads(row["members"])
         return row
 
+    def attach_legacy(self, user, team):
+        self.db.execute("UPDATE accounts SET display_name=username WHERE id=? AND display_name=''", (user,))
+        self.db.execute("UPDATE teams SET season_id=?,is_guest=(json_array_length(members)<>?) WHERE id=?", (getattr(self, "season_id", "default"), getattr(self, "team_size", 4), team))
+        self.db.execute("INSERT INTO team_members SELECT season_id,id,?,1,? FROM teams WHERE id=?", (user, now_ms(), team))
+
     def accounts(self, limit, offset):
         with self.store.lock:
-            rows = self.rows("SELECT * FROM accounts WHERE role='team' ORDER BY created_ms DESC,id LIMIT ? OFFSET ?", (limit, offset))
+            rows = self.rows("SELECT * FROM accounts WHERE role='guest' AND team_id IS NOT NULL ORDER BY created_ms DESC,id LIMIT ? OFFSET ?", (limit, offset))
         return [{**self.public(a), "team": self.team(a["team_id"])} for a in rows]
 
     def lock_account(self, ident, locked, actor):
         with self.store.lock, self.db:
-            account = self.one("SELECT * FROM accounts WHERE id=? AND role='team'", (ident,))
+            account = self.one("SELECT * FROM accounts WHERE id=? AND role<>'admin'", (ident,))
             if not account:
                 raise Fault("not_found", "Team account not found")
-            if not locked and self.team(account["team_id"])["archived_ms"]:
+            if not locked and account["team_id"] and self.team(account["team_id"])["archived_ms"]:
                 raise Fault("admin_conflict", "Restore the deleted team before unlocking its account")
             self.db.execute("UPDATE accounts SET locked=? WHERE id=?", (int(locked), ident))
             self.db.execute("DELETE FROM sessions WHERE account_id=?", (ident,))
@@ -228,7 +246,7 @@ class Accounts:
         password = password or "Uet-" + secrets.token_urlsafe(18)
         encoded = self.hash_password(password)
         with self.store.lock, self.db:
-            account = self.one("SELECT * FROM accounts WHERE id=? AND role='team'", (ident,))
+            account = self.one("SELECT * FROM accounts WHERE id=? AND role<>'admin'", (ident,))
             if not account:
                 raise Fault("not_found", "Team account not found")
             self.db.execute("UPDATE accounts SET password_hash=?,must_change=1,delivered=0 WHERE id=?", (encoded, ident))
@@ -239,7 +257,7 @@ class Accounts:
 
     def delivered(self, ident, actor):
         with self.store.lock, self.db:
-            if not self.one("SELECT 1 FROM accounts WHERE id=? AND role='team'", (ident,)):
+            if not self.one("SELECT 1 FROM accounts WHERE id=? AND role<>'admin'", (ident,)):
                 raise Fault("not_found", "Team account not found")
             self.db.execute("UPDATE accounts SET delivered=1 WHERE id=?", (ident,))
             self.audit(actor, "account.delivered", ident)

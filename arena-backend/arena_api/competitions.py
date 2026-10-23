@@ -226,6 +226,8 @@ class Competitions:
 
     def enter(self, actor, team, ident, body, key):
         def action():
+            if hasattr(self, "teams"):
+                self.teams.eligible(team)
             item = self.get(ident)
             self.require_status(item, "open")
             count = self.db.execute("SELECT COUNT(*) FROM competition_entries WHERE competition_id=? AND team_id<>?", (ident, team)).fetchone()[0]
@@ -247,8 +249,10 @@ class Competitions:
             if len(entries) < 2:
                 raise Fault("competition_conflict", "At least two qualified entries are required")
             for entry in entries:
-                account = self.one("SELECT locked,must_change FROM accounts WHERE team_id=?", (entry["team_id"],))
-                if not account or account["locked"] or account["must_change"]:
+                if hasattr(self, "teams"):
+                    self.teams.eligible(entry["team_id"])
+                account = self.one("SELECT id FROM accounts WHERE team_id=? AND locked=0 AND must_change=0", (entry["team_id"],))
+                if not account:
                     raise Fault("competition_conflict", "All entered teams must have active accounts at lock time")
                 current = self.qualification(item["config"], entry["team_id"], entry["submission_id"], entry["benchmark_id"])
                 if current != json.loads(entry["snapshot"]):
@@ -316,6 +320,8 @@ class Competitions:
         return self.command(actor, "retry:" + fixture_id, key, {}, action)
 
     def reconcile(self):
+        if hasattr(self, "teams"):
+            self.teams.close_due()
         next_rounds = []
         with self.store.lock, self.db:
             for row in self.rows("SELECT * FROM competition_fixtures WHERE status='queued'"):
@@ -546,7 +552,14 @@ class Competitions:
                     team["buchholz"] = sum(scores[o]["points"] for o in opponents[t])
             rows = sorted(scores.values(), key=lambda s: (-s["points"], -s.get("buchholz",0), s["team_id"]))
             previous, rank = None, 0
-            for index, row in enumerate(rows, 1):
+            index = 0
+            for row in rows:
+                guest = self.one("SELECT is_guest FROM teams WHERE id=?", (row["team_id"],))["is_guest"]
+                row["is_guest"] = bool(guest)
+                if guest:
+                    row["rank"] = None
+                    continue
+                index += 1
                 key = (row["points"], row.get("buchholz",0))
                 if key != previous:
                     rank = index

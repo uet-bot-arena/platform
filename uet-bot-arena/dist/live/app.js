@@ -13,7 +13,7 @@ import {publicRoute} from './access.js';
 import {readRuleForm,ruleEditor,rulePreviewMarkup,botRulesetField,botRulesetSelection,ruleFingerprint} from './experimental-ui.js';
 
 const api=new ArenaAPI(),app=document.getElementById('app'),modalRoot=document.getElementById('modal-root');
-const defaults=()=>({team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
+const defaults=()=>({personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
 const s={...defaults(),user:null,emailRequest:null,emailAddress:'',route:'home',ids:[],loading:false,adminTab:'accounts',registrationStatus:'pending',adminVisibility:'active',adminSearch:'',adminPage:1,opsTab:'jobs',opsPage:1,opsSearch:'',opsStatus:'',opsKind:'',opsTeam:''};
 let emailPoll;
 let generation=0,board,competitionFeed,jobFeed,toastTimer,modalFocus,returnTo='home',issued=null,issuedGrader=null,refreshingGeneration=null;
@@ -29,12 +29,20 @@ function render(){app.innerHTML=page(s);const title={home:'UET Bot Arena',login:
 function mobileSidebar(){const sidebar=document.querySelector('.sidebar');if(sidebar)sidebar.inert=matchMedia('(max-width:760px)').matches&&!s.menuOpen;}
 matchMedia('(max-width:760px)').addEventListener('change',mobileSidebar);
 function go(route){if(location.hash==='#/'+route)openRoute();else location.hash='/'+route;}
-function clearAccount(){Object.assign(s,defaults(),{user:null,emailRequest:null,emailAddress:''});api.csrf=null;issued=null;}
+function clearAccount(){Object.assign(s,defaults(),{user:null,emailRequest:null,emailAddress:'',emailPurpose:'verify',passwordFinished:false,inviteCode:''});api.csrf=null;issued=null;}
 function expired(){clearAccount();toast('Phiên đã hết hạn. Hãy đăng nhập lại.');go('login');}
+async function refreshPerson(){
+  const session=await api.request('/auth/me');s.user=session.user;authChanged();go('team');
+}
 function handleError(e){if(e.status===401&&s.user)expired();else if(e.code==='password_change_required')go('change-password');else toast(e.message);}
 function parseRoute(){const raw=location.hash.replace(/^#\/?/,'')||'home',[path,query='']=raw.split('?'),parts=path.split('/');return{route:parts[0],ids:parts.slice(1),query:new URLSearchParams(query),raw};}
 async function loadData(route,ids,q){
   const data={};
+  if(s.user&&s.user.role!=='admin'&&['home','team','competitions'].includes(route))data.personal=await api.request('/users/me');
+  if(route==='matching')data.matching=await api.request('/matching');
+  if(route==='users'){
+    [data.people,data.teamPolicy,data.teamMerges,data.teamChoices]=await Promise.all([api.all('/admin/users'),api.request('/admin/team-policy'),api.request('/admin/team-merges'),api.all('/admin/teams')]);
+  }
   if(['practice','operations'].includes(route))data.sampleBots=(await api.request(s.user?.role==='admin'?'/admin/sample-bots':'/sample-bots')).items;
   if(route==='guide'){
     const [rules,botGuide]=await Promise.all([api.request('/rules'),loadBotGuide()]);
@@ -42,14 +50,14 @@ async function loadData(route,ids,q){
   }
   if(['login','register','recover','change-password'].includes(route))return data;
   const admin=s.user?.role==='admin';
-  const needsTeams=s.user&&['home','team','submissions','benchmark','practice','competitions','jobs','arena','replay'].includes(route)&&!admin;
+  const needsTeams=s.user?.team_id&&['home','team','submissions','benchmark','practice','competitions','jobs','arena','replay'].includes(route)&&!admin;
   const work=[];
   if(s.user&&['rulesets','benchmark','practice','competitions','submissions'].includes(route))work.push(api.request(admin?'/admin/rulesets':'/rulesets').then(x=>data.rulesetCatalog=x));
   if(route==='rulesets'&&ids[0])work.push(api.request('/rulesets/'+enc(ids[0])).then(x=>data.ruleDetail=x));
   if(needsTeams)work.push(api.request('/teams/me').then(x=>data.team=x));
-  if(s.user&&['home','submissions','benchmark','practice','competitions','jobs','arena','replay'].includes(route)&&!admin){work.push(api.all('/submissions').then(x=>data.submissions=x));work.push(api.all('/jobs').then(x=>data.jobs=x));}
+  if(s.user?.team_id&&['home','submissions','benchmark','practice','competitions','jobs','arena','replay'].includes(route)&&!admin){work.push(api.all('/submissions').then(x=>data.submissions=x));work.push(api.all('/jobs').then(x=>data.jobs=x));}
   if(['home','competitions','schedule','live','standings','arena','replay'].includes(route))work.push(api.all('/competitions').then(x=>data.competitions=x));
-  if(route==='home'&&s.user)work.push(api.request(admin?'/admin/metrics':'/dashboard').then(x=>{if(admin)data.metrics=x;else data.dashboard=x;}));
+  if(route==='home'&&s.user&&(admin||s.user.team_id))work.push(api.request(admin?'/admin/metrics':'/dashboard').then(x=>{if(admin)data.metrics=x;else data.dashboard=x;}));
   if(route==='jobs')work.push(api.request('/jobs/'+enc(ids[0])).then(x=>data.job=x));
   if(route==='admin'){
     work.push(api.all('/admin/registrations?status='+(s.registrationStatus||'pending')).then(x=>data.registrations=x));
@@ -78,13 +86,20 @@ async function loadData(route,ids,q){
 async function openRoute(){
   const parsed=parseRoute(),id=++generation;clearView();
   if(parsed.route==='experimental'){history.replaceState(null,'','#/rulesets');openRoute();return;}
-  const supported=['home','login','verify-email','email','register','recover','change-password','guide','team','submissions','benchmark','practice','competitions','jobs','admin','operations','graders','rulesets','audit','schedule','live','standings','arena','replay'];
+  const supported=['home','login','verify-email','set-password','guest-register','guest-recover','email','register','recover','change-password','guide','team','matching','users','submissions','benchmark','practice','competitions','jobs','admin','operations','graders','rulesets','audit','schedule','live','standings','arena','replay'];
   if(!supported.includes(parsed.route)){go('home');return;}
   if(!s.user&&!publicRoute(parsed.route,parsed.ids)){returnTo=parsed.raw;go('login');return;}
   if(s.user?.must_change_password&&parsed.route!=='change-password'){go('change-password');return;}
   if(s.user&&['login','register'].includes(parsed.route)){go('home');return;}
-  if(s.user?.role!=='admin'&&['admin','audit','operations','graders','email'].includes(parsed.route)){go('home');return;}
+  if(s.user?.role!=='admin'&&['admin','audit','operations','graders','email','users'].includes(parsed.route)){go('home');return;}
   if(s.user?.role==='admin'&&['team','submissions','benchmark','practice','jobs'].includes(parsed.route)){go('home');return;}
+  if(s.user&&!s.user.team_id&&s.user.role!=='admin'&&['submissions','benchmark','practice','jobs'].includes(parsed.route)){go('team');return;}
+  if(['register','recover','verify-email'].includes(parsed.route)){
+    const purpose=parsed.route==='recover'?'reset':'verify';
+    if(purpose!==s.emailPurpose){s.emailRequest=null;s.emailAddress='';s.passwordFinished=false;}
+    s.emailPurpose=purpose;
+  }
+  if(parsed.query.has('invite'))s.inviteCode=parsed.query.get('invite');
   Object.assign(s,defaults(),parsed,{loading:!['login','register','recover','change-password'].includes(parsed.route),error:null,menuOpen:false});render();
   if(parsed.route==='admin'&&['accounts','registrations','recoveries'].includes(parsed.query.get('tab')))s.adminTab=parsed.query.get('tab');
   if(parsed.route==='operations'&&parsed.query.has('status'))s.opsStatus=parsed.query.get('status');
@@ -122,13 +137,13 @@ async function openRoute(){
         competitionFeed.start();
       }
       mountBoard(fixture);
-    }else{render();if(s.route==='jobs')watchJob(id);if(s.route==='verify-email')watchEmail(id);}
+    }else{render();if(s.route==='jobs')watchJob(id);if(['register','recover','verify-email'].includes(s.route))watchEmail(id);}
   }catch(e){if(id!==generation)return;if(e.status===401){expired();return;}Object.assign(s,{loading:false,error:e.message,offline:!e.status});render();}
 }
 function watchEmail(id){
   clearTimeout(emailPoll);
   const r=s.emailRequest;
-  if(id!==generation||s.route!=='verify-email'||!r||r.verified_ms||r.status==='dropped'||r.status==='sent'&&!r.resend_after_seconds)return;
+  if(id!==generation||!['register','recover','verify-email'].includes(s.route)||!r||r.verified_ms||r.status==='dropped'||r.status==='sent'&&!r.resend_after_seconds)return;
   emailPoll=setTimeout(async()=>{try{const next=await api.request('/auth/email/requests/'+r.id);if(id===generation&&s.emailRequest?.id===r.id&&!s.emailRequest.verified_ms){s.emailRequest=next;patchPage();watchEmail(id);}}catch(e){handleError(e);}},3000);
 }
 function connectionStatus(offline){const el=document.querySelector('.connection-label'),text=offline?'Đang nối lại máy chủ':'Kết nối máy chủ';if(el&&el.textContent!==text){el.innerHTML='<i></i>'+text;el.classList.toggle('offline',offline);}}
@@ -185,9 +200,28 @@ document.addEventListener('submit',e=>{
       const ids=draft.members.map(m=>m.student_id.toLowerCase());if(new Set(ids).size!==ids.length)throw new Error('Mã sinh viên của các thành viên phải khác nhau.');
       s.registrationReceipt=await api.post('/registrations',{...draft,confirmed:data.get('confirmed')==='on'});s.registrationDraft=null;render();
     }else if(form.id==='email-request-form'){
-      s.emailAddress=v('email');s.emailRequest=await api.post('/auth/email/request',{email:s.emailAddress,purpose:'verify'});render();watchEmail(generation);
+      s.emailAddress=v('email');s.emailRequest=await api.post('/auth/email/request',{email:s.emailAddress,purpose:s.emailPurpose||'verify'});s.passwordFinished=false;render();watchEmail(generation);
     }else if(form.id==='email-code-form'){
       clearTimeout(emailPoll);s.emailRequest=await api.post('/auth/email/verify',{request_id:s.emailRequest.id,code:v('email-code')});render();
+    }else if(form.id==='personal-password-form'){
+      const pw=data.get('new-password');if(pw!==data.get('confirm-password'))throw new Error('Hai mật khẩu chưa khớp.');
+      await api.post(s.emailPurpose==='reset'?'/auth/reset':'/auth/enroll',{request_id:s.emailRequest.id,verification_token:s.emailRequest.verification_token,password:pw,display_name:v('display-name')});
+      if(s.emailPurpose==='reset'){clearAccount();s.emailPurpose='reset';authChanged();}
+      s.emailRequest=null;s.passwordFinished=true;form.reset();render();
+    }else if(form.id==='personal-profile-form'){
+      await api.post('/users/me',{display_name:v('display-name'),class_name:v('class-name'),language:v('language'),introduction:v('introduction'),contact:v('contact'),looking:data.get('looking')==='on'});await refreshPerson();
+    }else if(form.id==='personal-team-create'){
+      await api.post('/teams',{name:v('team-name'),guest:data.get('guest')==='on'});await refreshPerson();
+    }else if(form.id==='personal-team-join'){
+      await api.post('/teams/join',{code:v('invite-code')});s.inviteCode='';await refreshPerson();
+    }else if(form.id==='personal-team-name'){
+      await api.post('/teams/name',{name:v('team-name')});await refreshPerson();
+    }else if(form.id==='team-deadline-form'){
+      await api.post('/admin/team-policy',{deadline_ms:v('team-deadline')?new Date(v('team-deadline')).getTime():null,expected_revision:s.teamPolicy.revision});openRoute();
+    }else if(form.dataset.proposal){
+      await api.post('/admin/team-merges/confirm',{proposal_id:form.dataset.proposal,name:v('team-name')});openRoute();
+    }else if(form.id==='admin-membership-form'){
+      await api.post('/admin/teams/'+enc(v('team-id'))+'/membership',{user_id:v('user-id'),action:v('member-action')});openRoute();
     }else if(form.id==='recovery-form'){await api.post('/auth/recovery',{username:v('username'),email:v('email')});s.recoverySent=true;render();
     }else if(form.id==='password-form'){
       const pw=data.get('new-password');if(pw.length<8)throw new Error('Mật khẩu mới phải có ít nhất 8 ký tự.');if(pw!==data.get('confirm-password'))throw new Error('Hai lần nhập mật khẩu mới chưa khớp.');
@@ -326,6 +360,17 @@ document.addEventListener('click',async e=>{
     if(action==='skip-main'){e.preventDefault();document.querySelector('#main')?.focus();return;}
     if(action==='close-modal'){closeModal();return;}
     if(action==='refresh'){await refreshData();return;}
+    if(['team-rotate','team-recruiting','team-leave','team-captain','team-remove'].includes(action)){
+      const paths={'team-rotate':'/teams/invite/rotate','team-recruiting':'/teams/recruiting','team-leave':'/teams/leave','team-captain':'/teams/captain','team-remove':'/teams/member/remove'};
+      const body=action==='team-recruiting'?{enabled:!s.personal?.team?.recruiting}:b.dataset.user?{user_id:b.dataset.user}:{};
+      if(['team-leave','team-remove','team-captain'].includes(action)){
+        confirmAction('Xác nhận thay đổi đội','Thao tác có hiệu lực ngay và được ghi nhật ký.',async()=>{await api.post(paths[action],body);try{await refreshPerson();}catch(error){if(error.status===401)expired();else throw error;}});
+      }else{await api.post(paths[action],body);await refreshPerson();}
+      return;
+    }
+    if(action==='person-lock'||action==='person-judge'){
+      await api.post('/admin/users/'+enc(b.dataset.user)+(action==='person-lock'?'/lock':'/judge'),action==='person-lock'?{locked:b.dataset.locked==='true'}:{enabled:b.dataset.enabled==='true'});openRoute();return;
+    }
     if(action==='logout'){b.disabled=true;await api.post('/auth/logout');clearAccount();authChanged();go('login');return;}
     if(action==='add-member'||action==='remove-member'){s.registrationDraft=draftRegistration();if(action==='add-member')s.registrationDraft.members.push({name:'',student_id:''});else s.registrationDraft.members.pop();render();return;}
     if(action==='sample-bot-toggle'){await api.post('/admin/sample-bots/'+b.dataset.id+'/enabled',{enabled:b.dataset.enabled==='true'});openRoute();return;}

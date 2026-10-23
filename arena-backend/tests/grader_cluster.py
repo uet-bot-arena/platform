@@ -153,7 +153,7 @@ class Cluster:
     def team(self, name, username):
         issued = self.api(self.admin, "POST", "/admin/teams", expected=201, json={"profile": {
             "team": name, "email": username + "@example.test", "phone": "", "confirmed": True,
-            "members": [{"name": f"SV {i}", "student_id": f"2602{username[-1]}00{i}"} for i in range(3)]}, "username": username})
+            "members": [{"name": f"SV {i}", "student_id": f"2602{username[-1]}00{i}"} for i in range(4)]}, "username": username})
         client = httpx.Client(base_url=self.origin, timeout=60)
         login = self.api(client, "POST", "/auth/login", json={"username": username, "password": issued["temporary_password"]})
         client.headers["X-CSRF-Token"] = login["csrf_token"]

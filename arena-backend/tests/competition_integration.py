@@ -71,7 +71,7 @@ def main():
             for index, client in enumerate((a, b)):
                 registration = request(client, "POST", "/registrations", expected=201, json={
                     "team": f"Competition Team {index}", "email": f"private-{index}@example.test", "members": [
-                        {"name": f"Student {member}", "student_id": f"2602000{member}"} for member in range(3)], "confirmed": True}).json()
+                        {"name": f"Student {member}", "student_id": f"2602000{member}"} for member in range(4)], "confirmed": True}).json()
                 credential = request(admin, "POST", f"/admin/registrations/{registration['id']}/approve", expected=201, json={"username": f"competition-{index}"}).json()
                 teams.append(credential["account"]["team_id"])
                 login(client, f"competition-{index}", credential["temporary_password"])

@@ -45,6 +45,7 @@ class AccountRules:
     freshman_cohort: int = 0
     team_size: int = 4
     name_max: int = 40
+    season_id: str = "default"
 
 
 @dataclass(frozen=True)
@@ -229,7 +230,8 @@ def account_rules(data):
         cohort_base=section.integer("cohort_base", 2000, 1900, 2100),
         freshman_cohort=section.integer("freshman_cohort", 0, 0, 2200),
         team_size=section.integer("team_size", 4, 1, 8),
-        name_max=section.integer("name_max", 40, 8, 80))
+        name_max=section.integer("name_max", 40, 8, 80),
+        season_id=section.string("season_id", "default", r"[A-Za-z0-9_-]{1,40}"))
     section.finish()
     try:
         re.compile(rules.student_email)

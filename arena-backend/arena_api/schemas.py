@@ -59,7 +59,7 @@ class Registration(Model):
 
 
 class Login(Model):
-    username: str = Field(min_length=1, max_length=30)
+    username: str = Field(min_length=1, max_length=120)
     password: SecretStr = Field(min_length=1, max_length=128)
 
 
@@ -125,12 +125,16 @@ class Match(TimeControl):
 class UserView(Model):
     id: str
     username: str
-    role: Literal["admin", "team"]
+    role: Literal["admin", "guest", "student", "staff"]
     team_id: str | None
     must_change_password: bool
     locked: bool
     delivered: bool
     created_ms: int
+    email: str | None = None
+    display_name: str = ""
+    cohort: int | None = None
+    is_judge: bool = False
 
 
 class SessionView(Model):
@@ -159,6 +163,11 @@ class TeamView(Model):
     created_ms: int
     archived_ms: int | None = None
     revision: int = 1
+    season_id: str = "default"
+    is_guest: int = 0
+    locked_ms: int | None = None
+    recruiting: int = 0
+    legacy_roster: int = 1
 
 
 class AdminTeamCreate(Model):

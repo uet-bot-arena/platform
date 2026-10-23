@@ -85,12 +85,16 @@ def detail(ident: str, request: Request, admin=Depends(spectator_admin)):
 
 @router.post("/competitions/{ident}/entry", summary="Đội chọn version và benchmark đạt chuẩn; chỉ được thay trước khi chốt")
 def entry(ident: str, body: CompetitionEntry, request: Request, idempotency_key: str = Header(), auth=Depends(team_principal)):
-    return request.app.state.competitions.enter(auth["user"]["id"], auth["user"]["team_id"], ident, body.model_dump(exclude_none=True), idempotency_key)
+    with request.app.state.store.lock:
+        team = request.app.state.teams.captain_team(auth["user"]["id"])
+        return request.app.state.competitions.enter(auth["user"]["id"], team["id"], ident, body.model_dump(exclude_none=True), idempotency_key)
 
 
 @router.post("/competitions/{ident}/withdraw", summary="Đội rút bot dự giải trước khi chốt")
 def withdraw(ident: str, request: Request, idempotency_key: str = Header(), auth=Depends(team_principal)):
-    return request.app.state.competitions.withdraw(auth["user"]["id"], auth["user"]["team_id"], ident, idempotency_key)
+    with request.app.state.store.lock:
+        team = request.app.state.teams.captain_team(auth["user"]["id"])
+        return request.app.state.competitions.withdraw(auth["user"]["id"], team["id"], ident, idempotency_key)
 
 
 @router.post("/admin/competitions/{ident}/entries/{team_id}/remove", summary="Admin loại entry trước khi chốt, có audit")

@@ -128,6 +128,12 @@ def create_app(settings=None, start_worker=True):
             app.state.accounts = Accounts(store, settings.session_seconds, settings.hash_workers)
             from arena_api.outbox import MailQueue
             app.state.mail = MailQueue(store, settings)
+            from arena_api.people import People
+            from arena_api.teams import Teams
+            app.state.people = People(app.state.accounts, app.state.mail, settings.account_rules)
+            app.state.accounts.season_id = settings.account_rules.season_id
+            app.state.accounts.team_size = settings.account_rules.team_size
+            app.state.teams = Teams(app.state.accounts, settings.account_rules)
             app.state.clock_id = secrets.token_hex(16)
             service = Service(store, start_worker=start_worker, grader=settings.grader)
             app.state.service = service
@@ -136,6 +142,7 @@ def create_app(settings=None, start_worker=True):
             service.rulesets = app.state.rulesets
             competitions = Competitions(store, service, app.state.accounts, settings.grader.max_attempts)
             app.state.competitions = competitions
+            competitions.teams = app.state.teams
             from arena_api.broadcast import Snapshots
             app.state.broadcast = Snapshots()
             from arena_api.operations import Operations
@@ -164,6 +171,8 @@ def create_app(settings=None, start_worker=True):
     app.state.settings = settings
     app.add_middleware(RequestBoundary, settings=settings)
     app.include_router(auth_routes.router)
+    from arena_api import people_routes
+    app.include_router(people_routes.router)
     app.include_router(admin_routes.router)
     app.include_router(arena_routes.router)
     app.include_router(competition_routes.router)
@@ -203,7 +212,7 @@ def create_app(settings=None, start_worker=True):
         schema.setdefault("components", {}).setdefault("securitySchemes", {}).update({
             "cookieAuth": {"type": "apiKey", "in": "cookie", "name": "arena_web_session"},
             "csrfAuth": {"type": "apiKey", "in": "header", "name": "X-CSRF-Token"}})
-        public = {"/api/v1/registrations", "/api/v1/auth/login", "/api/v1/auth/recovery", "/api/v1/auth/email/request", "/api/v1/auth/email/requests/{ident}", "/api/v1/auth/email/verify", "/api/v1/time", "/api/v1/health/live", "/api/v1/health/ready", "/api/v1/platform", "/api/v1/rules", "/api/v1/experimental/guide"}
+        public = {"/api/v1/auth/enroll", "/api/v1/auth/reset", "/api/v1/registrations", "/api/v1/auth/login", "/api/v1/auth/recovery", "/api/v1/auth/email/request", "/api/v1/auth/email/requests/{ident}", "/api/v1/auth/email/verify", "/api/v1/time", "/api/v1/health/live", "/api/v1/health/ready", "/api/v1/platform", "/api/v1/rules", "/api/v1/experimental/guide"}
         schema["components"]["securitySchemes"]["graderToken"] = {"type": "http", "scheme": "bearer", "description": "Mã máy chấm, chỉ hiện một lần khi admin tạo"}
         for path, methods in schema["paths"].items():
             for method, operation in methods.items():

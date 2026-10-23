@@ -40,7 +40,7 @@ def main():
         from arena_api.operations import Operations
         service=Service(store,start_worker=False);comp=Competitions(store,service,accounts);ops=Operations(store,accounts,service,comp)
         for i in range(3):
-            profile={'team':f'Browser Team {i}','email':f'browser{i}@example.test','phone':'','members':[{'name':f'Test student {n}','student_id':f'BROW{i}{n}00'} for n in range(3)],'confirmed':True}
+            profile={'team':f'Browser Team {i}','email':f'browser{i}@example.test','phone':'','members':[{'name':f'Test student {n}','student_id':f'BROW{i}{n}00'} for n in range(4)],'confirmed':True}
             issued=ops.create_team(profile,f'browser{i}',PASSWORD,'browser-fixture')
             with store.lock,store.db:store.db.execute('UPDATE accounts SET must_change=0 WHERE id=?',(issued['account']['id'],))
         store.db.close()

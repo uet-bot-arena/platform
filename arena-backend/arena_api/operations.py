@@ -35,8 +35,9 @@ class Operations:
                     raise Fault('admin_conflict', 'A registration for this team is pending; approve it instead')
                 self.db.execute('INSERT INTO teams(id,name,name_key,email,phone,members,created_ms) VALUES(?,?,?,?,?,?,?)',
                     (ident, profile['team'], key, profile['email'], profile['phone'], json.dumps(profile['members']), now_ms()))
-                self.db.execute("INSERT INTO accounts(id,username,password_hash,role,team_id,created_ms) VALUES(?,?,?,'team',?,?)",
+                self.db.execute("INSERT INTO accounts(id,username,password_hash,role,team_id,created_ms) VALUES(?,?,?,'guest',?,?)",
                     (account, username.casefold(), encoded, ident, now_ms()))
+                self.accounts.attach_legacy(account, ident)
                 self.accounts.audit(actor, 'team.created', ident)
                 result = self.accounts.public(self.accounts.one('SELECT * FROM accounts WHERE id=?', (account,)))
             return {'account': result, 'temporary_password': password, 'credential_visibility': 'this_response_only'}
@@ -127,7 +128,7 @@ class Operations:
             completed_benchmarks = [j for j in recent if j['kind']=='benchmark' and j['status'] in TERMINAL]
             p95s = [j['p95'] for j in recent if j['kind']=='benchmark' and j['status']=='completed' and isinstance(j['p95'],(int,float))]
             counts = {'teams':count('teams',' WHERE archived_ms IS NULL'), 'archived_teams':count('teams',' WHERE archived_ms IS NOT NULL'),
-                'locked_accounts':count('accounts'," WHERE role='team' AND locked=1"),
+                'locked_accounts':count('accounts'," WHERE role<>'admin' AND locked=1"),
                 'pending_registrations':count('registrations'," WHERE status='pending'"),
                 'pending_recoveries':count('recoveries'," WHERE status='pending'"),
                 'competitions':count('competitions',' WHERE archived_ms IS NULL'),

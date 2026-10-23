@@ -52,7 +52,7 @@
         "tags": [
           "auth"
         ],
-        "summary": "Đăng nhập bằng username và mật khẩu do admin cấp",
+        "summary": "Đăng nhập email cá nhân hoặc username khách/BTC",
         "operationId": "login_api_v1_auth_login_post",
         "requestBody": {
           "content": {
@@ -223,6 +223,962 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/auth/enroll": {
+      "post": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Tiêu thụ xác minh email rồi đặt mật khẩu cá nhân",
+        "operationId": "enroll_api_v1_auth_enroll_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Finish"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/reset": {
+      "post": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Đặt lại mật khẩu bằng email và hủy mọi phiên cũ",
+        "operationId": "reset_api_v1_auth_reset_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Finish"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/me": {
+      "get": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Hồ sơ cá nhân, đội hiện tại và hạn lập đội",
+        "operationId": "me_api_v1_users_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Sửa tên, lớp, ngôn ngữ và cờ tìm đồng đội",
+        "operationId": "profile_api_v1_users_me_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Profile"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/teams": {
+      "post": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Tạo đội và mã mời, người tạo là đội trưởng",
+        "operationId": "create_api_v1_teams_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/teams/join": {
+      "post": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Vào một đội trong mùa bằng mã mời tám ký tự",
+        "operationId": "join_api_v1_teams_join_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Invite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/teams/leave": {
+      "post": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Rời đội; đội trưởng chuyển quyền trước nếu còn người",
+        "operationId": "leave_api_v1_teams_leave_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/teams/name": {
+      "post": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Đội trưởng đổi tên đội",
+        "operationId": "rename_api_v1_teams_name_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamName"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/teams/invite/rotate": {
+      "post": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Đội trưởng đổi mã mời",
+        "operationId": "rotate_api_v1_teams_invite_rotate_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/teams/recruiting": {
+      "post": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Đội trưởng bật hoặc tắt tuyển người",
+        "operationId": "recruiting_api_v1_teams_recruiting_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Flag"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/teams/member/remove": {
+      "post": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Đội trưởng xóa một thành viên",
+        "operationId": "remove_api_v1_teams_member_remove_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/teams/captain": {
+      "post": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Đội trưởng chuyển quyền cho thành viên",
+        "operationId": "captain_api_v1_teams_captain_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/matching": {
+      "get": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Ghép đội riêng cho người đăng nhập, không xuất email",
+        "operationId": "matching_api_v1_matching_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/users": {
+      "get": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Danh sách tài khoản cá nhân và khách, không xuất hash mật khẩu",
+        "operationId": "users_api_v1_admin_users_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/teams": {
+      "get": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Các đội trong mùa để BTC chọn chỉnh thành viên",
+        "operationId": "team_choices_api_v1_admin_teams_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Admin tạo đội và tài khoản; mật khẩu chỉ trả một lần",
+        "operationId": "create_team_api_v1_admin_teams_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminTeamCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedCredential"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/users/{ident}/judge": {
+      "post": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Nâng hoặc thu hồi Giám khảo của cán bộ",
+        "operationId": "judge_api_v1_admin_users__ident__judge_post",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Flag"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/users/{ident}/lock": {
+      "post": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Khóa người dùng và thu hồi phiên",
+        "operationId": "lock_api_v1_admin_users__ident__lock_post",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountLock"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/team-policy": {
+      "get": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Hạn lập đội và revision của mùa hiện tại",
+        "operationId": "policy_api_v1_admin_team_policy_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Đặt hạn lập đội; đủ người tự chốt khi đến hạn",
+        "operationId": "deadline_api_v1_admin_team_policy_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Deadline"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/team-merges": {
+      "get": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "Đề xuất ghép người lẻ, ưu tiên lớp rồi ngôn ngữ",
+        "operationId": "proposals_api_v1_admin_team_merges_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/team-merges/confirm": {
+      "post": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "BTC xác nhận đề xuất trong 48 giờ, kiểm tra lại roster",
+        "operationId": "confirm_api_v1_admin_team_merges_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Merge"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/teams/{ident}/membership": {
+      "post": {
+        "tags": [
+          "people-and-teams"
+        ],
+        "summary": "BTC chỉnh thành viên sau hạn, lưu audit",
+        "operationId": "membership_api_v1_admin_teams__ident__membership_post",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminMember"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
       }
     },
     "/api/v1/admin/registrations": {
@@ -790,53 +1746,6 @@
         "security": [
           {
             "cookieAuth": []
-          }
-        ]
-      }
-    },
-    "/api/v1/admin/teams": {
-      "post": {
-        "tags": [
-          "admin"
-        ],
-        "summary": "Admin tạo đội và tài khoản; mật khẩu chỉ trả một lần",
-        "operationId": "create_team_api_v1_admin_teams_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AdminTeamCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/IssuedCredential"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "cookieAuth": [],
-            "csrfAuth": []
           }
         ]
       }
@@ -4875,6 +5784,31 @@
         ],
         "title": "AccountLock"
       },
+      "AdminMember": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "title": "User Id"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "add",
+              "remove",
+              "captain"
+            ],
+            "title": "Action"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user_id",
+          "action"
+        ],
+        "title": "AdminMember"
+      },
       "AdminTeamCreate": {
         "properties": {
           "profile": {
@@ -5389,6 +6323,34 @@
         ],
         "title": "Credentials"
       },
+      "Deadline": {
+        "properties": {
+          "deadline_ms": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 253402300799000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline Ms"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_revision"
+        ],
+        "title": "Deadline"
+      },
       "Definition": {
         "properties": {
           "definition": {
@@ -5513,6 +6475,59 @@
         ],
         "title": "Fenced"
       },
+      "Finish": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "title": "Request Id"
+          },
+          "verification_token": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 40,
+            "format": "password",
+            "title": "Verification Token",
+            "writeOnly": true
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 8,
+            "format": "password",
+            "title": "Password",
+            "writeOnly": true
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Display Name",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "request_id",
+          "verification_token",
+          "password"
+        ],
+        "title": "Finish"
+      },
+      "Flag": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "Flag"
+      },
       "GraderCreate": {
         "properties": {
           "name": {
@@ -5609,6 +6624,22 @@
         ],
         "title": "ImportPackage"
       },
+      "Invite": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "title": "Invite"
+      },
       "IssuedCredential": {
         "properties": {
           "account": {
@@ -5651,7 +6682,7 @@
         "properties": {
           "username": {
             "type": "string",
-            "maxLength": 30,
+            "maxLength": 120,
             "minLength": 1,
             "title": "Username"
           },
@@ -5822,6 +6853,42 @@
         ],
         "title": "Member"
       },
+      "MemberChange": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "title": "User Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "title": "MemberChange"
+      },
+      "Merge": {
+        "properties": {
+          "proposal_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Proposal Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Name",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "proposal_id"
+        ],
+        "title": "Merge"
+      },
       "PasswordChange": {
         "properties": {
           "current_password": {
@@ -5892,6 +6959,55 @@
           "definition"
         ],
         "title": "Preview"
+      },
+      "Profile": {
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 2,
+            "title": "Display Name"
+          },
+          "class_name": {
+            "type": "string",
+            "maxLength": 60,
+            "title": "Class Name",
+            "default": ""
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "cpp17",
+              "c11",
+              "python3"
+            ],
+            "title": "Language",
+            "default": "cpp17"
+          },
+          "introduction": {
+            "type": "string",
+            "maxLength": 160,
+            "title": "Introduction",
+            "default": ""
+          },
+          "contact": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Contact",
+            "default": ""
+          },
+          "looking": {
+            "type": "boolean",
+            "title": "Looking",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "display_name"
+        ],
+        "title": "Profile"
       },
       "Recovery": {
         "properties": {
@@ -6114,6 +7230,43 @@
         ],
         "title": "SessionView"
       },
+      "TeamCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "guest": {
+            "type": "boolean",
+            "title": "Guest",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "TeamCreate"
+      },
+      "TeamName": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 2,
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "TeamName"
+      },
       "TeamView": {
         "properties": {
           "id": {
@@ -6157,6 +7310,37 @@
           "revision": {
             "type": "integer",
             "title": "Revision",
+            "default": 1
+          },
+          "season_id": {
+            "type": "string",
+            "title": "Season Id",
+            "default": "default"
+          },
+          "is_guest": {
+            "type": "integer",
+            "title": "Is Guest",
+            "default": 0
+          },
+          "locked_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locked Ms"
+          },
+          "recruiting": {
+            "type": "integer",
+            "title": "Recruiting",
+            "default": 0
+          },
+          "legacy_roster": {
+            "type": "integer",
+            "title": "Legacy Roster",
             "default": 1
           }
         },
@@ -6206,7 +7390,9 @@
             "type": "string",
             "enum": [
               "admin",
-              "team"
+              "guest",
+              "student",
+              "staff"
             ],
             "title": "Role"
           },
@@ -6236,6 +7422,38 @@
           "created_ms": {
             "type": "integer",
             "title": "Created Ms"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name",
+            "default": ""
+          },
+          "cohort": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort"
+          },
+          "is_judge": {
+            "type": "boolean",
+            "title": "Is Judge",
+            "default": false
           }
         },
         "additionalProperties": false,

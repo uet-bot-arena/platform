@@ -22,14 +22,14 @@ def spectator_admin(request: Request):
     try:
         auth = active_principal(request)
     except Fault as exc:
-        if exc.code in ("unauthorized", "password_change_required"):
+        if exc.code in ("unauthorized", "password_change_required", "rate_limited"):
             return False
         raise
     return auth["user"]["role"] == "admin"
 
 
 def principal(request: Request):
-    auth = request.app.state.accounts.principal(request.cookies.get(COOKIE, ""))
+    auth = request.app.state.accounts.principal(request.cookies.get(COOKIE, ""), allow_blocked=request.url.path == "/api/v1/auth/logout")
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         csrf = request.headers.get("X-CSRF-Token", "")
         if not secrets.compare_digest(csrf.encode(), auth["csrf_token"].encode()):
@@ -44,10 +44,21 @@ def active_principal(request: Request):
     return value
 
 
-def team_principal(request: Request):
+def participant_principal(request: Request):
     value = active_principal(request)
-    if value["user"]["role"] != "team":
-        raise Fault("forbidden", "Team account required")
+    if value["user"]["role"] == "admin":
+        raise Fault("forbidden", "Tài khoản cá nhân hoặc khách của đội được yêu cầu")
+    return value
+
+
+def team_principal(request: Request):
+    value = participant_principal(request)
+    if not value["user"]["team_id"]:
+        raise Fault("forbidden", "Hãy tạo hoặc vào một đội trước")
+    with request.app.state.store.lock:
+        team = request.app.state.accounts.team(value["user"]["team_id"])
+    if team["archived_ms"]:
+        raise Fault("forbidden", "Đội đã giải tán hoặc bị lưu trữ")
     return value
 
 

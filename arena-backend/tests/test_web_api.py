@@ -24,7 +24,7 @@ from arena_api.settings import Lease, Settings
 
 def registration(name="Team One", email="captain@example.test"):
     return {"team": name, "email": email, "phone": "", "members": [
-        {"name": "Student " + str(i), "student_id": "2602000" + str(i)} for i in range(3)], "confirmed": True}
+        {"name": "Student " + str(i), "student_id": "2602000" + str(i)} for i in range(4)], "confirmed": True}
 
 
 class APIHarness(unittest.TestCase):
@@ -248,7 +248,7 @@ class MigrationAndPersistence(unittest.TestCase):
             accounts = Accounts(store)
             self.assertEqual(accounts.principal("migration-only-existing-token")["user"]["id"], "existing-admin")
             self.assertTrue(accounts.verify(accounts.one("SELECT password_hash FROM accounts")["password_hash"], "migration-only-existing-password"))
-            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], [1, 2, 3, 4, 5, 6])
+            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], [1, 2, 3, 4, 5, 6, 7])
             self.assertEqual(store.db.execute("SELECT COUNT(*) FROM competitions").fetchone()[0], 0)
             store.db.close()
 
@@ -298,7 +298,7 @@ class MigrationAndPersistence(unittest.TestCase):
             store = Store(directory, recover_jobs=False)
             accounts = Accounts(store)
             self.assertEqual(accounts.principal(token)["user"]["role"], "admin")
-            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], [1, 2, 3, 4, 5, 6])
+            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], [1, 2, 3, 4, 5, 6, 7])
             store.db.close()
 
     def test_single_controller_lease_and_public_secure_cookie_config(self):

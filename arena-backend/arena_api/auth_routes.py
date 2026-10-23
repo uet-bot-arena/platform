@@ -10,7 +10,7 @@ def register(body: Registration, request: Request):
     return request.app.state.accounts.register(body.model_dump(), peer(request))
 
 
-@router.post("/auth/login", response_model=SessionView, summary="Đăng nhập bằng username và mật khẩu do admin cấp")
+@router.post("/auth/login", response_model=SessionView, summary="Đăng nhập email cá nhân hoặc username khách/BTC")
 def login(body: Login, request: Request, response: Response):
     result = request.app.state.accounts.login(body.username, body.password.get_secret_value(), peer(request))
     return set_session(request, response, result)

@@ -1,5 +1,4 @@
 """Durable email requests and verification proofs; only the mailer knows plaintext codes."""
-from contextlib import contextmanager
 import hashlib
 import hmac
 import re
@@ -50,21 +49,8 @@ class MailQueue:
                 name TEXT PRIMARY KEY, blocked_until_ms INTEGER NOT NULL, error TEXT);
             """)
 
-    @contextmanager
     def transaction(self):
-        # Hub and mailer use separate connections: a Python lock alone cannot protect quotas.
-        with self.store.lock:
-            own = not self.db.in_transaction
-            if own:
-                self.db.execute("BEGIN IMMEDIATE")
-            try:
-                yield
-                if own:
-                    self.db.commit()
-            except BaseException:
-                if own:
-                    self.db.rollback()
-                raise
+        return self.store.transaction()
 
     def one(self, sql, args=()):
         cursor = self.db.execute(sql, args)
@@ -234,3 +220,16 @@ class MailQueue:
                 item["low_quota"] = min(item["daily_remaining"] / provider.daily_limit, item["hourly_remaining"] / provider.hourly_limit) < .2
                 providers.append(item)
             return {"counts": {s: counts.get(s, 0) for s in ("queued", "sent", "failed", "dropped")}, "retried": retried, "providers": providers}
+
+    def consume(self, ident, token, purpose):
+        """Call inside the account transaction so a failed signup/reset cannot spend the proof."""
+        with self.transaction():
+            row = self.get(ident)
+            newer = self.one("SELECT id FROM email_outbox WHERE recipient=? AND purpose=? AND status='sent' AND created_ms>? LIMIT 1",
+                             (row["recipient"], row["purpose"], row["created_ms"]))
+            if (row["purpose"] != purpose or row["status"] != "sent" or not row["verified_ms"]
+                    or row["expires_ms"] <= self.clock() or row["consumed_ms"] is not None or newer
+                    or not hmac.compare_digest(row["proof_hash"] or "", hashlib.sha256(token.encode()).hexdigest())):
+                raise Fault("invalid_verification", "Xác minh đã hết hạn hoặc đã dùng; hãy nhận mã mới")
+            self.db.execute("UPDATE email_outbox SET consumed_ms=? WHERE id=?", (self.clock(), ident))
+            return row

@@ -506,8 +506,9 @@ class CompetitionAPI(APIHarness):
         with self.store.lock, self.store.db:
             for index in range(count):
                 team = uuid.uuid4().hex
-                self.store.db.execute("INSERT INTO teams(id,name,name_key,email,phone,members,created_ms) VALUES(?,?,?,?,?,?,?)", (team, f"Seed {index}", f"seed-{index}", "private@example.test", "", "[]", now_ms()))
-                self.store.db.execute("INSERT INTO accounts VALUES(?,?,?,'team',?,0,0,0,?)", (uuid.uuid4().hex, f"seed-{index}", "unit-only-unused-hash", team, now_ms()))
+                roster = json.dumps([{"name": f"Student {i}", "student_id": f"2600000{i}"} for i in range(4)])
+                self.store.db.execute("INSERT INTO teams(id,name,name_key,email,phone,members,created_ms) VALUES(?,?,?,?,?,?,?)", (team, f"Seed {index}", f"seed-{index}", "private@example.test", "", roster, now_ms()))
+                self.store.db.execute("INSERT INTO accounts(id,username,password_hash,role,team_id,must_change,locked,delivered,created_ms) VALUES(?,?,?,'guest',?,0,0,0,?)", (uuid.uuid4().hex, f"seed-{index}", "unit-only-unused-hash", team, now_ms()))
         for (team,) in self.store.db.execute("SELECT id FROM teams").fetchall():
             body = self.qualified(team, comp["config"])
             self.comp.enter("unit-seed-" + team, team, comp["id"], body, uuid.uuid4().hex)

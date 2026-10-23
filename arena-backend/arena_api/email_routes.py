@@ -26,7 +26,8 @@ def request_code(body: EmailRequest, request: Request):
     if not settings.email_providers or not settings.secrets.has("verification_hmac_key"):
         raise Fault("email_unavailable", "Chưa thể gửi mã. Vui lòng thử lại sau.")
     email = university_email(body.email, settings.account_rules)
-    request.app.state.accounts.rate_limit("email-code:ip:" + peer(request), 20, 3600)
+    # A university NAT may have hundreds of students; the per-email resend guard remains 60 s.
+    request.app.state.accounts.rate_limit("email-code:ip:" + peer(request), 1000, 3600)
     return request.app.state.mail.enqueue(email, body.purpose)
 
 

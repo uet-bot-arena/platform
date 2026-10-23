@@ -57,6 +57,7 @@ cohort_base = 2000                       # khóa = 2000 + hai số đầu MSSV
 freshman_cohort = 0                      # 0 = tự tính theo năm học hiện tại
 team_size = 4
 name_max = 40
+season_id = "default"                  # mỗi người chỉ thuộc một đội trong mùa này
 
 [verification]
 code_ttl_seconds = 600        # mã hết hạn 10 phút sau lúc gửi

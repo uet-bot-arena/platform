@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import sqlite3
@@ -34,6 +35,22 @@ class Store:
                 else:
                     self.update(job["id"], status="queued", report=None, error=None, restarts=job.get("restarts", 0) + 1)
                     self.event(job["id"], "requeued", {"reason": "server_restart"})
+
+    @contextmanager
+    def transaction(self):
+        """Reserve the SQLite writer before read/check/write; nested calls share the commit."""
+        with self.lock:
+            own = not self.db.in_transaction
+            if own:
+                self.db.execute("BEGIN IMMEDIATE")
+            try:
+                yield
+                if own:
+                    self.db.commit()
+            except BaseException:
+                if own:
+                    self.db.rollback()
+                raise
 
     def create(self, kind, team, data):
         item = {"id": uuid.uuid4().hex, "team_id": team, "created_unix_ms": time.time_ns() // 1_000_000, **data}
