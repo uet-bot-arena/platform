@@ -9,6 +9,7 @@ subclasses decide where events, status, sources and artifacts come from and go t
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import random
 import threading
@@ -90,7 +91,7 @@ class Runner:
 
     def runtime_report(self, job):
         """Toolchain identity written into every report (platform, runtime_id, backend)."""
-        return {"image_id": job.get("image_id")}
+        raise NotImplementedError
 
     def published_state(self, job_id):
         """True once a board state is visible; a retry would then splice two games."""
@@ -360,14 +361,26 @@ class Runner:
 
 
 class LocalRunner(Runner):
-    """Runs jobs against a local Store and the Docker backend helpers (unit tests, tools)."""
+    """Runs jobs against a local Store with a native sandbox (unit tests and tools)."""
 
-    def __init__(self, store, stop=None, compile_slots=2):
+    def __init__(self, store, stop=None, compile_slots=2, backend=None):
         super().__init__(stop)
         self.store = store
         self.build_locks = {}
         self.build_lock = threading.Lock()
         self.compile_slots = threading.BoundedSemaphore(max(1, compile_slots))
+        self._backend = backend
+
+    @property
+    def backend(self):
+        if self._backend is None:
+            self._backend = sandbox.get_backend("windows" if os.name == "nt" else "bwrap")
+        return self._backend
+
+    def runtime_report(self, job):
+        # Old job metadata remains readable, but new work always identifies the
+        # toolchain actually executing it, including artifact cache keys.
+        return self.backend.identity()
 
     def record(self, job_id, kind, data):
         return self.store.event(job_id, kind, data)
@@ -378,9 +391,6 @@ class LocalRunner(Runner):
     def published_state(self, job_id):
         return any(e["type"] == "state" for e in self.store.events(job_id))
 
-    def infrastructure_error(self):
-        sandbox.invalidate_images()
-
     def submissions_for(self, job):
         official = job.get("official")
         if official:
@@ -390,24 +400,25 @@ class LocalRunner(Runner):
                 for i, s in enumerate(job["submission_ids"])]
 
     def new_worker(self, artifact, p, job):
-        return sandbox.Worker(artifact, p, job["image_id"])
+        return self.backend.worker(artifact, p)
 
     def lock_for_build(self, key):
         with self.build_lock:
             return self.build_locks.setdefault(key, threading.Lock())
 
     def ensure_artifact(self, job, submission, p, require_existing=False):
-        key = digest({"source": submission["source"], "image": job["image_id"], "runtime": submission.get("runtime", "cpp17")})
+        key = digest({"source": submission["source"], "runtime_id": self.runtime_report(job)["runtime_id"], "runtime": submission.get("runtime", "cpp17")})
         with self.lock_for_build(key):
             return self._ensure_artifact(job, submission, p, require_existing)
 
     def _ensure_artifact(self, job, submission, p, require_existing=False):
-        # Build per immutable submission AND image/flags/SDK, never silently reuse
+        # Build per immutable submission AND toolchain/flags/SDK, never silently reuse
         # an artifact produced under a different toolchain.
         sdk_hash = experimental.sdk_hash() if job.get("ruleset") else sandbox.sdk_hash()
         runtime = submission.get("runtime", "cpp17")
         flags = runtime_flags(runtime)
-        build_key = digest({"source": submission["source"], "image": job["image_id"], "flags": flags, "sdk": sdk_hash, "runtime": runtime})
+        identity = self.runtime_report(job)
+        build_key = digest({"source": submission["source"], "runtime_id": identity["runtime_id"], "flags": flags, "sdk": sdk_hash, "runtime": runtime})
         folder = self.store.root / "artifacts" / build_key
         artifact = folder / "bot"
         manifest_file = folder / "manifest.json"
@@ -422,15 +433,15 @@ class LocalRunner(Runner):
             folder.rename(folder.with_name(build_key + "-interrupted-" + str(time.time_ns())))
         folder.parent.mkdir(parents=True, exist_ok=True)
         source = Path(submission["source_path"])
-        if runtime == "cpp17" and len(list(source.glob("*.cpp"))) == 1:
-            result = sandbox.cached_cpp_build(source, folder, p, job["image_id"], self.store.root / "compiled-cache", self.lock_for_build, self.compile_slots)
+        if runtime == "cpp17" and self.backend.name == "bwrap" and len(list(source.glob("*.cpp"))) == 1:
+            result = sandbox.cached_cpp_build(source, folder, p, self.backend, self.store.root / "compiled-cache", self.lock_for_build, self.compile_slots)
         else:
             with self.compile_slots:
-                result = sandbox.build(source, folder, p, job["image_id"], runtime=runtime)
+                result = self.backend.build(source, folder, p, runtime=runtime)
         self.record(job["id"], "build", {"submission_id": submission["id"], **result})
         if not result["ok"]:
             raise Fault(result["code"], result["log"] or "Compilation failed")
-        manifest = {**result, "runtime": runtime, "build_key": build_key, "source": submission["source"], "image_id": job["image_id"],
+        manifest = {**result, **identity, "runtime": runtime, "build_key": build_key, "source": submission["source"],
                     "flags": flags, "sdk_sha256": sdk_hash}
         manifest_file.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         self.save(submission["id"], artifact={k: v for k, v in manifest.items() if k != "log"})

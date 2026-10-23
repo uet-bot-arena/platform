@@ -191,7 +191,7 @@ class Persistence(unittest.TestCase):
             reopened.db.close()
 
     def test_jobs_wait_in_the_queue_while_no_grader_is_online(self):
-        # Gói 3: the hub never runs bots; without a grader the job simply waits (no Docker needed).
+        # Gói 3: the hub never runs bots; without a grader the job simply waits (no sandbox on the hub).
         with tempfile.TemporaryDirectory() as tmp:
             store = Store(tmp)
             service = Service(store, start_worker=False)

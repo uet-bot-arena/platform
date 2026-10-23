@@ -34,7 +34,7 @@ static void probe() {
     catch (const std::exception& e) { std::cerr << "thread: " << e.what() << '\n'; }
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     std::cerr << "socket: " << (fd < 0 ? std::strerror(errno) : "OK (!)") << '\n';
-    for (const char* path : {"/etc/hostname", "/proc/1/cmdline", "/sdk/json.hpp", "/source/bot.cpp", "/var/run/docker.sock"}) {
+    for (const char* path : {"/etc/hostname", "/proc/1/cmdline", "/sdk/json.hpp", "/source/bot.cpp", "/run/arena/control.sock"}) {
         std::ifstream f(path);
         std::cerr << "read " << path << ": " << (f.good() ? "readable" : "no") << '\n';
     }

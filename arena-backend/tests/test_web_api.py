@@ -166,7 +166,7 @@ class WebAPI(APIHarness):
         self.assertEqual(result.status_code, 404)
 
     def test_benchmark_waits_in_queue_while_no_grader_is_online(self):
-        # Gói 3: no Docker on the hub; a request is queued and shown with its position.
+        # Gói 3: no sandbox on the hub; a request is queued and shown with its position.
         team, issued = self.create_team()
         source = self.app.state.store.create("submission", issued["account"]["team_id"], {"version": "v1.0.0"})
         result = team.post("/api/v1/benchmarks", json={"submission_id": source["id"]}, headers={"Idempotency-Key": "offline-key"})
@@ -308,7 +308,7 @@ class MigrationAndPersistence(unittest.TestCase):
                 Lease(directory)
             lease.close()
         # This test concerns origin validation, independent of the process cwd
-        # (DrvFS can invalidate getcwd after parallel Docker integration runs).
+        # (DrvFS can invalidate getcwd after parallel integration runs).
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(ValueError):
                 Settings(data=Path(directory), origin="http://arena.example")

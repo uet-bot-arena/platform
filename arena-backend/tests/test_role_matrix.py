@@ -2,7 +2,7 @@
 
 Only the final handler is replaced by a 200 probe so matrix traversal cannot
 delete fixtures or revoke its own sessions. Real actions/lifecycles are covered
-by test_web_api, test_admin_operations, test_competitions and Docker integration.
+by test_web_api, test_admin_operations, test_competitions and native integration.
 """
 import json
 import inspect

@@ -1,4 +1,4 @@
-"""Real Docker C/C++/CPython cross-play and language fault probes."""
+"""Real bwrap C/C++/PyPy cross-play and language fault probes."""
 from dataclasses import replace
 import io
 import json
@@ -16,6 +16,7 @@ from arena.adjudication import CURRENT
 from arena.config import request_profile
 from arena.protocol import Fault
 from arena.service import Service
+from arena.runner import LocalRunner
 from arena.store import Store
 
 def zipped(files):
@@ -25,22 +26,22 @@ def zipped(files):
     return out.getvalue()
 
 def main():
-    rows=[];p=request_profile({'match_ms':60000});image=sandbox.image_id('uet-arena-worker:clock-v2')
+    rows=[];p=request_profile({'match_ms':60000});backend=sandbox.get_backend('bwrap')
     def passed(name,**data):rows.append({'test':name,'passed':True,**data});print('PASS',name,flush=True)
     with tempfile.TemporaryDirectory(prefix='arena-languages-') as tmp:
-        root=Path(tmp);sandbox.controller_scope(root,min(os.sched_getaffinity(0)))
-        store=Store(root);service=Service(store,start_worker=False)
+        root=Path(tmp)
+        store=Store(root);service=Service(store,start_worker=False);runner=LocalRunner(store,backend=backend)
         names={'cpp17':('bot.cpp',),'c11':('bot.c','jsmn.h'),'python3':('bot.py',)}
         sources={runtime:{name:(ROOT/'sdk'/name).read_text() for name in files} for runtime,files in names.items()}
         submissions={runtime:service.submit('test-team','v1.0.'+str(i),runtime,zipped(files),'language-source-'+runtime) for i,(runtime,files) in enumerate(sources.items())}
         for runtime,submission in submissions.items():
             job=service.enqueue('test-team','benchmark',{'submission_id':submission['id'],'match_ms':60000},'language-benchmark-'+runtime)
-            service.pending.remove(job['id']);service.execute(job)
+            runner.execute(job)
             report=store.get(job['id'])['report'];assert report['passed'] and len(report['samples'])==72
             passed(runtime+'-72-samples',startup=report['startup'],compiler=report['artifacts'][0]['compiler'])
         for red,blue in (('cpp17','python3'),('python3','cpp17'),('c11','python3'),('python3','c11'),('c11','cpp17'),('cpp17','c11')):
             job=service.enqueue('test-team','match',{'red_submission_id':submissions[red]['id'],'blue_submission_id':submissions[blue]['id'],'match_ms':60000,'delegate_timeout_claims':True},'cross-'+red+'-'+blue)
-            service.pending.remove(job['id']);service.execute(job);report=store.get(job['id'])['report']
+            runner.execute(job);report=store.get(job['id'])['report']
             assert report.get('result') and not report.get('fault'),report
             passed(red+'-vs-'+blue,result=report['result'],plies=report['final_state']['ply'])
         for runtime in ('c11','python3'):
@@ -83,9 +84,9 @@ def main():
                     source[entry]=prefix+base
                 directory=root/(runtime+'-'+mode);directory.mkdir();src=directory/'source';src.mkdir()
                 for name,text in source.items():(src/name).write_text(text)
-                built=sandbox.build(src,directory/'artifact',p,image,runtime)
+                built=backend.build(src,directory/'artifact',p,runtime)
                 assert built['ok'],(runtime,mode,built)
-                worker=sandbox.Worker(directory/'artifact',replace(p,turn_ms=150,startup_ms=150 if mode=='slow_start' else 2000,match_ms=None),image)
+                worker=backend.worker(directory/'artifact',replace(p,turn_ms=150,startup_ms=150 if mode=='slow_start' else 2000,match_ms=None))
                 actual=None
                 try:
                     worker.start('fault-probe','red')
@@ -100,6 +101,6 @@ def main():
                 passed(runtime+'-'+mode,code=actual)
         store.db.close()
     output=ROOT/'test-results';output.mkdir(exist_ok=True)
-    (output/'languages-integration.json').write_text(json.dumps({'image_id':image,'checks':rows},indent=2))
+    (output/'languages-integration.json').write_text(json.dumps({'runtime':backend.identity(),'checks':rows},indent=2))
 
 if __name__=='__main__':main()

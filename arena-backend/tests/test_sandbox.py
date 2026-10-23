@@ -1,4 +1,4 @@
-"""Gói 2: sandbox interface, shared transport and platform limits (no Docker/bwrap needed).
+"""Gói 2: sandbox interface, shared transport and platform limits (no native sandboxes needed).
 
 The real backends are exercised by tests/sandbox_suite/suite.py (see docs/SANDBOX.md).
 """
@@ -163,10 +163,7 @@ class Backends(unittest.TestCase):
     def test_registry_and_platform_guards(self):
         with self.assertRaises(ValueError):
             sandbox.get_backend("wasm")
-        self.assertEqual(sandbox.BACKENDS, ("docker", "bwrap", "windows"))
-        docker = sandbox.get_backend("docker", image="img")
-        with patch("arena.sandbox.image_id", return_value="sha256:" + "a" * 64):
-            self.assertEqual(docker.identity(), {"backend": "docker", "platform": "linux", "runtime_id": "sha256:" + "a" * 64})
+        self.assertEqual(sandbox.BACKENDS, ("bwrap", "windows"))
         if os.name != "nt":
             with self.assertRaises(Fault) as caught:
                 sandbox.get_backend("windows")

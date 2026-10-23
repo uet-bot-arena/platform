@@ -99,7 +99,7 @@ class Operations:
         return {'items':[json.loads(r[0]) for r in rows], 'total':total, 'limit':limit, 'offset':offset}
 
     def metrics(self):
-        # Docker probes run outside the DB lock; cached for the dashboard poll.
+        # sandbox probes run outside the DB lock; cached for the dashboard poll.
         if self.health_value is None or time.monotonic()-self.health_at>10:
             self.health_value = self.service.health()
             self.health_at = time.monotonic()

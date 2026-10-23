@@ -267,7 +267,7 @@ Giữ **mã job**, **mã lỗi** và chi tiết trong báo cáo khi nhờ BTC h�
 | illegal_action | Nước đi không đúng luật, hoặc đầu hàng trong benchmark | Chọn từ legal_moves; kiểm tọa độ theo kích thước bàn và row 0 = hàng lớn nhất |
 | crash | Bot thoát/đóng pipe khi chưa trả xong | Kiểm truy cập mảng, null JSON, exception, stack/RAM; xem stderr (Python in traceback ở đây) |
 | output_limit | Frame stdout hoặc tổng stderr quá giới hạn | Chỉ xuất một action nhỏ; giảm log stderr |
-| worker_unavailable / worker_error | Docker, supervisor hoặc transport gặp sự cố | Gửi mã job cho BTC; không tự coi đây là thua do nghĩ quá giờ |
+| worker_unavailable / worker_error | Sandbox, supervisor hoặc transport gặp sự cố | Gửi mã job cho BTC; không tự coi đây là thua do nghĩ quá giờ |
 | artifact_missing / artifact_corrupt / provenance_mismatch | Artifact chốt bị mất, hỏng hoặc không khớp | BTC kiểm tra/khôi phục artifact đã xác minh; đội không tự thay binary sau chốt |
 | server_restart / server_shutdown | Controller dừng khi job chưa xong | Kiểm trạng thái; chạy lại benchmark khi server sẵn sàng, trận giải để BTC xử lý attempt |
 | qualification_required | Benchmark không đạt hoặc không đúng cấu hình giải | Chạy đủ 72 mẫu với đúng version và ngân sách của giải, rồi chọn lại entry |

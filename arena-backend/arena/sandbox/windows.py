@@ -47,7 +47,7 @@ class WindowsBackend:
     def build(self, source, output, profile, runtime="cpp17", stage=None):
         from arena.sandbox import seal
         if stage:
-            raise Fault("worker_error", "Staged builds are a Docker cache optimisation only")
+            raise Fault("worker_error", "Staged preprocessing is unavailable on Windows")
         run = self.new_run()
         try:
             shutil.copytree(source, run / "source")

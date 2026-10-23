@@ -1,7 +1,7 @@
 """Competition HTTP and state-machine tests; synthetic benchmark records only here.
 
 Real qualification, cross-team execution and SSE are separately exercised by
-competition_integration.py with Uvicorn, uploaded C++, and Docker.
+competition_integration.py with Uvicorn, uploaded C++, and bwrap.
 """
 import copy
 import json
@@ -461,7 +461,7 @@ class CompetitionAPI(APIHarness):
         comp, _, _, _ = self.prepared()
         job = self.launch(comp)
         runner = LocalRunner(self.store)  # graders run the same Runner.execute checks
-        with patch.object(runner, "ensure_artifact", return_value=(None, {"artifact_sha256": "different"})), patch("arena.sandbox.Worker") as worker:
+        with patch.object(runner, "ensure_artifact", return_value=(None, {"artifact_sha256": "different"})), patch.object(runner, "new_worker") as worker:
             with self.assertRaises(Fault) as failure:
                 runner.execute(job)
             self.assertEqual(failure.exception.code, "provenance_mismatch")

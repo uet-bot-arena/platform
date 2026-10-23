@@ -1,4 +1,4 @@
-"""Build the exact downloadable SDK v3 ZIP and exercise it in trusted Docker workers."""
+"""Build the exact downloadable SDK v3 ZIP and exercise it in native bwrap workers."""
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -29,9 +29,9 @@ def main():
             z.write(example / name, name)
         for name in ('experimental.hpp', 'json.hpp', 'LICENSE.MIT'):
             z.write(ROOT / 'sdk' / name, name)
-    image = sandbox.image_id('uet-arena-worker:experimental-v1')
+    backend = sandbox.get_backend('bwrap')
     p = profile()
-    report = dict(passed=False, image_id=image, sdk_sha256=experimental.sdk_hash(), checks=[])
+    report = dict(passed=False, runtime=backend.identity(), sdk_sha256=experimental.sdk_hash(), checks=[])
 
     def checked(name, **data):
         report['checks'].append(dict(name=name, passed=True, **data))
@@ -51,14 +51,14 @@ def main():
         base = Path(directory)
         manifest = unpack(archive.read_bytes(), base / 'source', p)
         report['archive'] = manifest
-        built = sandbox.build(base / 'source', base / 'artifact', p, image)
+        built = backend.build(base / 'source', base / 'artifact', p)
         assert built['ok'], built
         checked('exact_flat_zip_passes_upload_validation_and_cpp17_build', build_ms=built['wall_ms'])
 
         logs = []
         for name, definition in experimental.PRESETS.items():
             rules = experimental.Rules(definition)
-            w = sandbox.Worker(base / 'artifact', p, image)
+            w = backend.worker(base / 'artifact', p)
             samples = []
             try:
                 w.start('minimax-proof', 'red', context(definition, 'benchmark'))
@@ -92,7 +92,7 @@ def main():
         defend = state([('b1', 'red', 'paper'), ('d4', 'red', 'rock'), ('h2', 'red', 'scissors'),
                         ('b2', 'blue', 'rock'), ('h8', 'blue', 'paper'), ('g8', 'blue', 'scissors')])
         for name, s in [('base_capture', base_win), ('control_target', control_win), ('defend_base', defend)]:
-            w = sandbox.Worker(base / 'artifact', p, image)
+            w = backend.worker(base / 'artifact', p)
             try:
                 w.start('minimax-proof', 'red', context(definition, 'match'))
                 result = w.turn(message(rules, s, 1))
@@ -111,7 +111,7 @@ def main():
 
         # One bounded actual duel: minimax Red versus the SDK's one-ply heuristic Blue.
         # No production DB, account, tournament or artifact is touched.
-        w = sandbox.Worker(base / 'artifact', p, image)
+        w = backend.worker(base / 'artifact', p)
         s = rules.initial_state()
         seen = {rules.position_key(s): 1}
         try:

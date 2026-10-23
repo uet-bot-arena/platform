@@ -1,7 +1,6 @@
 [Unit]
-Description=UET Bot Arena Web API and serial worker controller
-After=network.target docker.service
-Requires=docker.service
+Description=UET Bot Arena Web API hub
+After=network.target
 
 [Service]
 Type=simple

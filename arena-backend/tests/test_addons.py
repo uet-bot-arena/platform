@@ -1,4 +1,4 @@
-"""Add-on import/publication/team contract pipeline; no Docker or real DB used."""
+"""Add-on import/publication/team contract pipeline; no native sandbox or real DB used."""
 from copy import deepcopy
 import io
 import json

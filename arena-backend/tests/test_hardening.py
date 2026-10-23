@@ -97,15 +97,23 @@ class Hardening(unittest.TestCase):
             self.assertEqual(calls, [1])
         asyncio.run(check())
 
-    def test_image_lookup_cache_and_owner_labels(self):
-        from arena import sandbox
-        sandbox.invalidate_images()
-        image = "sha256:" + "a" * 64
-        with patch("arena.sandbox.command", side_effect=[b"linux", image.encode(),b""]) as command:
-            self.assertEqual(sandbox.image_id("test-only-image"), image)
-            self.assertEqual(sandbox.image_id("test-only-image"), image)
-            self.assertEqual(command.call_count, 3)
-        sandbox.controller_scope("/tmp/arena-test-owner")
-        args = sandbox.options("test", 256, image, [], "run")
-        self.assertTrue(any(arg.startswith("uet-arena.owner=") for arg in args))
-        sandbox.invalidate_images()
+    def test_local_runner_constructs_a_native_backend_only_when_needed(self):
+        from arena.runner import LocalRunner
+        from arena.store import Store
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory, patch("arena.sandbox.get_backend") as factory:
+            store = Store(directory, recover_jobs=False)
+            try:
+                runner = LocalRunner(store)
+                factory.assert_not_called()
+                runner.new_worker(Path(directory), None, {})
+                runner.new_worker(Path(directory), None, {})
+                factory.assert_called_once_with("windows" if os.name == "nt" else "bwrap")
+                self.assertEqual(factory.return_value.worker.call_count, 2)
+                identity = {"backend": "bwrap", "platform": "linux", "runtime_id": "sha256:" + "a" * 64}
+                factory.return_value.identity.return_value = identity
+                self.assertEqual(runner.runtime_report({"image_id": "legacy-image"}), identity)
+                self.assertEqual(runner.runtime_report({"runtime": {"runtime_id": "other"}}), identity)
+            finally:
+                store.db.close()

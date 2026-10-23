@@ -1,6 +1,6 @@
 """Trusted judge next to one untrusted bot. Bot timestamps are never used for adjudication.
 
-Linux (Docker image or bubblewrap rootfs): fixed paths /artifact, /source, /out, /sdk; the bot
+Linux (Linux sandbox image or bubblewrap rootfs): fixed paths /artifact, /source, /out, /sdk; the bot
 is single-threaded (seccomp), frozen off-turn with SIGSTOP. Windows: see supervisor_windows.py
 (AppContainer + Job Object). The HTTP API cannot choose paths or commands.
 """
@@ -33,7 +33,7 @@ monotonic_ns = time.perf_counter_ns if os.name == "nt" else time.monotonic_ns
 MAX_LINE = 65_536
 MAX_LOG = 262_144
 # Bot scratch space (cwd). Checked during and after every turn on every backend, so a bot
-# that fills its work directory loses with the same code on Docker, bubblewrap and Windows.
+# that fills its work directory loses with the same code on Linux sandbox, bubblewrap and Windows.
 WORK_QUOTA_BYTES = 16 * 1024 * 1024
 WORK_QUOTA_FILES = 256
 QUOTA_CHECK_NS = 50_000_000
@@ -119,7 +119,7 @@ def child_setup(memory_mib, cpu_seconds, single_process=True):
     resource.setrlimit(resource.RLIMIT_AS, (memory_mib * 1024 * 1024,) * 2)
     resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds + 1))
     if os.getuid() != 10001:
-        # Docker: the supervisor is root inside the container. bubblewrap already maps the
+        # Linux sandbox: the supervisor is root inside the container. bubblewrap already maps the
         # whole sandbox to uid 10001 (and forbids setgroups), so there is nothing to drop.
         os.setgroups([])
         os.setgid(10001)

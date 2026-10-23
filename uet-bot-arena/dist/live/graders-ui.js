@@ -1,7 +1,7 @@
 import {esc,head,panel,table,note,field,errors,submit,button,date,badge,empty} from './view.js';
 
 const platformLabels={windows:'Windows',linux:'Linux'};
-const backendLabels={windows:'AppContainer',bwrap:'bubblewrap',docker:'Docker'};
+const backendLabels={windows:'AppContainer',bwrap:'bubblewrap'};
 
 export function graderStatus(g){
   if(g.revoked_ms)return badge('failed','Đã thu hồi');

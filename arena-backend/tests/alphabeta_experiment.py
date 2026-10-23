@@ -1,9 +1,8 @@
-"""Opt-in Docker experiment for the example; does not change the live API DB."""
+"""Opt-in bwrap experiment for the example; does not change the live API DB."""
 import io
 import json
 from pathlib import Path
 import random
-import subprocess
 import sys
 import tempfile
 import time
@@ -15,6 +14,8 @@ sys.path.insert(0, str(ROOT))
 from arena import engine, sandbox
 from arena.config import profile
 from arena.service import Service
+from arena.runner import LocalRunner
+from grader_harness import run_probe
 from arena.store import Store
 
 
@@ -35,9 +36,9 @@ def tactical(pieces, side='red'):
 
 
 def main():
-    image = sandbox.image_id()
+    backend = sandbox.get_backend('bwrap')
     root = Path(tempfile.mkdtemp(prefix='alphabeta-', dir=ROOT / 'test-results'))
-    report = {'image_id': image, 'engine_sha256': engine.ENGINE_SHA256, 'checks': []}
+    report = {'runtime': backend.identity(), 'engine_sha256': engine.ENGINE_SHA256, 'checks': []}
     def passed(name, **details):
         report['checks'].append({'name': name, **details})
         print('PASS', name, json.dumps(details), flush=True)
@@ -63,7 +64,7 @@ int main() {
 }
 '''
     (diagnostic / 'bot.cpp').write_text(wrapper)
-    build = sandbox.build(diagnostic, root / 'diagnostic-bin', profile(), image)
+    build = backend.build(diagnostic, root / 'diagnostic-bin', profile())
     assert build['ok'], build
     rng = random.Random(20261010)
     states, state = [], engine.initial_state()
@@ -81,11 +82,8 @@ int main() {
     save_type = tactical([('e5','red','scissors'),('a2','red','paper'),('c2','red','rock'),
         ('f5','blue','rock'),('h8','blue','paper'),('i8','blue','scissors')])
     states += [capture_base, capture_type, defend_base, save_type]
-    result = subprocess.run(['docker','run','--rm','--network=none','--read-only','--cap-drop=ALL',
-        '--security-opt=no-new-privileges','--memory=256m','--cpus=1','--pids-limit=32','-i',
-        '--mount',f'type=bind,source={root / "diagnostic-bin"},target=/artifact,readonly',
-        '--entrypoint','/artifact/bot',image],
-        input=''.join(json.dumps(s)+'\n' for s in states), text=True, capture_output=True, timeout=60)
+    result = run_probe(backend, root / 'diagnostic-bin',
+                       ''.join(json.dumps(s)+'\n' for s in states).encode())
     assert result.returncode == 0, result.stderr
     lines = result.stdout.splitlines()
     assert len(lines) == len(states)
@@ -103,11 +101,12 @@ int main() {
     passed('rules_differential_and_incremental_hash', positions=len(states), transitions=transitions)
     store = Store(root / 'state')
     service = Service(store, start_worker=False)
+    runner = LocalRunner(store, backend=backend)
     def submit(folder, version):
         return service.submit('experiment', version, 'cpp17', packed(folder), uuid.uuid4().hex)
     def execute(kind, body):
         job = service.enqueue('experiment', kind, body, uuid.uuid4().hex)
-        service.execute(job)
+        runner.execute(job)
         final = store.get(job['id'])
         assert final['status'] == 'completed', final
         return final['report']
@@ -118,8 +117,8 @@ int main() {
     assert all(int(s['received_mono_ns']) < int(s['deadline_mono_ns']) for s in benchmark['samples'])
     report['benchmark'] = benchmark
     passed('real_worker_72_sample_benchmark', summary=benchmark['turn_wall_ms'])
-    artifact, _ = service.ensure_artifact({'id': 'tactics', 'image_id': image}, store.get(advanced['id']), profile())
-    worker = sandbox.Worker(artifact, profile(), image)
+    artifact, _ = runner.ensure_artifact({'id': 'tactics', 'runtime': backend.identity()}, store.get(advanced['id']), profile())
+    worker = backend.worker(artifact, profile())
     try:
         worker.start('tactics', 'red')
         for index, (name, state) in enumerate([('base_capture',capture_base),('type_elimination',capture_type),

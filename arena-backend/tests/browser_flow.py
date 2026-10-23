@@ -1,4 +1,4 @@
-"""Playwright + real API/Docker, isolated disposable accounts and data.
+"""Playwright + real API and bubblewrap grader, isolated disposable accounts and data.
 
 Optional test dependency: pip install playwright; python -m playwright install
 --with-deps chromium. Never connects to .platform-state or a deployed server.
@@ -20,6 +20,7 @@ from arena.store import Store
 from arena_api.accounts import Accounts
 from arena_api.app import create_app
 from arena_api.settings import Settings
+from grader_harness import start_grader, stop_grader
 
 PASSWORD='browser-test-only-password'
 
@@ -52,6 +53,7 @@ def main():
             until=time.monotonic()+60
             while not server.started and time.monotonic()<until:time.sleep(.05)
             assert server.started
+            grader=start_grader(app,origin,"bwrap",2)
             with sync_playwright() as pw:
                 browser=pw.chromium.launch(headless=True)
                 contexts=[browser.new_context(viewport={'width':1440,'height':1000}) for _ in range(5)]
@@ -78,6 +80,7 @@ def main():
                 login(admin,'organizer')
                 admin.goto(origin+'/#/competitions')
                 form=admin.locator('#competition-form');form.locator('[name=title]').fill('Browser Swiss 10x10')
+                form.locator('[name=grader_platform]').select_option('linux')
                 form.locator('[name=format]').select_option('swiss');form.locator('[name=rounds]').fill('2')
                 form.locator('[name=max_teams]').fill('100');form.locator('[name=match_ms]').select_option('60000')
                 form.locator('[name=custom-basic]').check();form.locator('[name=board-rows]').fill('10');form.locator('[name=board-cols]').fill('10')
@@ -159,7 +162,8 @@ def main():
                                          'report_error':(j.get('report') or {}).get('error'),'official':j.get('official')} for j in jobs],
                                 'scheduler_error':app.state.competitions.scheduler_error}
                     (output/'diagnostics.json').write_text(json.dumps(diagnostic,ensure_ascii=False,indent=2))
+            if 'grader' in locals():stop_grader(grader)
             server.should_exit=True;thread.join(timeout=180)
-            (output/'results.json').write_text(json.dumps({'checks':checks,'page_errors':errors,'data_scope':'TemporaryDirectory, synthetic accounts, real Docker'},ensure_ascii=False,indent=2))
+            (output/'results.json').write_text(json.dumps({'checks':checks,'page_errors':errors,'data_scope':'TemporaryDirectory, synthetic accounts, real bwrap'},ensure_ascii=False,indent=2))
 
 if __name__=='__main__':main()

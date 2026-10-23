@@ -1,11 +1,11 @@
-"""bubblewrap + systemd-run (cgroup v2) backend for Linux and WSL2. No Docker, no root.
+"""bubblewrap + systemd-run (cgroup v2) backend for Linux and WSL2, without root.
 
-The supervisor runs inside bubblewrap on a read-only rootfs made from the worker Dockerfile
-(scripts/build-rootfs.sh), so compilers and PyPy are byte-for-byte those of the Docker image.
+The supervisor runs inside bubblewrap on a read-only Ubuntu toolchain rootfs built by
+scripts/build-rootfs.sh from a pinned package snapshot and a verified PyPy archive.
 Each sandbox is a transient systemd user scope: MemoryMax with no swap, CPUQuota=100%,
 TasksMax; optionally pinned to one CPU with taskset. bubblewrap gives it no network
 (--unshare-all), its own PID namespace, uid 10001 and a small tmpfs /tmp. seccomp, rlimits and
-SIGSTOP freezing stay in supervisor.py, exactly as under Docker.
+SIGSTOP freezing stay in supervisor.py.
 
     python -m arena.sandbox.bwrap install <rootfs-<sha>.tar.zst>   # verify SHA-256, then unpack
 """
@@ -136,13 +136,11 @@ class BwrapBackend:
 
     def build(self, source, output, profile, runtime="cpp17", stage=None):
         from arena.sandbox import seal
-        if stage:
-            raise Fault("worker_error", "Staged builds are a Docker cache optimisation only")
         output.mkdir(mode=0o777)
         output.chmod(0o777)
         binds = ["--ro-bind", str(Path(source).resolve()), "/source", "--bind", str(output.resolve()), "/out",
                  "--ro-bind", str((ROOT / "sdk").resolve()), "/sdk"]
-        argv = self.command(profile.build_memory_mib, 512, binds, ["build", runtime])
+        argv = self.command(profile.build_memory_mib, 512, binds, ["build", runtime, *([stage] if stage else [])])
         try:
             done = subprocess.run(argv, capture_output=True, timeout=profile.build_ms / 1000 + 15, start_new_session=True)
         except (OSError, subprocess.TimeoutExpired) as exc:

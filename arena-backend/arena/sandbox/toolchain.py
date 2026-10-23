@@ -111,7 +111,7 @@ def build_pch(folder, spec, log):
            "TEMP": str(pch), "TMP": str(pch)}
     shutil.copyfile(header, pch / "json.hpp")
     (pch / "json.cpp").write_text('#include "json.hpp"\ntemplate class nlohmann::basic_json<>;\n', encoding="utf-8")
-    # Same steps as the Dockerfile: one explicit instantiation object + an extern-declared header PCH.
+    # Same steps as build-rootfs.sh: one explicit instantiation object + an extern-declared header PCH.
     subprocess.run([str(gpp), *spec["flags"], "-c", "json.cpp", "-o", "json.o"], cwd=pch, env=env, check=True)
     with open(pch / "json.hpp", "a", encoding="utf-8", newline="\n") as stream:
         stream.write("\nextern template class nlohmann::basic_json<>;\n")

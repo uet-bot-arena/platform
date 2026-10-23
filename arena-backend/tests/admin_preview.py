@@ -50,15 +50,15 @@ def main():
             for i in range(2):
                 accounts.register({'team':f'Hồ sơ chờ {i+1}', 'email':f'pending{i}@example.test', 'phone':'',
                     'members':[{'name':f'Sinh viên {j}', 'student_id':f'270200{j}'} for j in range(3)], 'confirmed':True}, 'preview')
-        # Seed a display-only competition even when Desktop is unavailable.
+        # Seed a display-only competition without starting a grader.
         # The running API/health remains unmocked and still fails closed.
-        with patch('arena.sandbox.image_id', return_value='preview-only-not-a-worker-image'):
+        with patch.object(service, 'runtime_for', return_value='sha256:'+'f'*64):
             c = competitions.create('browser-fixture', {'title':'Giải thử nghiệm admin', 'max_teams':16, 'turn_ms':15000}, 'preview-competition')
         competitions.transition('browser-fixture', c['id'], 'open', 'preview-open')
         accounts.recover('preview-team-01','captain1@example.test','preview')
         if '--adjudication' in sys.argv:
             from adjudication_preview import seed
-            with patch('arena.sandbox.image_id',return_value='preview-only-not-a-worker-image'):
+            with patch.object(service, 'runtime_for', return_value='sha256:'+'f'*64):
                 seed(store,competitions)
         store.db.close()
         sock = socket.socket()

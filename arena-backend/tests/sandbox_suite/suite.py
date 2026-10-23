@@ -2,7 +2,6 @@
 
     python tests/sandbox_suite/suite.py --backend bwrap      # Linux / WSL2
     python tests/sandbox_suite/suite.py --backend windows    # Python for Windows
-    python tests/sandbox_suite/suite.py --backend docker     # needs Docker running
 
 Each attack is injected into the SDK's valid starter bot and runs on the first turn. If the
 sandbox lets it through, the bot prints "BREACH" (a protocol_error); if it is blocked, the bot
@@ -203,7 +202,7 @@ def calibrate(backend, work):
 def main():
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser()
-    parser.add_argument("--backend", required=True, choices=("docker", "bwrap", "windows"))
+    parser.add_argument("--backend", required=True, choices=("bwrap", "windows"))
     parser.add_argument("--startup", type=int, default=20, help="number of boots measured for p50/p95")
     parser.add_argument("--only", help="run one case or match file name")
     parser.add_argument("--calibrate", action="store_true", help="find the largest allocation per runtime")
@@ -237,10 +236,10 @@ def main():
             built[name] = (out, round((time.monotonic() - started) * 1000))
         return built[name][0]
 
-    if args.calibrate:
-        calibrate(backend, work)
-        return
     try:
+        if args.calibrate:
+            calibrate(backend, work)
+            return
         for name, bot, runtime, expected, turns in CASES:
             if args.only and args.only not in (name, bot):
                 continue

@@ -22,7 +22,7 @@ INFRASTRUCTURE = ("worker_lost", "worker_error", "worker_unavailable", "server_r
 
 
 def runtime_of(report):
-    """runtime_id recorded in a report or build manifest (Docker-era reports used image_id)."""
+    """runtime_id recorded in a report or build manifest (older reports used image_id)."""
     return (report or {}).get("runtime_id") or (report or {}).get("image_id")
 
 
@@ -78,8 +78,7 @@ class Competitions:
             old = existing()
             if old:
                 return json.loads(old["response"])
-        # Resolving Docker may block. Never hold the SQLite/controller lock
-        # during this external operation or require Docker for an exact retry.
+        # Prepare outside the SQLite/controller lock; exact retries reuse the saved response.
         prepared = prepare() if prepare else None
         with self.store.lock, self.db:
             old = existing()
@@ -93,7 +92,7 @@ class Competitions:
 
     @staticmethod
     def platform_of(config):
-        """(grader_platform, runtime_id) official work must run on. Docker-era configs: linux + image."""
+        """(grader_platform, runtime_id) official work must run on. Older configs: linux + image_id."""
         return config.get("grader_platform", "linux"), runtime_of(config)
 
     def create(self, actor, body, key):

@@ -98,7 +98,7 @@ class Transport:
 
 
 class SupervisorWorker:
-    """start/turn/close over a Transport; identical protocol for Docker, bubblewrap and Windows."""
+    """start/turn/close over a Transport; identical protocol for bubblewrap and Windows."""
 
     boot_seconds = 15
 

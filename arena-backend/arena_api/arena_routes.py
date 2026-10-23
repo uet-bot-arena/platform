@@ -63,7 +63,7 @@ def private_event(job, event):
     return event
 
 
-@router.get("/health/live", summary="Tiến trình API đang hoạt động; không gọi Docker")
+@router.get("/health/live", summary="Tiến trình API đang hoạt động")
 def live():
     return {"ok": True, "service": "uet-arena-web-api", "version": "0.6.0"}
 

@@ -17,7 +17,7 @@ class Hello(Model):
     platform: Literal["linux", "windows"]
     runtime_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     slots: int = Field(ge=1, le=64)
-    backend: Literal["docker", "bwrap", "windows"]
+    backend: Literal["bwrap", "windows"]
     version: str = Field(min_length=1, max_length=40)
 
 

@@ -8,7 +8,7 @@ export class APIError extends Error {
     const labels = {unauthorized:'Phiên hết hạn hoặc tài khoản/mật khẩu chưa đúng.', forbidden:'Bạn không có quyền thực hiện thao tác này.',
       server_busy:'Máy chủ đang bận vì quá nhiều kết nối. Hãy chờ một chút rồi thử lại.',
       server_error:'Máy chủ đang gặp sự cố. Hãy giữ nguyên biểu mẫu và thử lại sau.',
-      password_change_required:'Hãy đổi mật khẩu tạm trước khi tiếp tục.', worker_unavailable:'Worker Docker chưa sẵn sàng. Hãy kiểm tra Docker Desktop.',
+      password_change_required:'Hãy đổi mật khẩu tạm trước khi tiếp tục.', worker_unavailable:'Máy chấm chưa nhận được yêu cầu. Hãy thử lại sau.',
       qualification_required:'Cần benchmark đạt đủ 72 mẫu với đúng thời gian và cấu hình của giải.',
       competition_conflict:error.detail, registration_conflict:'Tên đội đã đăng ký hoặc hồ sơ đã được xử lý.',
       account_conflict:'Tên đăng nhập đã tồn tại. Hãy chọn tên khác.', quota_exceeded:'Đã đạt giới hạn hoặc hàng đợi đang đầy. Hãy thử lại sau.',

@@ -344,8 +344,8 @@ class Service:
         if platform not in PLATFORMS or not isinstance(runtime_id, str) or not RUNTIME_ID.match(runtime_id):
             raise Fault("invalid_request", "platform must be linux|windows and runtime_id sha256:<64 hex>")
         slots, backend, version = info.get("slots"), info.get("backend"), info.get("version")
-        if type(slots) is not int or not 1 <= slots <= 64 or backend not in ("docker", "bwrap", "windows") or not isinstance(version, str) or len(version) > 40:
-            raise Fault("invalid_request", "slots 1..64, backend docker|bwrap|windows, version <= 40 chars")
+        if type(slots) is not int or not 1 <= slots <= 64 or backend not in ("bwrap", "windows") or not isinstance(version, str) or len(version) > 40:
+            raise Fault("invalid_request", "slots 1..64, backend bwrap|windows, version <= 40 chars")
         with self.store.lock, self.store.db:
             self.store.db.execute("UPDATE graders SET platform=?,backend=?,runtime_id=?,slots=?,version=?,hello_ms=?,last_seen_ms=? WHERE id=?",
                                   (platform, backend, runtime_id, slots, version, now_ms(), now_ms(), grader["id"]))

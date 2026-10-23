@@ -71,12 +71,6 @@ def scale_profile(p, area):
     return replace(p, id=p.id+f"-area-{area}", board_area=area, max_plies=round(p.max_plies*area/81))
 
 
-def worker_image(p, experimental=False):
-    if p.match_ms is not None:
-        return "uet-arena-worker:" + ("experimental-clock-v2" if experimental else "clock-v2")
-    return "uet-arena-worker:experimental-v1" if experimental else None
-
-
 BUILD_FLAGS = ["-std=c++17", "-O2", "-pipe", "-Wall", "-Wextra"]
 
 

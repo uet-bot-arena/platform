@@ -508,6 +508,21 @@ class GraderLifecycle(unittest.TestCase):
         self.assertEqual(caught.exception.code, 3)
 
 
+class GraderManifest(unittest.TestCase):
+    def test_experimental_and_classic_cached_artifacts_keep_their_own_sdk_identity(self):
+        from arena import experimental, sandbox
+        from arena.grader import GraderRunner
+        runner = object.__new__(GraderRunner)
+        runner.grader = Mock(identity={"platform": "linux", "backend": "bwrap", "runtime_id": LINUX})
+        runner.grader.cached_artifact.return_value = Path("cached")
+        submission = {"runtime": "cpp17", "source": {}, "artifact_sha256": "a" * 64}
+        _, classic = runner.ensure_artifact({}, submission, profile())
+        _, expanded = runner.ensure_artifact({"ruleset": {"hash": "rules"}}, submission, profile())
+        self.assertEqual(classic["sdk_sha256"], sandbox.sdk_hash())
+        self.assertEqual(expanded["sdk_sha256"], experimental.sdk_hash())
+        self.assertNotEqual(classic["sdk_sha256"], expanded["sdk_sha256"])
+
+
 class GraderClientEndToEnd(unittest.TestCase):
     """The real grader client over real HTTP (uvicorn) with a fake sandbox."""
 

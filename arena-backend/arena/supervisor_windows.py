@@ -237,7 +237,7 @@ def build(box):
     else:
         raise Fault("unsupported_runtime", "Unknown runtime")
     if stage:
-        raise Fault("worker_error", "Staged builds are a Docker cache optimisation only")
+        raise Fault("worker_error", "Staged builds are unavailable on Windows")
     container = winbox.Container()
     job = None
     start = monotonic_ns()

@@ -15,7 +15,7 @@ test('plain-text admission 503 explains overload and retains retry metadata',()=
 test('structured worker 503 keeps its specific diagnosis',()=>{
   const error=new APIError(new Response('',{status:503}),{error:{code:'worker_unavailable'},request_id:'worker-request'});
   assert.equal(error.code,'worker_unavailable');
-  assert.match(error.message,/Docker/);
+  assert.match(error.message,/Máy chấm/);
   assert.equal(error.requestId,'worker-request');
 });
 

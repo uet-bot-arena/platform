@@ -1,6 +1,0 @@
-*
-!Dockerfile
-!arena/
-!arena/*.py
-!sdk/
-!sdk/json.hpp

@@ -1,4 +1,4 @@
-"""Verify the published guide example against the existing Docker worker.
+"""Verify the published guide example against the native bwrap worker.
 
 --prepare regenerates the downloadable source/input from the guide and engine.
 The normal check uses an isolated temporary store, never the local platform DB.
@@ -18,6 +18,7 @@ from arena.adjudication import CURRENT
 from arena.config import match_profile as profile
 from arena.protocol import response
 from arena.service import Service
+from arena.runner import LocalRunner
 from arena.store import Store
 
 LIVE = ROOT.parent / "uet-bot-arena" / "dist" / "live"
@@ -61,17 +62,19 @@ def main():
         store = Store(directory)
         try:
             service = Service(store, start_worker=False)
+            backend = sandbox.get_backend('bwrap')
+            runner = LocalRunner(store, backend=backend)
             submission = service.submit("guide-check", "v1.0.0", "cpp17", archive.getvalue(), "guide-source")
             job = service.enqueue("guide-check", "benchmark",
                                   {"submission_id": submission["id"], "match_ms": 300000}, "guide-benchmark")
-            service.execute(job)
+            runner.execute(job)
             job = store.get(job["id"])
             report = job["report"]
             assert job["status"] == "completed" and report["passed"] is True, job
             assert len(report["samples"]) == 72, report
             print("PASS guide C++ builds and passes all 72 benchmark samples", flush=True)
             artifact = store.root / "artifacts" / report["artifacts"][0]["build_key"]
-            worker = sandbox.Worker(artifact, profile(), job["image_id"])
+            worker = backend.worker(artifact, profile())
             try:
                 ready = worker.start("example-match", "red", messages[0]["payload"]["match"])
                 response(json.dumps(ready["message"]), messages[0], kind="ready")
@@ -81,9 +84,9 @@ def main():
                 engine.apply(messages[1]["payload"]["state"], action["payload"])
             finally:
                 worker.close()
-            proof = {"passed": True, "scope": "guide sample only; isolated Docker worker/store",
+            proof = {"passed": True, "scope": "guide sample only; isolated bwrap worker/store",
                      "source_sha256": hashlib.sha256(source.encode()).hexdigest(),
-                     "image_id": job["image_id"], "samples": len(report["samples"]),
+                     "runtime": backend.identity(), "samples": len(report["samples"]),
                      "turn_wall_ms": report["turn_wall_ms"], "sample_ready": ready["message"],
                      "sample_action": action, "profile": job["profile"]}
             (results / "bot-guide-latest.json").write_text(json.dumps(proof, indent=2), encoding="utf-8")

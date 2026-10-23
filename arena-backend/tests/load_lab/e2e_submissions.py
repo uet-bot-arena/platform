@@ -125,7 +125,7 @@ def tournament(origin, admin, teams, apis, k, match_ms, fmt="double_round_robin"
         if t not in picked:
             picked.append(t)
     picked = picked[:k]
-    comp = admin.json("POST", "/admin/competitions", expected=(201,), json={"title": "Lab cup", "max_teams": len(picked), "match_ms": match_ms, "format": fmt})
+    comp = admin.json("POST", "/admin/competitions", expected=(201,), json={"grader_platform": "linux", "title": "Lab cup", "max_teams": len(picked), "match_ms": match_ms, "format": fmt})
     cid = comp["id"]
     admin.json("POST", f"/admin/competitions/{cid}/open")
     for t in picked:

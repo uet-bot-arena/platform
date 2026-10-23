@@ -1,6 +1,6 @@
 # UET Bot Arena — thi đấu bot Oẳn Tù Tì (OTTv2)
 
-Nền tảng cho các đội nộp bot **Python, C hoặc C++** và cho bot đấu với nhau trên bàn cờ Oẳn Tù Tì. Server biên dịch và chạy bot trong Docker cô lập, làm trọng tài từng nước, xếp lịch giải (Swiss hoặc vòng tròn), tính điểm, phát trực tiếp và lưu replay. Giao diện web và API chạy cùng một server.
+Nền tảng cho các đội nộp bot **Python, C hoặc C++** và cho bot đấu với nhau trên bàn cờ Oẳn Tù Tì. Máy chấm từ xa biên dịch và chạy bot trong sandbox native, làm trọng tài từng nước, xếp lịch giải (Swiss hoặc vòng tròn), tính điểm, phát trực tiếp và lưu replay. Giao diện web và API chạy cùng một server.
 
 Tài liệu: [Cài đặt chi tiết](INSTALL.md) · [Hướng dẫn viết bot](uet-bot-arena/dist/live/bot-guide.md) · [Thể thức giải](arena-backend/docs/COMPETITIONS.md) · [Giao thức bot](arena-backend/docs/PROTOCOL.md) · [Bảo mật](arena-backend/docs/SECURITY.md)
 
@@ -24,24 +24,24 @@ Tài liệu: [Cài đặt chi tiết](INSTALL.md) · [Hướng dẫn viết bot]
 
 ## Cài và chạy
 
-Cần **Linux x86_64 hoặc Ubuntu trong WSL2**, Python 3.11+, Docker (Linux containers, cgroup v2). Trên Windows dùng Docker Desktop và bật WSL integration.
+Cần **Linux x86_64 hoặc Ubuntu trong WSL2**, Python 3.11+ cho hub. Máy chấm Windows dùng AppContainer không cần WSL; máy chấm Linux dùng bubblewrap/cgroup v2. Xem [cài máy chấm](docs/MAY-CHAM.md).
 
 ```bash
 git clone https://github.com/khoinguyencode/platform.git
 cd platform
-bash scripts/setup.sh                       # venv, dependency, build image worker, tạo DB
+bash scripts/setup.sh                       # venv, dependency, cài dependency hub, tạo DB
 cd arena-backend && .venv/bin/python -m arena_api bootstrap-admin --username organizer && cd ..
-bash scripts/start.sh                       # http://127.0.0.1:41810/#/login
+bash scripts/start.sh                       # http://127.0.0.1:4181/#/login
 ```
 
-Đợi `GET /api/v1/health/ready` trả `ready: true` rồi mới mở giải. Dữ liệu (DB, source, binary) nằm ở `arena-backend/.platform-state/`; backup khi server đã dừng.
+Cài và kết nối máy chấm trước khi mở giải; chọn nền tảng giải khớp máy chấm. `GET /api/v1/health/ready` kiểm hub/DB/scheduler. Dữ liệu (DB, source, binary) nằm ở `arena-backend/.platform-state/`; backup khi server đã dừng.
 
 Cấu hình bằng biến môi trường trước khi chạy `scripts/start.sh`:
 
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
-| `ARENA_WORKERS` | số CPU − 2 | Số trận/benchmark chạy song song |
-| `ARENA_BUILD_WORKERS` | 2 | Số bài biên dịch cùng lúc |
+| `--slots` (máy chấm) | số CPU − 2, tối thiểu 1 | Số trận/benchmark chạy song song trên máy chấm |
+| `grader.max_attempts` | 3 | Giới hạn tự chạy lại khi lỗi hạ tầng |
 | `ARENA_CONNECTION_LIMIT` | 1024 | Số kết nối HTTP/SSE đồng thời |
 | `ARENA_API_ORIGIN` | `http://127.0.0.1:<port>` | Địa chỉ công khai của web |
 | `ARENA_TRUSTED_PROXIES` | (trống) | CIDR của reverse proxy, ví dụ `127.0.0.1/32` |
@@ -53,7 +53,7 @@ Khi mở ra mạng: đặt server sau HTTPS reverse proxy theo mẫu `arena-back
 ```bash
 cd arena-backend
 make test                 # unit + API
-make integration          # Docker thật: build, benchmark, trận, giải, replay
+make integration          # bwrap thật: build, benchmark, trận, giải, replay
 make experimental-test    # ruleset add-on SDK v3
 .venv/bin/python tests/languages_integration.py                          # C / C++ / Python đấu chéo
 .venv/bin/python tests/load_lab/e2e_submissions.py --teams 100 --tournament 8   # nhiều đội nộp bài cùng lúc
@@ -65,10 +65,10 @@ Kết quả kiểm thử ghi vào `arena-backend/test-results/` (không đưa l�
 ## Cấu trúc
 
 ```text
-arena-backend/arena/       engine luật, giao thức, sandbox Docker, worker, hàng đợi
+arena-backend/arena/       engine luật, giao thức, sandbox native, worker, hàng đợi
 arena-backend/arena_api/   FastAPI: tài khoản, giải đấu, Swiss, bot mẫu, SSE
 arena-backend/sdk/         bot mẫu C++ / C / Python cho đội
-arena-backend/tests/       unit, integration Docker, load_lab (thử tải nhiều đội)
+arena-backend/tests/       unit, integration native, load_lab (thử tải nhiều đội)
 uet-bot-arena/dist/live/   giao diện web (HTML/CSS/JS thuần, không cần build)
 ```
 

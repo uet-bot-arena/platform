@@ -1,5 +1,6 @@
 """Start real graders next to a test hub (same code path as `python -m arena.grader`)."""
 from pathlib import Path
+import subprocess
 import tempfile
 import time
 
@@ -22,3 +23,10 @@ def start_grader(app, origin, backend=None, slots=2, name="integration grader", 
 def stop_grader(grader):
     grader.stopping.set()
     grader.release_all()
+
+
+def run_probe(backend, artifact, data, timeout=60):
+    """Run a trusted SDK diagnostic inside the same resource-limited Linux sandbox."""
+    argv = backend.command(256, 32, ["--ro-bind", str(artifact.resolve()), "/artifact"], [])
+    argv[argv.index("python3"):] = ["/artifact/bot"]
+    return subprocess.run(argv, input=data, capture_output=True, timeout=timeout)

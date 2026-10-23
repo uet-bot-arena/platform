@@ -1,6 +1,6 @@
 """Shared helpers for the load lab: bot sources, ZIPs, a real arena_api server, multi-IP clients.
 
-Run from arena-backend with the project venv on Linux/WSL with Docker and the worker images.
+Run from arena-backend with the project venv on Linux/WSL with a bwrap rootfs installed.
 Data goes to test-results/load-lab/ (ignored by Git); the real platform data is never touched.
 """
 import io
@@ -21,6 +21,8 @@ RESULTS = HOME_LAB / "results"
 RESULTS.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(REPO))
 sys.dont_write_bytecode = True
+sys.path.insert(0, str(REPO / "tests"))
+from grader_harness import start_grader, stop_grader
 
 ADMIN_PW = "lab-only-admin-password"
 FAULTS = {"crash": 1, "illegal": 2, "timeout": 3, "spam": 4, "memhog": 5, "slow_start": 6, "sneaky": 7, "stale": 8}
@@ -95,10 +97,12 @@ def start_server(data_dir, limit_concurrency=None):
     while not server.started and time.monotonic() < end:
         time.sleep(0.05)
     assert server.started, "uvicorn did not start"
+    server.grader = start_grader(app, settings.origin, "bwrap", 2)
     return settings.origin, server, thread
 
 
 def stop_server(server, thread):
+    stop_grader(server.grader)
     server.should_exit = True
     thread.join(timeout=600)
 

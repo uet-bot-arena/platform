@@ -1310,7 +1310,7 @@
         "tags": [
           "arena"
         ],
-        "summary": "Tiến trình API đang hoạt động; không gọi Docker",
+        "summary": "Tiến trình API đang hoạt động",
         "operationId": "live_api_v1_health_live_get",
         "responses": {
           "200": {
@@ -1443,12 +1443,35 @@
         ],
         "summary": "Tải SDK C++17 OTTv2 protocol v2",
         "operationId": "starter_api_v1_starter_zip_get",
+        "parameters": [
+          {
+            "name": "runtime",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(cpp17|c11|python3)$",
+              "default": "cpp17",
+              "title": "Runtime"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -3884,6 +3907,814 @@
           }
         ]
       }
+    },
+    "/api/v1/sample-bots": {
+      "get": {
+        "tags": [
+          "sample-bots"
+        ],
+        "summary": "Listing",
+        "operationId": "listing_api_v1_sample_bots_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/sample-bots": {
+      "get": {
+        "tags": [
+          "sample-bots"
+        ],
+        "summary": "Admin Listing",
+        "operationId": "admin_listing_api_v1_admin_sample_bots_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "sample-bots"
+        ],
+        "summary": "Upload",
+        "operationId": "upload_api_v1_admin_sample_bots_post",
+        "parameters": [
+          {
+            "name": "x-bot-name",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Bot-Name"
+            }
+          },
+          {
+            "name": "x-bot-level",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "easy",
+              "title": "X-Bot-Level"
+            }
+          },
+          {
+            "name": "x-arena-runtime",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "cpp17",
+              "title": "X-Arena-Runtime"
+            }
+          },
+          {
+            "name": "x-arena-protocol",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 2,
+              "title": "X-Arena-Protocol"
+            }
+          },
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/zip": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/sample-bots/{ident}/enabled": {
+      "post": {
+        "tags": [
+          "sample-bots"
+        ],
+        "summary": "Enabled",
+        "operationId": "enabled_api_v1_admin_sample_bots__ident__enabled_post",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Enabled"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/grader/hello": {
+      "post": {
+        "tags": [
+          "graders"
+        ],
+        "summary": "Máy chấm báo nền tảng, runtime_id, số slot, phiên bản",
+        "operationId": "hello_api_v1_grader_hello_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Hello"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "graderToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/grader/lease": {
+      "post": {
+        "tags": [
+          "graders"
+        ],
+        "summary": "Long-poll tối đa 25 s; trả job, lease_id, fencing token và nơi tải source/artifact",
+        "operationId": "lease_api_v1_grader_lease_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "graderToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/grader/leases/{lease_id}/heartbeat": {
+      "post": {
+        "tags": [
+          "graders"
+        ],
+        "summary": "Gia hạn lease (gọi mỗi 5 s)",
+        "operationId": "heartbeat_api_v1_grader_leases__lease_id__heartbeat_post",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lease Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Fenced"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "graderToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/grader/leases/{lease_id}/events": {
+      "post": {
+        "tags": [
+          "graders"
+        ],
+        "summary": "Gửi event theo lô để live và replay vẫn chạy",
+        "operationId": "events_api_v1_grader_leases__lease_id__events_post",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lease Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Events"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "graderToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/grader/leases/{lease_id}/result": {
+      "post": {
+        "tags": [
+          "graders"
+        ],
+        "summary": "Nộp kết quả kèm fencing token; hub chạy lại nước đi để kiểm",
+        "operationId": "result_api_v1_grader_leases__lease_id__result_post",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lease Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Result"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "graderToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/grader/leases/{lease_id}/release": {
+      "post": {
+        "tags": [
+          "graders"
+        ],
+        "summary": "Trả lại lease khi máy chấm dừng giữa chừng",
+        "operationId": "release_api_v1_grader_leases__lease_id__release_post",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lease Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Release"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "graderToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/grader/artifacts/{platform}/{sha256}": {
+      "put": {
+        "tags": [
+          "graders"
+        ],
+        "summary": "Tải lên binary đã build (một lần cho mỗi bài nộp, nền tảng, runtime_id)",
+        "operationId": "put_artifact_api_v1_grader_artifacts__platform___sha256__put",
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Platform"
+            }
+          },
+          {
+            "name": "sha256",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sha256"
+            }
+          },
+          {
+            "name": "x-lease-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Lease-Id"
+            }
+          },
+          {
+            "name": "x-fencing",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "X-Fencing"
+            }
+          },
+          {
+            "name": "x-submission-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Submission-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "graderToken": []
+          }
+        ]
+      },
+      "get": {
+        "tags": [
+          "graders"
+        ],
+        "summary": "Tải binary đã build theo SHA-256",
+        "operationId": "get_artifact_api_v1_grader_artifacts__platform___sha256__get",
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Platform"
+            }
+          },
+          {
+            "name": "sha256",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sha256"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "graderToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/grader/sources/{submission_id}": {
+      "get": {
+        "tags": [
+          "graders"
+        ],
+        "summary": "Source của bài nộp trong lease đang giữ, dạng ZIP",
+        "operationId": "get_source_api_v1_grader_sources__submission_id__get",
+        "parameters": [
+          {
+            "name": "submission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Submission Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "graderToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/graders": {
+      "get": {
+        "tags": [
+          "graders"
+        ],
+        "summary": "Danh sách máy chấm: online/offline theo nhịp tim, nền tảng, slot, runtime_id",
+        "operationId": "listing_api_v1_admin_graders_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "graders"
+        ],
+        "summary": "Tạo mã máy chấm; mã chỉ hiện một lần, DB chỉ lưu bản băm",
+        "operationId": "create_api_v1_admin_graders_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraderCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/graders/{ident}/revoke": {
+      "post": {
+        "tags": [
+          "graders"
+        ],
+        "summary": "Thu hồi mã; máy đó mất kết nối trong vài giây, job đang chạy được trả lại",
+        "operationId": "revoke_api_v1_admin_graders__ident__revoke_post",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -4037,6 +4868,30 @@
               }
             ],
             "title": "Ruleset Id"
+          },
+          "competition_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{32}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Competition Id"
+          },
+          "basic_rules": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basic Rules"
           }
         },
         "additionalProperties": false,
@@ -4127,10 +4982,44 @@
           },
           "max_teams": {
             "type": "integer",
-            "maximum": 32.0,
+            "maximum": 4096.0,
             "minimum": 2.0,
             "title": "Max Teams",
             "default": 16
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "double_round_robin",
+              "swiss"
+            ],
+            "title": "Format",
+            "default": "double_round_robin"
+          },
+          "rounds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 64.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rounds"
+          },
+          "basic_rules": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basic Rules"
           },
           "ruleset_id": {
             "anyOf": [
@@ -4143,6 +5032,27 @@
               }
             ],
             "title": "Ruleset Id"
+          },
+          "grader_platform": {
+            "type": "string",
+            "enum": [
+              "windows",
+              "linux"
+            ],
+            "title": "Grader Platform",
+            "default": "windows"
+          },
+          "runtime_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Id"
           }
         },
         "additionalProperties": false,
@@ -4194,10 +5104,44 @@
           },
           "max_teams": {
             "type": "integer",
-            "maximum": 32.0,
+            "maximum": 4096.0,
             "minimum": 2.0,
             "title": "Max Teams",
             "default": 16
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "double_round_robin",
+              "swiss"
+            ],
+            "title": "Format",
+            "default": "double_round_robin"
+          },
+          "rounds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 64.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rounds"
+          },
+          "basic_rules": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basic Rules"
           },
           "ruleset_id": {
             "anyOf": [
@@ -4210,6 +5154,27 @@
               }
             ],
             "title": "Ruleset Id"
+          },
+          "grader_platform": {
+            "type": "string",
+            "enum": [
+              "windows",
+              "linux"
+            ],
+            "title": "Grader Platform",
+            "default": "windows"
+          },
+          "runtime_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Id"
           },
           "expected_revision": {
             "type": "integer",
@@ -4303,6 +5268,76 @@
         ],
         "title": "Definition"
       },
+      "Enabled": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "Enabled"
+      },
+      "Events": {
+        "properties": {
+          "fencing": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Fencing"
+          },
+          "events": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 600,
+            "title": "Events"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "fencing",
+          "events"
+        ],
+        "title": "Events"
+      },
+      "Fenced": {
+        "properties": {
+          "fencing": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Fencing"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "fencing"
+        ],
+        "title": "Fenced"
+      },
+      "GraderCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "GraderCreate"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -4315,6 +5350,53 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "Hello": {
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "linux",
+              "windows"
+            ],
+            "title": "Platform"
+          },
+          "runtime_id": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "title": "Runtime Id"
+          },
+          "slots": {
+            "type": "integer",
+            "maximum": 64.0,
+            "minimum": 1.0,
+            "title": "Slots"
+          },
+          "backend": {
+            "type": "string",
+            "enum": [
+              "bwrap",
+              "windows"
+            ],
+            "title": "Backend"
+          },
+          "version": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "platform",
+          "runtime_id",
+          "slots",
+          "backend",
+          "version"
+        ],
+        "title": "Hello"
       },
       "ImportPackage": {
         "properties": {
@@ -4359,6 +5441,20 @@
           "credential_visibility"
         ],
         "title": "IssuedCredential"
+      },
+      "LeaseRequest": {
+        "properties": {
+          "wait_seconds": {
+            "type": "integer",
+            "maximum": 55.0,
+            "minimum": 0.0,
+            "title": "Wait Seconds",
+            "default": 25
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LeaseRequest"
       },
       "Login": {
         "properties": {
@@ -4425,9 +5521,43 @@
             "title": "Red Submission Id"
           },
           "blue_submission_id": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{32}$",
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{32}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Blue Submission Id"
+          },
+          "sample_bot_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{32}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Bot Id"
+          },
+          "sample_side": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "red",
+                  "blue"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Side"
           },
           "delegate_timeout_claims": {
             "type": "boolean",
@@ -4445,13 +5575,36 @@
               }
             ],
             "title": "Ruleset Id"
+          },
+          "competition_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{32}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Competition Id"
+          },
+          "basic_rules": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basic Rules"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "red_submission_id",
-          "blue_submission_id",
           "delegate_timeout_claims"
         ],
         "title": "Match"
@@ -4640,6 +5793,27 @@
         ],
         "title": "RegistrationReceipt"
       },
+      "Release": {
+        "properties": {
+          "fencing": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Fencing"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 60,
+            "title": "Reason",
+            "default": "released"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "fencing"
+        ],
+        "title": "Release"
+      },
       "ResetPassword": {
         "properties": {
           "temporary_password": {
@@ -4661,6 +5835,55 @@
         "additionalProperties": false,
         "type": "object",
         "title": "ResetPassword"
+      },
+      "Result": {
+        "properties": {
+          "fencing": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Fencing"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "failed",
+              "aborted"
+            ],
+            "title": "Status"
+          },
+          "report": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "fencing",
+          "status"
+        ],
+        "title": "Result"
       },
       "Revision": {
         "properties": {
@@ -4889,6 +6112,11 @@
         "type": "apiKey",
         "in": "header",
         "name": "X-CSRF-Token"
+      },
+      "graderToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Mã máy chấm, chỉ hiện một lần khi admin tạo"
       }
     }
   }

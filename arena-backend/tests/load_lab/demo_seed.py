@@ -42,7 +42,7 @@ def wait(api, job_id, label):
 
 def competition(admin, title, members, mode, **options):
     """mode: 'finish' runs it to the end, 'locked' stops after locking (start it live), 'open' only opens."""
-    comp = admin.json("POST", "/admin/competitions", expected=(201,), json={"title": title, "max_teams": max(len(members), 2), "match_ms": 60000, **options})
+    comp = admin.json("POST", "/admin/competitions", expected=(201,), json={"grader_platform": "linux", "title": title, "max_teams": max(len(members), 2), "match_ms": 60000, **options})
     cid = comp["id"]
     admin.json("POST", f"/admin/competitions/{cid}/open")
     jobs = {t["slug"]: t["api"].json("POST", "/benchmarks", expected=(202,), json={"submission_id": t["sub"], "competition_id": cid})["id"] for t in members}

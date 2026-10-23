@@ -27,7 +27,7 @@ import urllib.error
 import urllib.request
 import uuid
 
-from arena import sandbox
+from arena import experimental, sandbox
 from arena.archive import unpack
 from arena.config import runtime_flags
 from arena.protocol import Fault
@@ -122,10 +122,6 @@ class GraderRunner(Runner):
     def published_state(self, job_id):
         return self.state_published
 
-    def infrastructure_error(self):
-        if self.backend.name == "docker":
-            sandbox.invalidate_images()
-
     def runtime_report(self, job):
         identity = self.grader.identity
         return {"platform": identity["platform"], "runtime_id": identity["runtime_id"], "backend": identity["backend"]}
@@ -144,7 +140,8 @@ class GraderRunner(Runner):
         sha = submission.get("artifact_sha256")
         runtime = submission["runtime"]
         manifest = {"runtime": runtime, "source": submission["source"], "flags": runtime_flags(runtime),
-                    "sdk_sha256": sandbox.sdk_hash(), **self.runtime_report(job)}
+                    "sdk_sha256": experimental.sdk_hash() if job.get("ruleset") else sandbox.sdk_hash(),
+                    **self.runtime_report(job)}
         if sha:
             folder = self.grader.cached_artifact(sha, runtime, submission.get("artifact_url"))
             if folder:
@@ -294,8 +291,6 @@ class Grader:
         self.done = 0
 
     def make_backend(self, cpu, options):
-        if self.backend_name == "docker":
-            return sandbox.get_backend("docker", **options)
         return sandbox.get_backend(self.backend_name, cpu=cpu, **options)
 
     def build_lock(self, key):
@@ -363,8 +358,6 @@ class Grader:
             self.threads.append(thread)
 
     def slot_loop(self, index, backend):
-        if backend.name == "docker":
-            sandbox.controller_scope(self.state, self.cpus[index])
         delay = 1
         while not self.stopping.is_set() and not self.revoked.is_set():
             try:

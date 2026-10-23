@@ -3,8 +3,8 @@
     .venv/bin/python tests/load_lab/algo_eval.py league --openings 6 --workers 8
     .venv/bin/python tests/load_lab/algo_eval.py scaling --workers 1,2,4,8,10
 
-Every match runs in the platform's own container/seccomp/clock (sandbox.Worker) with the
-v2 adjudication used by service.run_match. Results go to test-results/load-lab/results/.
+Every match runs in the platform's native bwrap/seccomp/clock with the
+v2 adjudication used by Runner.run_match. Results go to test-results/load-lab/results/.
 """
 import argparse
 import concurrent.futures as cf
@@ -24,15 +24,16 @@ from arena.config import match_profile
 from arena.protocol import Fault
 
 PROFILE = match_profile(60_000)            # Bullet: quỹ 60 s mỗi bot
-IMAGE_TAG = "uet-arena-worker:clock-v2"
+WORKER_CPU = None
 ART = HOME_LAB / "artifacts"
 BOT_FAULTS = {"timeout", "crash", "protocol_error", "stale_action", "output_limit"}
 
 
 # ---------- build ----------
-def artifact(kind, image):
-    """Biên dịch một lần bằng sandbox.build của repo, cache theo loại bot + image."""
-    folder = ART / f"{kind}-{image[7:19]}"
+def artifact(kind, backend):
+    """Biên dịch một lần bằng backend native, cache theo loại bot + runtime."""
+    runtime_id = backend.identity()["runtime_id"]
+    folder = ART / f"{kind}-{runtime_id[7:19]}"
     if (folder / "bot").is_file():
         return folder
     src = HOME_LAB / "src" / kind
@@ -40,7 +41,7 @@ def artifact(kind, image):
     (src / "bot.cpp").write_text(bot_source(kind))
     ART.mkdir(exist_ok=True)
     stage = ART / f"tmp-{uuid.uuid4().hex}"
-    report = sandbox.build(src, stage, PROFILE, image)
+    report = backend.build(src, stage, PROFILE)
     if not report["ok"]:
         raise RuntimeError(f"build {kind}: {report['code']} {report['log'][:400]}")
     stage.rename(folder)
@@ -60,15 +61,16 @@ def openings(n, seed=20261015, plies=6):
 
 
 def play(task):
-    """Một trận theo đúng quy tắc của service.run_match (thể lệ v2): lỗi bot = thua, lặp 3 lần / 512 ply = hòa."""
-    red, blue, opening, image = task["red"], task["blue"], task["opening"], task["image"]
+    """Một trận theo đúng quy tắc của Runner.run_match (thể lệ v2): lỗi bot = thua, lặp 3 lần / 512 ply = hòa."""
+    red, blue, opening = task["red"], task["blue"], task["opening"]
+    backend = sandbox.get_backend("bwrap", cpu=WORKER_CPU)
     t0 = time.monotonic()
     mid = "lab-" + uuid.uuid4().hex
     workers, state, result, fault = [], deepcopy(opening), None, None
     clocks = {s: PROFILE.match_ms for s in engine.SIDES}
     try:
         for side, kind in (("red", red), ("blue", blue)):
-            w = sandbox.Worker(Path(task["arts"][kind]), PROFILE, image)
+            w = backend.worker(Path(task["arts"][kind]), PROFILE)
             workers.append(w)
             try:
                 w.start(mid, side)
@@ -118,7 +120,8 @@ def _pin_worker(counter):
     with counter.get_lock():
         index = counter.value
         counter.value += 1
-    sandbox.controller_scope(HOME_LAB, cpus[index % len(cpus)])
+    global WORKER_CPU
+    WORKER_CPU = cpus[index % len(cpus)]
 
 
 def run_batch(tasks, workers):
@@ -142,13 +145,13 @@ def cpu_util(a, b):
     return round(100 * (1 - idle / total), 1) if total else None
 
 
-def league_tasks(kinds, n_openings, arts, image):
+def league_tasks(kinds, n_openings, arts):
     tasks = []
     for o in openings(n_openings):
         for i, a in enumerate(kinds):
             for b in kinds[i + 1:]:
                 for red, blue in ((a, b), (b, a)):
-                    tasks.append({"red": red, "blue": blue, "opening": o, "arts": arts, "image": image})
+                    tasks.append({"red": red, "blue": blue, "opening": o, "arts": arts})
     return tasks
 
 
@@ -175,14 +178,14 @@ def main():
     ap.add_argument("--openings", type=int, default=6)
     ap.add_argument("--workers", default="8")
     args = ap.parse_args()
-    image = sandbox.image_id(IMAGE_TAG)
+    backend = sandbox.get_backend("bwrap")
     kinds = list(ALGORITHMS)
-    arts = {k: str(artifact(k, image)) for k in kinds}
+    arts = {k: str(artifact(k, backend)) for k in kinds}
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    out = {"mode": args.mode, "image": image, "cpus": os.cpu_count()}
+    out = {"mode": args.mode, "runtime": backend.identity(), "cpus": os.cpu_count()}
 
     if args.mode == "league":
-        tasks = league_tasks(kinds, args.openings, arts, image)
+        tasks = league_tasks(kinds, args.openings, arts)
         k = int(args.workers.split(",")[0])
         rows, wall, cpu = run_batch(tasks, k)
         out.update(matches=len(rows), workers=k, wall_s=round(wall, 1), cpu_util_pct=cpu,
@@ -196,7 +199,7 @@ def main():
             print(f"  {s['bot']:<8} {s['pts']:>4} điểm  {s['w']}T {s['d']}H {s['l']}B  lỗi bot {s['faults']}", flush=True)
 
     else:  # scaling: cùng một lô trận, tăng số worker song song
-        tasks = league_tasks(["ab20", "onestep", "greedy", "random"], 4, arts, image)
+        tasks = league_tasks(["ab20", "onestep", "greedy", "random"], 4, arts)
         out["batch"] = len(tasks)
         out["runs"] = []
         for k in [int(x) for x in args.workers.split(",")]:

@@ -1,8 +1,7 @@
-.PHONY: setup migrate serve test integration sandbox-test sandbox-calibrate experimental-test experimental-load-test load-test guest-load-test schema time-bank-test
+.PHONY: setup migrate serve test integration sandbox-test sandbox-calibrate experimental-test schema time-bank-test
 PYTHON := .venv/bin/python
-EXPERIMENTAL_PROOF := experimental-proof-$(shell date +%s)
 # Re-enter by absolute path before every process. On the WSL /mnt/c workspace,
-# Python's getpath has failed with an inherited cwd after Docker integration.
+# Python's getpath has failed with an inherited cwd during integration.
 # A fresh cd resolves the directory again before Python initializes.
 
 setup:
@@ -23,32 +22,19 @@ integration:
 	cd "$(CURDIR)" && ARENA_CONFIG=none ARENA_SECRETS=none $(PYTHON) tests/web_integration.py
 	cd "$(CURDIR)" && ARENA_CONFIG=none ARENA_SECRETS=none $(PYTHON) tests/competition_integration.py
 
-load-test:
-	cd "$(CURDIR)" && $(PYTHON) tests/load_resilience.py
-
 experimental-test:
-	cd "$(CURDIR)" && docker build -t uet-arena-worker:experimental-v1 -t uet-arena-worker:clock-v2 -t uet-arena-worker:experimental-clock-v2 .
 	cd "$(CURDIR)" && $(PYTHON) -m unittest discover -s tests -p test_experimental.py -v
 	cd "$(CURDIR)" && $(PYTHON) -m unittest discover -s tests -p test_addons.py -v
 	cd "$(CURDIR)" && $(PYTHON) tests/experimental_parity.py
 	cd "$(CURDIR)" && $(PYTHON) tests/experimental_integration.py
 
-experimental-load-test:
-	cd "$(CURDIR)" && docker build -t uet-arena-worker:experimental-v1 -t uet-arena-worker:clock-v2 -t uet-arena-worker:experimental-clock-v2 .
-	cd "$(CURDIR)" && ARENA_EXPERIMENTAL_PROOF_DATA="$(EXPERIMENTAL_PROOF)" $(PYTHON) tests/experimental_integration.py
-	cd "$(CURDIR)" && $(PYTHON) tests/experimental_load.py --proof-dir "$(EXPERIMENTAL_PROOF)"
-
-guest-load-test:
-	cd "$(CURDIR)" && $(PYTHON) tests/guest_load.py
-
 schema:
-	cd "$(CURDIR)" && $(PYTHON) -c 'import json; from arena_api.app import create_app; print(json.dumps(create_app().openapi(), ensure_ascii=False, indent=2))' > docs/openapi.json
+	cd "$(CURDIR)" && ARENA_CONFIG=none ARENA_SECRETS=none $(PYTHON) -c 'import json; from arena_api.app import create_app; print(json.dumps(create_app().openapi(), ensure_ascii=False, indent=2))' > docs/openapi.json
 
 time-bank-test:
-	cd "$(CURDIR)" && docker build -t uet-arena-worker:clock-v2 -t uet-arena-worker:experimental-clock-v2 .
 	cd "$(CURDIR)" && $(PYTHON) tests/time_bank_integration.py
 
-# Shared destructive-bot suite (docs/SANDBOX.md). BACKEND=bwrap|docker; on Windows run
+# Shared destructive-bot suite (docs/SANDBOX.md). BACKEND=bwrap|windows; on Windows run
 # "python tests/sandbox_suite/suite.py --backend windows" from PowerShell.
 BACKEND ?= bwrap
 sandbox-test:

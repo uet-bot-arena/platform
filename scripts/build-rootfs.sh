@@ -1,76 +1,83 @@
 #!/usr/bin/env bash
-# Dựng rootfs chỉ đọc cho backend bwrap từ đúng Dockerfile của worker Docker
-# (GCC 13.3, PyPy 3.11 v7.3.23, libseccomp, PCH json.hpp). Chạy một lần trên máy có Docker.
-# Kết quả: <out>/rootfs-<sha>.tar.zst và <out>/rootfs-<sha>.tar.zst.sha256
-# Máy chấm Linux chỉ cần file này (không cần Docker); xem docs/SANDBOX.md.
+# Build the Linux grader's read-only toolchain without root, using a pinned Ubuntu snapshot.
 set -euo pipefail
 repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 out="${1:-$repo/build/rootfs}"
-command -v docker >/dev/null || { echo "Cần Docker để dựng rootfs" >&2; exit 1; }
-command -v zstd >/dev/null || { echo "Cần zstd (sudo apt-get install zstd)" >&2; exit 1; }
+snapshot=20261022T000000Z
+mirror="https://snapshot.ubuntu.com/ubuntu/$snapshot"
+gcc_package='13.3.0-6ubuntu2~24.04.1'
+pypy=pypy3.11-v7.3.23-linux64
+pypy_sha=16f9f56e82d1f4ec95a324c1a8cacfd78afc7f0656c0a809a18725ef4391453a
+for tool in mmdebstrap newuidmap newgidmap bwrap zstd curl tar bzip2; do
+  command -v "$tool" >/dev/null || { echo "Missing $tool; install mmdebstrap uidmap bubblewrap zstd curl bzip2." >&2; exit 1; }
+done
+[[ "$(uname -m)" == x86_64 ]] || { echo 'Only x86_64 is pinned.' >&2; exit 1; }
 mkdir -p "$out"
-work="$(mktemp -d)"
-cid=""
-cleanup() { [[ -n "$cid" ]] && docker rm -f "$cid" >/dev/null 2>&1; rm -rf "$work"; }
-trap cleanup EXIT
-
-docker build -q -t uet-arena-rootfs:build "$repo/arena-backend" >/dev/null
-cid="$(docker create uet-arena-rootfs:build)"
-mkdir "$work/root"
-# Device nodes cannot be created without root; bwrap mounts its own /dev and /proc.
-docker export "$cid" | tar -x -C "$work/root" --exclude='./dev/*' --exclude='dev/*' --no-same-owner 2>/dev/null || true
+out="$(realpath "$out")"
+work="$(mktemp -d -t arena-rootfs.XXXXXXXX)"
+trap 'rm -rf -- "$work"' EXIT
 root="$work/root"
+mmdebstrap --mode=unshare --variant=minbase --format=tar --skip=output/mknod \
+  --architectures=amd64 --keyring=/usr/share/keyrings/ubuntu-archive-keyring.gpg \
+  --aptopt='Acquire::Check-Valid-Until "false"' \
+  --include="gcc-13=$gcc_package,g++-13=$gcc_package,python3,libseccomp2" \
+  --dpkgopt='path-exclude=/usr/share/doc/*' --dpkgopt='path-exclude=/usr/share/man/*' \
+  --dpkgopt='path-exclude=/usr/share/locale/*' \
+  noble "$work/base.tar" \
+  "deb $mirror noble main" "deb $mirror noble-updates main" "deb $mirror noble-security main"
+mkdir "$root"
+tar -xf "$work/base.tar" -C "$root" --no-same-owner --exclude='./dev/*'
+rm -- "$work/base.tar"
+curl --fail --location --retry 3 --output "$work/pypy.tar.bz2" "https://downloads.python.org/pypy/$pypy.tar.bz2"
+printf '%s  %s\n' "$pypy_sha" "$work/pypy.tar.bz2" | sha256sum --check --status
+mkdir -p "$root/opt/pypy" "$root/opt/pch" "$root"/{proc,dev,tmp,sys/fs/cgroup,artifact,source,out,sdk,opt/arena/arena}
+tar -xjf "$work/pypy.tar.bz2" -C "$root/opt/pypy" --strip-components=1
+ln -s gcc-13 "$root/usr/bin/gcc"
+ln -s g++-13 "$root/usr/bin/g++"
+ln -s cpp-13 "$root/usr/bin/cpp"
+ln -s /opt/pypy/bin/pypy3 "$root/usr/bin/pypy3"
+cp "$repo/arena-backend/sdk/json.hpp" "$root/opt/pch/json.hpp"
+printf '#include "json.hpp"\ntemplate class nlohmann::basic_json<>;\n' > "$root/opt/pch/json.cpp"
+inside() {
+  bwrap --ro-bind "$root" / --proc /proc --dev /dev --tmpfs /tmp \
+    --bind "$root/opt/pch" /opt/pch --unshare-all --clearenv --setenv PATH /usr/bin:/bin --setenv LANG C.UTF-8 "$@"
+}
+[[ "$(inside g++ -dumpfullversion)" == 13.3.0 ]] || { echo 'Unexpected GCC version.' >&2; exit 1; }
+inside g++ -std=c++17 -O2 -pipe -Wall -Wextra -c /opt/pch/json.cpp -o /opt/pch/json.o
+printf '\nextern template class nlohmann::basic_json<>;\n' >> "$root/opt/pch/json.hpp"
+inside g++ -std=c++17 -O2 -pipe -Wall -Wextra -x c++-header /opt/pch/json.hpp -o /opt/pch/json.hpp.gch
+inside python3 -c 'import ast,ctypes,hashlib,json,resource,zipfile; ctypes.CDLL("libseccomp.so.2")'
+inside pypy3 -c 'import sys; assert sys.version_info[:2] == (3, 11)'
+inside dpkg-query -W '-f=${Package}\t${Version}\n' > "$root/packages.tsv"
+compiler="$(inside g++ --version | head -1)"
+printf '{"ubuntu":"24.04","snapshot":"%s","gcc":"%s","pypy":"%s","pypy_sha256":"%s"}\n' \
+  "$snapshot" "$compiler" "$pypy" "$pypy_sha" > "$root/rootfs-manifest.json"
 before="$(du -sm "$root" | cut -f1)"
-
-# Supervisor code comes from the grader install (bind-mounted read-only), not the rootfs.
-rm -rf "$root/opt/arena"
-# Not needed to compile or run bots: documentation, locales, package caches, VCS tools.
-rm -rf "$root"/usr/share/{doc,man,info,locale,lintian,bash-completion,gtk-doc,help} \
-       "$root"/usr/local/share/{doc,man,info,locale} \
-       "$root"/var/lib/apt/lists/* "$root"/var/cache/* "$root"/var/log/* \
-       "$root"/usr/lib/git-core "$root"/usr/share/git-core "$root"/usr/bin/{git,hg,svn,svnadmin,svnserve} \
-       "$root"/usr/lib/python3/dist-packages/mercurial "$root"/root/.cache
-find "$root" -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
-# Only C (c11), C++ (cpp17) and PyPy are offered, with fixed flags (no -flto, no sanitizers):
-# drop the Go and Fortran front ends, LTO, sanitizers, Debian's unused GCC 12 and debug symbols.
-gccexec="$root/usr/local/libexec/gcc/x86_64-linux-gnu/13.3.0"
-rm -f "$gccexec"/{go1,cgo,f951,buildid,test2json,vet,lto1} \
-      "$root"/usr/local/bin/{gccgo,go,gofmt,gfortran,x86_64-linux-gnu-gccgo,x86_64-linux-gnu-gfortran,lto-dump} \
-      "$root"/usr/local/lib64/{libgo*,libgfortran*,libasan*,libtsan*,liblsan*,libubsan*,libhwasan*} \
-      "$root"/usr/lib/x86_64-linux-gnu/{libasan*,libtsan*,liblsan*,libubsan*,libhwasan*} \
-      "$root"/opt/pypy/bin/*.debug
-rm -rf "$root"/usr/local/lib/go "$root"/usr/local/lib64/go "$root"/usr/lib/gcc/x86_64-linux-gnu/12 \
-       "$root"/usr/libexec/gcc/x86_64-linux-gnu/12 "$root"/usr/share/perl "$root"/usr/lib/x86_64-linux-gnu/perl
-find "$root/usr/bin" -name '*-12' -delete
-# Static archives of unrelated -dev packages (keep glibc's, needed for C/C++ links).
-find "$root/usr/lib/x86_64-linux-gnu" -maxdepth 1 -name '*.a' \
-  ! -name 'libc.a' ! -name 'libc_nonshared.a' ! -name 'libm.a' ! -name 'libm-*.a' ! -name 'libmvec.a' \
-  ! -name 'libpthread.a' ! -name 'libdl.a' ! -name 'librt.a' ! -name 'libutil.a' ! -name 'libanl.a' \
-  ! -name 'libresolv.a' ! -name 'libcrypt.a' ! -name 'libg.a' ! -name 'libmcheck.a' ! -name 'libBrokenLocale.a' \
-  ! -name 'libseccomp.a' -delete
-# Large media/GUI libraries pulled in by buildpack-deps; nothing we run links them.
-rm -f "$root"/usr/lib/x86_64-linux-gnu/{libicu*,libx265*,librsvg*,libMagick*,libaom*,libOpenEXR*,libdjvulibre*,libabigail*,libdav1d*,libde265*,libheif*,libvpx*,libwebp*,libgdk*,libgtk*,libcairo*,libpango*,libharfbuzz*,libfreetype*,libtiff*,libjxl*,libgs*,liblcms*}
-rm -f "$root"/usr/bin/sq "$root"/usr/lib/file/magic.mgc
-# Every program the supervisor or compilers start must still resolve all shared libraries.
-# ldd runs inside the rootfs itself (bwrap), so the host's glibc is never mixed in.
-gccexec_in=/usr/local/libexec/gcc/x86_64-linux-gnu/13.3.0
-missing="$(bwrap --ro-bind "$root" / --proc /proc --dev /dev --unshare-all /bin/sh -c '
-  for exe in /usr/local/bin/gcc /usr/local/bin/g++ /usr/local/bin/cpp '"$gccexec_in"'/cc1 '"$gccexec_in"'/cc1plus              '"$gccexec_in"'/collect2 '"$gccexec_in"'/lto-wrapper '"$gccexec_in"'/liblto_plugin.so /usr/bin/as /usr/bin/ld.bfd              /usr/bin/python3.11 /opt/pypy/bin/pypy3.11 /opt/pypy/bin/libpypy3.11-c.so /usr/lib/x86_64-linux-gnu/libseccomp.so.2; do
-    ldd "$exe" 2>&1 | grep "not found" | sed "s|^|$exe: |"
-  done; true')"
-if [[ -n "$missing" ]]; then echo "Thiếu thư viện sau khi cắt:" >&2; echo "$missing" >&2; exit 4; fi
-mkdir -p "$root"/{proc,dev,tmp,sys/fs/cgroup,artifact,source,out,sdk,opt/arena/arena}
+# Keep only the C/C++/Python runtime and compiler paths; no package manager caches or debug data.
+rm -rf -- "$root"/usr/share/{doc,man,info,locale,lintian} "$root"/var/lib/apt/lists/* \
+  "$root"/var/cache/* "$root"/var/log/* "$root"/usr/share/perl* "$root"/opt/pypy/lib/pypy3.11/test \
+  "$root"/usr/lib/gcc/x86_64-linux-gnu/13/{cc1obj,cc1objplus,f951,lto1}
+find "$root" -name '__pycache__' -type d -prune -exec rm -rf -- {} +
+find "$root/opt/pypy" -name '*.debug' -delete
+rm -f -- "$root"/usr/lib/x86_64-linux-gnu/{libasan*,libtsan*,liblsan*,libubsan*,libhwasan*}
+missing="$(inside sh -c '
+  for exe in /usr/bin/gcc-13 /usr/bin/g++-13 /usr/bin/cpp-13 /usr/libexec/gcc/x86_64-linux-gnu/13/cc1 \
+    /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus /usr/libexec/gcc/x86_64-linux-gnu/13/collect2 \
+    /usr/bin/as /usr/bin/ld.bfd /usr/bin/python3 /opt/pypy/bin/pypy3.11 \
+    /opt/pypy/bin/libpypy3.11-c.so /usr/lib/x86_64-linux-gnu/libseccomp.so.2; do
+    test -e "$exe" || { echo "missing executable: $exe"; continue; }
+    ldd "$exe" 2>&1 | grep "not found" | sed "s|^|$exe: |" || true
+  done')"
+[[ -z "$missing" ]] || { printf 'Missing dependencies:\n%s\n' "$missing" >&2; exit 4; }
+chmod -R a+rX "$root"
 after="$(du -sm "$root" | cut -f1)"
-
-tarball="$work/rootfs.tar.zst"
 tar --sort=name --mtime='2026-01-01 00:00Z' --owner=0 --group=0 --numeric-owner -C "$root" -cf - . \
-  | zstd -q -19 -T0 -o "$tarball"
-sha="$(sha256sum "$tarball" | cut -d' ' -f1)"
+  | zstd -q -19 -T2 -o "$work/rootfs.tar.zst"
+sha="$(sha256sum "$work/rootfs.tar.zst" | cut -d' ' -f1)"
 name="rootfs-$sha.tar.zst"
-mv "$tarball" "$out/$name"
+mv -- "$work/rootfs.tar.zst" "$out/$name"
 (cd "$out" && sha256sum "$name" > "$name.sha256")
-size="$(du -m "$out/$name" | cut -f1)"
-echo "rootfs: $out/$name"
-echo "sha256: $sha"
-echo "giải nén: ${before} MiB trước khi cắt, ${after} MiB sau khi cắt; nén zstd: ${size} MiB"
-if (( size > 300 )); then echo "CẢNH BÁO: file nén vượt 300 MB" >&2; exit 3; fi
+cp "$root/rootfs-manifest.json" "$out/$name.manifest.json"
+size="$(stat -c %s "$out/$name")"
+printf 'rootfs: %s/%s\ncompiler: %s\nsize: %s bytes; unpacked %s -> %s MiB\n' "$out" "$name" "$compiler" "$size" "$before" "$after"
+if (( size > 300000000 )); then echo '[HOI] Archive exceeds 300 MB; stop for owner review.' >&2; exit 3; fi

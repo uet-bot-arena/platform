@@ -21,7 +21,7 @@ class Adjudication(unittest.TestCase):
         self.store = Store(self.tmp.name, recover_jobs=False)
         self.addCleanup(self.store.db.close)
         self.service = Service(self.store, start_worker=False)
-        self.runner = LocalRunner(self.store)
+        self.runner = LocalRunner(self.store, backend=Mock(identity=lambda: {"runtime_id": "unit-runtime"}))
 
     def job(self, rules=CURRENT):
         return self.store.create('job', 'unit-team', {'kind': 'match', 'status': 'queued',
@@ -114,7 +114,7 @@ class Adjudication(unittest.TestCase):
             w.start.side_effect = fault
             w.start.return_value = {'wall_ms': 1}
             workers.append(w)
-        with patch.object(self.runner, 'ensure_artifact', return_value=(Path(self.tmp.name), {})), patch('arena.sandbox.Worker', side_effect=workers):
+        with patch.object(self.runner, 'ensure_artifact', return_value=(Path(self.tmp.name), {})), patch.object(self.runner, 'new_worker', side_effect=workers):
             self.runner.execute(job)
         return self.store.get(job['id'])
 
@@ -137,7 +137,7 @@ class Adjudication(unittest.TestCase):
         self.assertEqual(len(job['report']['startup_faults']), 2)
 
     def test_infrastructure_or_untrusted_fault_never_awards_startup_win(self):
-        for faults in ([self.bot_fault(), Fault('worker_unavailable', 'Docker unavailable')],
+        for faults in ([self.bot_fault(), Fault('worker_unavailable', 'Sandbox unavailable')],
                        [Fault('timeout', 'No trusted worker response'), None]):
             with self.subTest(faults=faults), self.assertRaises(Fault):
                 self.execute_startup(faults)
@@ -146,7 +146,7 @@ class Adjudication(unittest.TestCase):
                 self.assertNotIn('result', job.get('report') or {})
 
     def test_missing_locked_artifact_requires_restore_without_build(self):
-        with patch('arena.sandbox.build') as build, self.assertRaises(Fault) as raised:
+        with patch('arena.sandbox.get_backend') as build, self.assertRaises(Fault) as raised:
             self.runner.ensure_artifact(self.job(), {'source':{}, 'source_path':self.tmp.name}, profile(), require_existing=True)
         self.assertEqual(raised.exception.code, 'artifact_missing')
         build.assert_not_called()
@@ -162,8 +162,7 @@ class Adjudication(unittest.TestCase):
         submission = self.store.create('submission','unit-team',{})
         for i in range(15):
             self.service.pending.put_nowait('practice-'+str(i))
-        with patch('arena.sandbox.image_id',return_value='unit-image'):
-            job = self.service.enqueue('unit-team','benchmark',{'submission_id':submission['id']},'reserved-slot-test')
+        job = self.service.enqueue('unit-team','benchmark',{'submission_id':submission['id']},'reserved-slot-test')
         self.assertEqual(job['status'], 'queued')
         self.assertEqual(self.service.pending.qsize(), 16)
 

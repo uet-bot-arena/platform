@@ -1,4 +1,4 @@
-"""Isolated HTTP + Docker experimental tournament, including classic compatibility."""
+"""Isolated HTTP + bubblewrap experimental tournament, including classic compatibility."""
 from copy import deepcopy
 import io
 import json
@@ -21,6 +21,7 @@ from arena.store import Store
 from arena_api.accounts import Accounts
 from arena_api.app import create_app
 from arena_api.settings import Settings
+from grader_harness import start_grader, stop_grader
 
 def main():
     output=ROOT/'test-results';output.mkdir(exist_ok=True)
@@ -38,6 +39,7 @@ def main():
             end=time.monotonic()+15
             while not server.started and thread.is_alive() and time.monotonic()<end:time.sleep(.05)
             assert server.started,'API did not start'
+            grader=start_grader(app,settings.origin,"bwrap",2)
             def req(client,method,path,expected=200,**kw):
                 if method=='POST':
                     kw['headers']={'Idempotency-Key':uuid.uuid4().hex,**kw.get('headers',{})}
@@ -63,7 +65,7 @@ def main():
             ruleset=req(admin,'POST','/admin/rulesets',201,json={'definition':definition}).json()
             for verb in ('validate','publish'):
                 ruleset=req(admin,'POST',f"/admin/rulesets/{ruleset['id']}/{verb}",json={'expected_revision':ruleset['revision']}).json()
-            rid=ruleset['id'];report['ruleset_hash']=ruleset['hash'];report['image_id']=sandbox.image_id('uet-arena-worker:experimental-clock-v2')
+            rid=ruleset['id'];report['ruleset_hash']=ruleset['hash'];report['runtime_id']=grader.identity['runtime_id']
             checked('default_off_admin_validate_publish_and_pin_hash')
             sources=[];benchmarks=[]
             for i,client in enumerate((a,b)):
@@ -84,14 +86,14 @@ def main():
             classic=req(a,'POST','/benchmarks',202,json={'submission_id':sources[0]['id']}).json();classic=wait_job(a,classic['id'])
             assert classic['report']['passed'] and 'ruleset' not in classic['report']
             checked('expanded_starter_also_passes_classic_v2_72_samples')
-            comp=req(admin,'POST','/admin/competitions',201,json={'title':'Experimental two-leg cup','max_teams':2,'ruleset_id':rid}).json();cid=comp['id'];report['competition_id']=cid
+            comp=req(admin,'POST','/admin/competitions',201,json={'title':'Experimental two-leg cup','max_teams':2,'ruleset_id':rid,'grader_platform':'linux'}).json();cid=comp['id'];report['competition_id']=cid
             req(admin,'POST',f'/admin/competitions/{cid}/open')
             req(a,'POST',f'/competitions/{cid}/entry',409,json=dict(submission_id=sources[0]['id'],benchmark_id=classic['id'],delegate_timeout_claims=True))
             # Same definition/hash is deliberately not sufficient when changed.
             different=deepcopy(definition);different['name']='Different rules';different['energy']['initial']=1
             other=req(admin,'POST','/admin/rulesets',201,json={'definition':different}).json()
             for verb in ('validate','publish'):other=req(admin,'POST',f"/admin/rulesets/{other['id']}/{verb}",json={'expected_revision':other['revision']}).json()
-            other_comp=req(admin,'POST','/admin/competitions',201,json=dict(title='Wrong ruleset gate',max_teams=2,ruleset_id=other['id'])).json()
+            other_comp=req(admin,'POST','/admin/competitions',201,json=dict(title='Wrong ruleset gate',max_teams=2,ruleset_id=other['id'],grader_platform='linux')).json()
             req(admin,'POST',f"/admin/competitions/{other_comp['id']}/open")
             req(a,'POST',f"/competitions/{other_comp['id']}/entry",409,json=dict(submission_id=sources[0]['id'],benchmark_id=benchmarks[0]['id'],delegate_timeout_claims=True))
             for client,source,job in zip((a,b),sources,benchmarks):req(client,'POST',f'/competitions/{cid}/entry',json=dict(submission_id=source['id'],benchmark_id=job['id'],delegate_timeout_claims=True))
@@ -170,6 +172,7 @@ def main():
             req(admin,'POST','/admin/experimental',json=dict(enabled=False,expected_revision=3))
             report['fixtures']=fixtures;report['standings']=scores;report['passed']=True
         finally:
+            if 'grader' in locals():stop_grader(grader)
             for client in (admin,a,b,guest):client.close()
             server.should_exit=True;thread.join(timeout=360);sock.close()
             assert not thread.is_alive(),'Controller failed to release isolated DB'

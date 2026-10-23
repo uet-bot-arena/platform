@@ -1,17 +1,16 @@
-"""Differential test: compile trusted C++ probe in Docker; compare against Python."""
+"""Differential test: compile a trusted C++ probe in bwrap; compare against Python."""
 from copy import deepcopy
 import json
 from pathlib import Path
 import random
-import subprocess
 import sys
 import tempfile
-import uuid
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from arena import engine, experimental, sandbox
 from arena.config import profile
+from grader_harness import run_probe
 
 PROBE=r'''
 #include <iostream>
@@ -50,22 +49,19 @@ def cases():
     return out
 
 def main():
-    image=sandbox.image_id('uet-arena-worker:experimental-v1');output=ROOT/'test-results';output.mkdir(exist_ok=True)
+    backend=sandbox.get_backend('bwrap');output=ROOT/'test-results';output.mkdir(exist_ok=True)
     inputs=cases()
     with tempfile.TemporaryDirectory(prefix='experimental-parity-',dir=output) as directory:
         root=Path(directory);source=root/'source';source.mkdir();(source/'bot.cpp').write_text(PROBE,encoding='utf-8')
-        artifact=root/'artifact';built=sandbox.build(source,artifact,profile(),image)
+        artifact=root/'artifact';built=backend.build(source,artifact,profile())
         assert built['ok'],built
-        name='arena-parity-'+uuid.uuid4().hex
-        try:
-            result=subprocess.run(['docker','run','--name',name,'--pull=never','--network=none','--read-only','--cap-drop=ALL','--security-opt=no-new-privileges','--pids-limit=16','--memory=256m','--cpus=1','--user','10001:10001','--log-driver=none','-i','--mount',f'type=bind,source={artifact.resolve()},target=/artifact,readonly','--entrypoint','/artifact/bot',image],input=('\n'.join(json.dumps(m) for m,_ in inputs)+'\n').encode(),capture_output=True,timeout=60)
-            assert result.returncode==0,result.stderr.decode(errors='replace')
-            lines=result.stdout.splitlines();assert len(lines)==len(inputs),(len(lines),len(inputs))
-            for i,(line,(_,expected)) in enumerate(zip(lines,inputs)):
-                actual=json.loads(line)
-                assert actual==expected,(i,inputs[i][0],actual,expected)
-        finally:sandbox.cleanup(name)
-    report=dict(passed=True,cases=len(inputs),patterns=['king','orthogonal','diagonal','knight'],engine_sha256=experimental.ENGINE_SHA256,sdk_sha256=experimental.sdk_hash(),image_id=image)
+        result=run_probe(backend,artifact,('\n'.join(json.dumps(m) for m,_ in inputs)+'\n').encode())
+        assert result.returncode==0,result.stderr.decode(errors='replace')
+        lines=result.stdout.splitlines();assert len(lines)==len(inputs),(len(lines),len(inputs))
+        for i,(line,(_,expected)) in enumerate(zip(lines,inputs)):
+            actual=json.loads(line)
+            assert actual==expected,(i,inputs[i][0],actual,expected)
+    report=dict(passed=True,cases=len(inputs),patterns=['king','orthogonal','diagonal','knight'],engine_sha256=experimental.ENGINE_SHA256,sdk_sha256=experimental.sdk_hash(),**backend.identity())
     (output/'experimental-parity-latest.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     print(f'PASS C++ / Python parity: {len(inputs)} states, legal actions and next states',flush=True)
 

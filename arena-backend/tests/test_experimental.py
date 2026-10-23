@@ -1,4 +1,4 @@
-"""Engine mechanics and API boundaries; real Docker coverage lives separately."""
+"""Engine mechanics and API boundaries; real native coverage lives separately."""
 from copy import deepcopy
 import json
 import random
