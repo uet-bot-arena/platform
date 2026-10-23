@@ -37,11 +37,8 @@ class Competitions:
         self.thread = threading.Thread(target=self.loop, daemon=True, name="competition-scheduler")
         self.scheduler_error = None
         self.suite_sha256 = digest(fixtures())
-        with store.lock, self.db:
-            # Restart never resumes a clock or automatically retries a match.
-            for row in self.accounts.rows("SELECT id FROM competitions WHERE status='running'"):
-                self.db.execute("UPDATE competitions SET status='paused',revision=revision+1 WHERE id=?", (row["id"],))
-                self.accounts.audit("system", "competition.restart_paused", row["id"])
+        # Running competitions keep scheduling; interrupted games get a fresh attempt.
+        # A competition explicitly paused by the organiser stays paused.
         self.reconcile()
         self.service.before_next = self.schedule_once
 

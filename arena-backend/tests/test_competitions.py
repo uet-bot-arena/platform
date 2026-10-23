@@ -417,7 +417,7 @@ class CompetitionAPI(APIHarness):
         self.finish(job)
         self.assertEqual(sum(s["wins"] for s in self.comp.standings(comp["id"])["items"]), 1)
 
-    def test_restart_pauses_competition_and_marks_inflight_unscored(self):
+    def test_restart_keeps_competition_running_and_retries_inflight_unscored(self):
         comp, _, _, _ = self.prepared()
         self.launch(comp)
         restarted = Store(self.settings.data)
@@ -425,13 +425,16 @@ class CompetitionAPI(APIHarness):
             accounts = Accounts(restarted)
             manager = Competitions(restarted, Service(restarted, start_worker=False), accounts)
             view = manager.view(comp["id"])
-            self.assertEqual(view["status"], "paused")
+            self.assertEqual(view["status"], "running")
             # The unscored in-flight attempt is retried automatically (new attempt), not left for the organiser.
             self.assertEqual(view["fixture_counts"]["attention"], 0)
             self.assertEqual(view["fixture_counts"]["pending"], 2)
             fixture = manager.rows("SELECT id FROM competition_fixtures WHERE competition_id=? ORDER BY ordinal", (comp["id"],))[0]["id"]
             self.assertEqual(manager.attempts(comp["id"], fixture)["items"][0]["error_code"], "server_restart")
             self.assertTrue(all(s["played"] == 0 for s in manager.standings(comp["id"])["items"]))
+            manager.schedule_once()
+            self.assertEqual(len(manager.attempts(comp["id"], fixture)["items"]), 2)
+            self.assertEqual(manager.view(comp["id"])["status"], "running")
         finally:
             restarted.db.close()
 

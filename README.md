@@ -20,7 +20,7 @@ Tài liệu: [Cài đặt chi tiết](INSTALL.md) · [Hướng dẫn viết bot]
 - **Quỹ giờ cả trận mỗi bot: Bullet 60 giây hoặc thường 300 giây, không cộng giây**, như nhau cho mọi ngôn ngữ và mọi kích thước bàn. Deadline do đồng hồ monotonic của worker quyết định; hết quỹ là thua. Khoảng chờ 3 giây chỉ để server tuyên bố hết giờ, không nhận nước đi muộn.
 - Hòa khi cùng thế cờ lặp lại 3 lần, khi đạt 512 nước (bàn 9×9; bàn khác tăng theo số ô) hoặc trận quá 20 phút.
 - **Thắng 3 điểm, hòa 1 điểm, thua 0 điểm.** Swiss: đội được nghỉ (bye) nhận 6 điểm như thắng cả vòng, bằng điểm xét Buchholz. Vòng tròn: bằng điểm thì đồng hạng.
-- Bot lỗi (crash, sai giao thức, nước sai luật, hết giờ) bị xử thua; lỗi hạ tầng không tính kết quả, BTC cho chạy lại.
+- Bot lỗi (crash, sai giao thức, nước sai luật, hết giờ) bị xử thua; lỗi hạ tầng không tính kết quả và tự chạy lại trong giới hạn K, quá K mới cần BTC xử lý.
 
 ## Cài và chạy
 

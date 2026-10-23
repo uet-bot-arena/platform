@@ -16,6 +16,7 @@ class Store:
         self.pending_idempotency = None
         self.db = sqlite3.connect(self.root / "arena.sqlite", check_same_thread=False)
         self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute("PRAGMA synchronous=FULL")
         self.db.executescript("""
           CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY, kind TEXT, team TEXT, data TEXT);
           CREATE INDEX IF NOT EXISTS documents_kind_team ON documents(kind,team);
@@ -25,10 +26,14 @@ class Store:
         """)
         self.db.commit()
         for job in self.list("job") if recover_jobs else []:
-            # Leased jobs run on remote graders and outlive a hub restart (lease reaper decides).
+            # The service invalidates remote leases after its tables are available.
             if job["status"] not in ("queued", "completed", "failed", "aborted") and not job.get("lease_id"):
-                self.update(job["id"], status="aborted", error={"code": "server_restart", "detail": "Controller restarted; no competitive result awarded"})
-                self.event(job["id"], "aborted", {"code": "server_restart"})
+                if job.get("official"):
+                    self.update(job["id"], status="aborted", report=None, error={"code": "server_restart", "detail": "Hub restarted; a new attempt is required"})
+                    self.event(job["id"], "aborted", {"code": "server_restart"})
+                else:
+                    self.update(job["id"], status="queued", report=None, error=None, restarts=job.get("restarts", 0) + 1)
+                    self.event(job["id"], "requeued", {"reason": "server_restart"})
 
     def create(self, kind, team, data):
         item = {"id": uuid.uuid4().hex, "team_id": team, "created_unix_ms": time.time_ns() // 1_000_000, **data}

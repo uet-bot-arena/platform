@@ -93,15 +93,16 @@ class Cluster:
         assert response.status_code == expected, (method, path, response.status_code, response.text[:800])
         return response.json()
 
-    def start_hub(self):
+    def start_hub(self, bootstrap=True):
         before = time.time_ns() // 1_000_000
         windows = int(subprocess.check_output(["python.exe", "-c", "import time; print(time.time_ns() // 1000000)"], text=True))
         after = time.time_ns() // 1_000_000
         self.results["clocks"] = {"wsl_before_ms": before, "windows_ms": windows, "wsl_after_ms": after,
                                   "wsl_minus_windows_ms": (before + after) // 2 - windows}
         python = str(ROOT / ".venv" / "bin" / "python")
-        subprocess.run([python, "-m", "arena_api", "bootstrap-admin", "--username", "organizer", "--password-stdin"],
-                       input=PASSWORD + "\n", text=True, env=self.env, cwd=ROOT, check=True, capture_output=True)
+        if bootstrap:
+            subprocess.run([python, "-m", "arena_api", "bootstrap-admin", "--username", "organizer", "--password-stdin"],
+                           input=PASSWORD + "\n", text=True, env=self.env, cwd=ROOT, check=True, capture_output=True)
         self.hub = subprocess.Popen([python, "-m", "arena_api", "serve"], env=self.env, cwd=ROOT,
                                     stdout=subprocess.DEVNULL, stderr=open(self.data / "hub.log", "w"))
         until = time.monotonic() + 30
@@ -114,20 +115,20 @@ class Cluster:
         login = self.api(self.admin, "POST", "/auth/login", json={"username": "organizer", "password": PASSWORD})
         self.admin.headers["X-CSRF-Token"] = login["csrf_token"]
 
-    def grader(self, name, backend, cpu):
+    def grader(self, name, backend, cpu, slots=1):
         token = self.api(self.admin, "POST", "/admin/graders", expected=201, json={"name": name})
         token_file = self.shared / f"{name}.token"
         token_file.write_text(token["token"])
         pid_file = self.shared / f"{name}.pid"
         log = self.shared / f"{name}.log"
         if backend == "windows":
-            argv = ["python.exe", "-m", "arena.grader", "--hub", self.origin, "--slots", "1", "--backend", "windows",
+            argv = ["python.exe", "-m", "arena.grader", "--hub", self.origin, "--slots", str(slots), "--backend", "windows",
                     "--cpus", str(cpu), "--profile", name, "--token-file", windows_path(token_file),
                     "--pid-file", windows_path(pid_file), "--log-file", windows_path(log),
                     "--state-dir", windows_path(self.shared / ("state-" + name))]
             process = subprocess.Popen(argv, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
-            argv = [str(ROOT / ".venv" / "bin" / "python"), "-m", "arena.grader", "--hub", self.origin, "--slots", "1",
+            argv = [str(ROOT / ".venv" / "bin" / "python"), "-m", "arena.grader", "--hub", self.origin, "--slots", str(slots),
                     "--backend", backend, "--cpus", str(cpu), "--profile", name, "--token-file", str(token_file),
                     "--pid-file", str(pid_file), "--log-file", str(log), "--state-dir", str(self.shared / ("state-" + name))]
             process = subprocess.Popen(argv, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -345,7 +346,7 @@ class Cluster:
                 self.results.setdefault("logs", {})[name] = item["log"].read_text(errors="replace")[-4000:]
         out = ROOT / "test-results" / "m1"
         out.mkdir(parents=True, exist_ok=True)
-        filename = {"lease-probe": "grader-lease-probe.json", "installers": "grader-installers.json"}.get(
+        filename = {"lease-probe": "grader-lease-probe.json", "installers": "grader-installers.json", "hub-restart": "hub-restart.json"}.get(
             self.results.get("mode"), "grader-cluster.json")
         (out / filename).write_text(json.dumps(self.results, ensure_ascii=False, indent=2), encoding="utf-8")
         shutil.rmtree(self.shared, ignore_errors=True)

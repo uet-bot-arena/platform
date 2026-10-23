@@ -148,8 +148,7 @@ def create_app(settings=None, start_worker=True):
                     await asyncio.to_thread(competitions.thread.join)
             if service:
                 service.stop.set()
-                # Jobs run on remote graders; their leases survive a hub restart and simply
-                # expire (and are retried) if the grader is gone when the hub comes back.
+                # Startup invalidates these leases and schedules fresh clocks/attempts.
                 await asyncio.to_thread(service.join)
                 if competitions:
                     competitions.reconcile()

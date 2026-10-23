@@ -186,7 +186,8 @@ class Persistence(unittest.TestCase):
             self.assertEqual([e["seq"] for e in store.events(job["id"], 1)], [2, 3])
             store.db.close()
             reopened = Store(tmp)
-            self.assertEqual(reopened.get(job["id"])["status"], "aborted")
+            self.assertEqual(reopened.get(job["id"])["status"], "queued")
+            self.assertEqual(reopened.get(job["id"])["restarts"], 1)
             self.assertEqual(reopened.get(a["id"])["source"], a["source"])
             reopened.db.close()
 

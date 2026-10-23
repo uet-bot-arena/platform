@@ -86,6 +86,11 @@ class Service:
                 PRIMARY KEY(submission_id, platform, runtime_id));
             """)
         self.pending = DurableJobQueue(store)
+        # A restarted hub starts fresh clocks; no result from its previous leases may win.
+        with store.lock:
+            previous = [r[0] for r in store.db.execute("SELECT id FROM grader_leases WHERE status='active'")]
+        for lease_id in previous:
+            self.end_lease(lease_id, "expired", "server_restart")
         self.before_next = None
         self.stop = threading.Event()
         self.started_workers = start_worker
@@ -408,9 +413,12 @@ class Service:
 
     def active_lease(self, grader, lease_id, fencing):
         with self.store.lock:
-            row = self.store.db.execute("SELECT job_id,grader_id,fencing,status,expires_ms FROM grader_leases WHERE id=?", (lease_id,)).fetchone()
+            row = self.store.db.execute("SELECT l.job_id,l.grader_id,l.fencing,l.status,l.expires_ms,g.revoked_ms "
+                                        "FROM grader_leases l JOIN graders g ON g.id=l.grader_id WHERE l.id=?", (lease_id,)).fetchone()
         if not row or row[1] != grader["id"]:
             raise Fault("not_found", "Lease not found")
+        if row[5] is not None:
+            raise Fault("unauthorized", "Grader token revoked")
         if row[3] != "active" or row[2] != fencing or row[4] < self.lease_now_ms():
             raise Fault("stale_lease", "Lease is no longer held by this grader; stop the job")
         return row[0]
@@ -431,6 +439,7 @@ class Service:
             if not isinstance(item, dict) or item.get("type") not in EVENT_TYPES or not isinstance(item.get("data"), dict):
                 raise Fault("invalid_request", "Unknown or malformed event")
         with self.store.lock:
+            self.active_lease(grader, lease_id, fencing)
             for item in events:
                 if item["type"] == "phase":
                     phase = item["data"].get("phase")
@@ -455,6 +464,7 @@ class Service:
             partial.write_bytes(data)
             partial.replace(target)
         with self.store.lock, self.store.db:
+            self.active_lease(grader, lease_id, fencing)
             self.store.db.execute("INSERT OR REPLACE INTO builds VALUES(?,?,?,?,?,?)",
                                   (submission_id, grader["platform"], grader["runtime_id"], sha256, grader["id"], now_ms()))
         return {"ok": True, "artifact_sha256": sha256}
@@ -503,6 +513,8 @@ class Service:
         except Fault as exc:
             status, error = "failed", {"code": exc.code, "detail": exc.detail[:500], "stage": "verify"}
         with self.store.lock, self.store.db:
+            # Verification runs outside the lock: expiry/revocation may win meanwhile.
+            self.active_lease(grader, lease_id, fencing)
             self.store.db.execute("UPDATE grader_leases SET status='completed',ended_ms=? WHERE id=?", (self.lease_now_ms(), lease_id))
             self.store.db.execute("UPDATE graders SET jobs_done=jobs_done+1 WHERE id=?", (grader["id"],))
             fields = {"status": status, "report": report}
@@ -529,7 +541,7 @@ class Service:
             row = self.store.db.execute("SELECT job_id,status,expires_ms FROM grader_leases WHERE id=?", (lease_id,)).fetchone()
             if not row or row[1] != "active":
                 return
-            if status == "expired" and row[2] >= self.lease_now_ms():
+            if status == "expired" and reason == "lease_expired" and row[2] >= self.lease_now_ms():
                 return  # A heartbeat may have renewed it after the reaper's snapshot.
             self.store.db.execute("UPDATE grader_leases SET status=?,ended_ms=?,reason=? WHERE id=?", (status, self.lease_now_ms(), reason, lease_id))
             job = self.store.get(row[0])
@@ -537,8 +549,9 @@ class Service:
                 return
             if job.get("official"):
                 # Infrastructure failure: no result. Competitions.reconcile schedules a new attempt.
-                self.store.update(job["id"], status="aborted", error={"code": "worker_lost", "detail": f"Grader lease {status}: {reason}"})
-                self.store.event(job["id"], "aborted", {"code": "worker_lost"})
+                code = "server_restart" if reason == "server_restart" else "worker_lost"
+                self.store.update(job["id"], status="aborted", report=None, error={"code": code, "detail": f"Grader lease {status}: {reason}"})
+                self.store.event(job["id"], "aborted", {"code": code})
             else:
                 restarts = job.get("restarts", 0) + 1
                 self.store.update(job["id"], status="queued", report=None, error=None, lease_id=None, restarts=restarts)

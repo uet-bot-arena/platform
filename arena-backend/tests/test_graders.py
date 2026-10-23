@@ -227,6 +227,58 @@ class GraderAPI(APIHarness):
         self.assertEqual(wrong.status_code, 409)
         self.assertEqual(new.post(f"/api/v1/grader/leases/{second['lease_id']}/heartbeat", json={"fencing": second["fencing"]}).status_code, 200)
 
+    def test_hub_restart_invalidates_lease_and_requeues_practice_with_fresh_report(self):
+        from arena.service import Service
+        from arena.store import Store
+        team, issued = self.create_team()
+        job = self.practice(team, issued["account"]["team_id"])
+        client, machine = self.machine()
+        first = self.lease(client)
+        self.store.update(job["id"], status="playing", report={"moves": ["partial"]})
+        reopened = Store(self.settings.data)
+        try:
+            service = Service(reopened, start_worker=False)
+            recovered = reopened.get(job["id"])
+            self.assertEqual((recovered["status"], recovered["restarts"]), ("queued", 1))
+            self.assertIsNone(recovered["report"])
+            self.assertIsNone(recovered["lease_id"])
+            self.assertEqual(reopened.db.execute("SELECT status,reason FROM grader_leases WHERE id=?",
+                                                (first["lease_id"],)).fetchone(), ("expired", "server_restart"))
+            for action, body in (("heartbeat", {}), ("events", {"events": []}), ("result", {"status": "aborted"})):
+                response = client.post(f"/api/v1/grader/leases/{first['lease_id']}/{action}", json={"fencing": first["fencing"], **body})
+                self.assertEqual(response.status_code, 409, response.text)
+            grader = service.grader_row(machine["id"])
+            second = service.try_lease(grader)
+            self.assertEqual(second["job"]["id"], first["job"]["id"])
+            self.assertGreater(second["fencing"], first["fencing"])
+        finally:
+            reopened.db.close()
+
+    def test_hub_restart_retries_official_attempt_but_preserves_manual_pause(self):
+        from arena.service import Service
+        from arena.store import Store
+        from arena_api.accounts import Accounts
+        from arena_api.competitions import Competitions
+        comp, _, _, _ = self.prepared()
+        self.post(self.client, f"/admin/competitions/{comp['id']}/start")
+        client, _ = self.machine("Windows", "windows", WINDOWS)
+        first = self.lease(client)
+        self.store.update(first["job"]["id"], status="playing")
+        self.post(self.client, f"/admin/competitions/{comp['id']}/pause")
+        reopened = Store(self.settings.data)
+        try:
+            service = Service(reopened, start_worker=False)
+            manager = Competitions(reopened, service, Accounts(reopened))
+            fixture = first["job"]["official"]["fixture_id"]
+            self.assertEqual(reopened.get(first["job"]["id"])["error"]["code"], "server_restart")
+            self.assertEqual(manager.fixture(comp["id"], fixture)["status"], "pending")
+            self.assertEqual(manager.fixture(comp["id"], fixture)["auto_retries"], 1)
+            self.assertEqual(manager.get(comp["id"])["status"], "paused")
+            manager.schedule_once()
+            self.assertEqual(len(manager.attempts(comp["id"], fixture)["items"]), 1)
+        finally:
+            reopened.db.close()
+
     def test_lease_only_expires_at_its_deadline_and_heartbeat_extends_it(self):
         team, issued = self.create_team()
         self.practice(team, issued["account"]["team_id"])
@@ -292,6 +344,55 @@ class GraderAPI(APIHarness):
         self.assertEqual(self.store.get(leased["job"]["id"])["status"], "playing")
         for bad in ({"type": "completed", "data": {}}, {"type": "phase", "data": {"phase": "completed"}}, {"type": "x", "data": {}}):
             self.assertEqual(machine.post(path, json={"fencing": leased["fencing"], "events": [bad]}).status_code, 400)
+
+    def test_result_losing_lease_during_verification_cannot_overwrite_the_next_run(self):
+        team, issued = self.create_team()
+        job = self.practice(team, issued["account"]["team_id"])
+        client, machine = self.machine()
+        first = self.lease(client)
+        report = play_out(self.store.get(job["id"]))
+        second = []
+        def lose_lease(*_):
+            self.service.end_lease(first["lease_id"], "expired", "server_restart")
+            second.append(self.service.try_lease(self.service.grader_row(machine["id"])))
+        with patch("arena.service.verify", side_effect=lose_lease):
+            response = client.post(f"/api/v1/grader/leases/{first['lease_id']}/result",
+                                   json={"fencing": first["fencing"], "status": "completed", "report": report})
+        self.assertEqual(response.status_code, 409, response.text)
+        current = self.store.get(job["id"])
+        self.assertEqual((current["status"], current["lease_id"]), ("starting", second[0]["lease_id"]))
+        self.assertIsNone(current["report"])
+        self.assertEqual(self.service.grader_row(machine["id"])["jobs_done"], 0)
+
+    def test_events_and_artifacts_recheck_the_lease_before_publishing(self):
+        team, issued = self.create_team()
+        job = self.practice(team, issued["account"]["team_id"])
+        client, machine = self.machine()
+        leased = self.lease(client)
+        for operation in ("events", "artifact"):
+            with self.subTest(operation=operation):
+                active = self.service.active_lease
+                next_run = []
+                def change_owner(*args):
+                    result = active(*args)
+                    if not next_run:
+                        self.service.end_lease(leased["lease_id"], "expired", "server_restart")
+                        next_run.append(self.service.try_lease(self.service.grader_row(machine["id"])))
+                    return result
+                with patch.object(self.service, "active_lease", side_effect=change_owner):
+                    if operation == "events":
+                        response = client.post(f"/api/v1/grader/leases/{leased['lease_id']}/events",
+                                               json={"fencing": leased["fencing"], "events": [{"type": "phase", "data": {"phase": "playing"}}]})
+                    else:
+                        binary = b"\x7fELF" + b"a" * 20
+                        sha = hashlib.sha256(binary).hexdigest()
+                        response = client.put(f"/api/v1/grader/artifacts/linux/{sha}", content=binary,
+                                              headers={"X-Lease-Id": leased["lease_id"], "X-Fencing": str(leased["fencing"]),
+                                                       "X-Submission-Id": leased["submissions"][0]["id"], "Content-Type": "application/octet-stream"})
+                self.assertEqual(response.status_code, 409, response.text)
+                leased = next_run[0]
+                self.assertEqual(self.store.get(job["id"])["status"], "starting")
+                self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM builds").fetchone()[0], 0)
 
     def test_verified_result_completes_and_a_tampered_one_never_scores(self):
         comp, _, _, _ = self.prepared()

@@ -50,7 +50,7 @@ class Hardening(unittest.TestCase):
             self.assertEqual(result, again)
             store.db.close()
 
-    def test_queue_survives_restart_and_running_job_does_not_resume(self):
+    def test_queue_survives_restart_and_interrupted_job_starts_from_zero(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = Store(tmp)
             pending = DurableJobQueue(store)
@@ -58,11 +58,15 @@ class Hardening(unittest.TestCase):
             for job in jobs:
                 pending.put(job["id"])
             first = pending.get_nowait()
+            store.update(first, report={"samples": ["partial-old-run"]})
             store.db.close()
             store = Store(tmp)
             pending = DurableJobQueue(store)
-            self.assertEqual(pending.qsize(), 199)
-            self.assertEqual(store.get(first)["status"], "aborted")
+            self.assertEqual(store.db.execute("PRAGMA synchronous").fetchone()[0], 2)
+            self.assertEqual(pending.qsize(), 200)
+            self.assertEqual(store.get(first)["status"], "queued")
+            self.assertIsNone(store.get(first)["report"])
+            self.assertEqual(store.get(first)["restarts"], 1)
             self.assertEqual(pending.position(jobs[1]["id"]), 1)
             self.assertEqual(pending.get_nowait(), jobs[1]["id"])
             store.db.close()
