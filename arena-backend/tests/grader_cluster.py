@@ -89,6 +89,10 @@ class Cluster:
             kwargs.setdefault("headers", {}).setdefault("Idempotency-Key", uuid.uuid4().hex)
             if "json" not in kwargs and "content" not in kwargs:
                 kwargs["json"] = {}
+        # Native cluster fixtures use BTC's internal import after gói 7.
+        if method == 'POST' and path == '/submissions':
+            team_id = client.get('/api/v1/auth/me').json()['user']['team_id']
+            path, client = '/admin/teams/' + team_id + '/submissions', self.admin
         response = client.request(method, "/api/v1" + path, **kwargs)
         assert response.status_code == expected, (method, path, response.status_code, response.text[:800])
         return response.json()
@@ -346,7 +350,7 @@ class Cluster:
                 self.results.setdefault("logs", {})[name] = item["log"].read_text(errors="replace")[-4000:]
         out = ROOT / "test-results" / "m1"
         out.mkdir(parents=True, exist_ok=True)
-        filename = {"lease-probe": "grader-lease-probe.json", "installers": "grader-installers.json", "hub-restart": "hub-restart.json"}.get(
+        filename = {"lease-probe": "grader-lease-probe.json", "installers": "grader-installers.json", "hub-restart": "hub-restart.json", "github": "github-native.json"}.get(
             self.results.get("mode"), "grader-cluster.json")
         (out / filename).write_text(json.dumps(self.results, ensure_ascii=False, indent=2), encoding="utf-8")
         shutil.rmtree(self.shared, ignore_errors=True)

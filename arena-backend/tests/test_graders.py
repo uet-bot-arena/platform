@@ -466,7 +466,7 @@ class GraderAPI(APIHarness):
         team, issued = self.create_team()
         team_id = issued["account"]["team_id"]
         raw = zipped({"bot.cpp": "int main(){}"})
-        uploaded = team.post("/api/v1/submissions", content=raw, headers={"Content-Type": "application/zip", "X-Submission-Version": "v1.0.0",
+        uploaded = self.upload(team, content=raw, headers={"Content-Type": "application/zip", "X-Submission-Version": "v1.0.0",
                                                                           "Idempotency-Key": uuid.uuid4().hex})
         self.assertEqual(uploaded.status_code, 201, uploaded.text)
         sid = uploaded.json()["id"]

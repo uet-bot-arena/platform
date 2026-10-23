@@ -26,19 +26,23 @@ ERROR_STATUS = {"not_found": 404, "unauthorized": 401, "forbidden": 403, "passwo
                 "idempotency_conflict": 409, "version_conflict": 409, "account_conflict": 409, "admin_conflict": 409,
                 "registration_conflict": 409, "report_unavailable": 409, "competition_conflict": 409,
                 "qualification_required": 409, "provenance_mismatch": 409, "ruleset_conflict": 409,
-                "experimental_disabled": 409, "stale_lease": 409, "email_unavailable": 503}
+                "experimental_disabled": 409, "stale_lease": 409, "email_unavailable": 503, "github_unavailable": 503}
 GRADER_PREFIX = "/api/v1/grader/"
 MIB = 1024 * 1024
 
 
 def body_limit(method, path):
     """(bytes, binary?) accepted for a mutation on this path."""
-    if path in ("/api/v1/submissions", "/api/v1/admin/sample-bots"):
+    if path == "/api/v1/submissions":
+        return 16_384, True  # closed student channel; handler returns a GitHub instruction
+    if path == "/api/v1/admin/sample-bots" or path.startswith("/api/v1/admin/teams/") and path.endswith("/submissions"):
         return 10 * MIB, True
     if method == "PUT" and path.startswith(GRADER_PREFIX + "artifacts/"):
         return 17 * MIB, True  # compiled bot (<= 16 MiB)
     if path.startswith(GRADER_PREFIX):
         return 8 * MIB, False  # match reports and event batches
+    if path == "/api/v1/github/webhook":
+        return MIB, False
     return 16_384, False
 
 
@@ -65,7 +69,9 @@ class RequestBoundary:
             response = JSONResponse({"error": {"code": code, "detail": detail}, "request_id": ident}, status_code=status)
             await response(scope, receive, safe_send)
 
-        if headers.get("host") != urlsplit(self.settings.origin).netloc:
+        tunnel_webhook = (headers.get("host") in self.settings.github.webhook_hosts
+                          and scope["path"] == "/api/v1/github/webhook" and scope["method"] == "POST")
+        if headers.get("host") != urlsplit(self.settings.origin).netloc and not tunnel_webhook:
             return await reject(403, "forbidden", "Unexpected Host header")
         if headers.get("origin") not in (None, self.settings.origin) or headers.get("sec-fetch-site") == "cross-site":
             return await reject(403, "forbidden", "Cross-origin request rejected")
@@ -119,7 +125,7 @@ def create_app(settings=None, start_worker=True):
 
     @asynccontextmanager
     async def lifespan(app):
-        lease, store, service, competitions = Lease(settings.data), None, None, None
+        lease, store, service, competitions, github = Lease(settings.data), None, None, None, None
         try:
             store = Store(settings.data)
             app.state.store = store
@@ -136,6 +142,7 @@ def create_app(settings=None, start_worker=True):
             app.state.teams = Teams(app.state.accounts, settings.account_rules)
             app.state.clock_id = secrets.token_hex(16)
             service = Service(store, start_worker=start_worker, grader=settings.grader)
+            service.max_submissions_per_hour = settings.submissions.max_per_hour
             app.state.service = service
             from arena_api.rulesets import RuleCatalog
             app.state.rulesets = RuleCatalog(store, app.state.accounts)
@@ -143,14 +150,24 @@ def create_app(settings=None, start_worker=True):
             competitions = Competitions(store, service, app.state.accounts, settings.grader.max_attempts)
             app.state.competitions = competitions
             competitions.teams = app.state.teams
+            from arena_api.github import GitHub
+            github = GitHub(store, app.state.accounts, app.state.teams, service, competitions, settings, concurrent=start_worker)
+            app.state.github = github
             from arena_api.broadcast import Snapshots
             app.state.broadcast = Snapshots()
             from arena_api.operations import Operations
             app.state.operations = Operations(store, app.state.accounts, service, competitions)
             if start_worker:
                 competitions.thread.start()
+                github.thread.start()
             yield
         finally:
+            if github:
+                github.stop.set()
+                github.wake.set()
+                if github.thread.is_alive():
+                    await asyncio.to_thread(github.thread.join)
+                await asyncio.to_thread(github.close_pools)
             if competitions:
                 competitions.stop.set()
                 if competitions.thread.is_alive():
@@ -181,6 +198,8 @@ def create_app(settings=None, start_worker=True):
     app.include_router(sample_bots.router)
     app.include_router(grader_routes.router)
     app.include_router(email_routes.router)
+    from arena_api import github_routes
+    app.include_router(github_routes.router)
 
     def error_body(request, code, detail):
         return {"error": {"code": code, "detail": detail}, "request_id": getattr(request.state, "request_id", None)}
@@ -212,7 +231,7 @@ def create_app(settings=None, start_worker=True):
         schema.setdefault("components", {}).setdefault("securitySchemes", {}).update({
             "cookieAuth": {"type": "apiKey", "in": "cookie", "name": "arena_web_session"},
             "csrfAuth": {"type": "apiKey", "in": "header", "name": "X-CSRF-Token"}})
-        public = {"/api/v1/auth/enroll", "/api/v1/auth/reset", "/api/v1/registrations", "/api/v1/auth/login", "/api/v1/auth/recovery", "/api/v1/auth/email/request", "/api/v1/auth/email/requests/{ident}", "/api/v1/auth/email/verify", "/api/v1/time", "/api/v1/health/live", "/api/v1/health/ready", "/api/v1/platform", "/api/v1/rules", "/api/v1/experimental/guide"}
+        public = {"/api/v1/github/webhook","/api/v1/auth/enroll", "/api/v1/auth/reset", "/api/v1/registrations", "/api/v1/auth/login", "/api/v1/auth/recovery", "/api/v1/auth/email/request", "/api/v1/auth/email/requests/{ident}", "/api/v1/auth/email/verify", "/api/v1/time", "/api/v1/health/live", "/api/v1/health/ready", "/api/v1/platform", "/api/v1/rules", "/api/v1/experimental/guide"}
         schema["components"]["securitySchemes"]["graderToken"] = {"type": "http", "scheme": "bearer", "description": "Mã máy chấm, chỉ hiện một lần khi admin tạo"}
         for path, methods in schema["paths"].items():
             for method, operation in methods.items():

@@ -1,13 +1,13 @@
 # Hướng dẫn viết bot OTTv2 — Python, C và C++ · protocol v2
 
-Bot là một chương trình Python 3.11 (chạy bằng PyPy), C11 hoặc C++17 chạy trong worker. Chương trình nhận một dòng JSON qua **stdin**, tính một nước đi, rồi trả một dòng JSON qua **stdout**. Đội nộp source ZIP và dùng trang Test & benchmark để kiểm tra. Cùng một process sống suốt trận hoặc benchmark, không khởi động lại ở mỗi lượt.
+Bot là một chương trình Python 3.11 (chạy bằng PyPy), C11 hoặc C++17 chạy trong worker. Chương trình nhận một dòng JSON qua **stdin**, tính một nước đi, rồi trả một dòng JSON qua **stdout**. Đội push source trong bot/ của repo private đã gắn; hub tự kiểm 72 mẫu. Cùng một process sống suốt trận hoặc benchmark, không khởi động lại ở mỗi lượt.
 
 
 ## Chọn ngôn ngữ
 
-Chọn ngôn ngữ trên trang Nộp bot trước khi tải starter:
+Chọn ngôn ngữ bằng file chính trong bot/; repo mẫu có C++ mặc định và mẫu C/Python ở examples/:
 
-| Ngôn ngữ | File chính ở gốc ZIP | Starter gồm | Worker làm gì |
+| Ngôn ngữ | File chính trong bot/ | Starter gồm | Worker làm gì |
 |---|---|---|---|
 | C++17 (`cpp17`) | bot.cpp, thêm .cpp/.hpp/.h nếu cần | bot.cpp, json.hpp | `g++ -std=c++17 -O2`, chạy file nhị phân |
 | C11 (`c11`) | bot.c, thêm .c/.h nếu cần | bot.c, jsmn.h | `gcc -std=c11 -O2 -lm`, chạy file nhị phân |
@@ -21,25 +21,26 @@ Mọi ngôn ngữ dùng **cùng giao thức và cùng quỹ giờ**. Server khô
 
 Để dự giải, vào trang giải → **Đến benchmark**: hệ thống tự dùng đúng luật và quỹ giờ của giải. Trang **Luyện tập** cho đấu với phiên bản khác của đội hoặc với bot mẫu của BTC (tự chọn cầm Đỏ hay Xanh); kết quả luyện tập không tính hạng.
 
-## 1. Bắt đầu và đóng gói source
+## 1. Bắt đầu và nộp source
 
-1. Đăng nhập tài khoản đội, đổi mật khẩu tạm nếu được yêu cầu.
-2. Vào Nộp bot, chọn ngôn ngữ → Tải starter OTTv2. Giải nén để lấy file chính (bot.cpp, bot.c hoặc bot.py) và thư viện đi kèm.
-3. Sửa hàm chọn nước. Giữ nguyên phần đọc message và xuất phản hồi cho lần thử đầu tiên.
-4. Nén **các file bên trong** thành ZIP; không nén cả thư mục bao ngoài.
-5. Nộp với version mới, ví dụ v1.0.0, sau đó v1.0.1. Version đã nộp là bất biến.
-6. Chạy benchmark; chỉ khi đạt đủ 72 mẫu mới chọn bot dự giải với đúng quỹ thời gian của giải.
+1. Đội trưởng lấy tên repo đúng mã đội trên trang đội, tạo repo private từ template của BTC.
+2. Mời ba thành viên, cài App UET Bot Arena với Only select repositories và chọn đúng repo.
+3. Đội trưởng gắn link repo một lần trên Arena. Xem mục Hướng dẫn nộp bài để đi từng bước.
+4. Sửa hàm chọn nước trong bot/. Giữ nguyên phần đọc message và xuất phản hồi cho lần thử đầu tiên.
+5. Chạy `python run_local.py --check`, commit và push main. SHA được hub giữ bất biến, không cần đặt version v1.0.0.
+6. Hub tự kiểm 72 mẫu; theo dõi trạng thái và log trên Arena. Khi có giải mở, lượt kiểm dùng nền tảng và quỹ giờ của giải.
 
 ```text
-my-bot.zip
-├── bot.cpp          bắt buộc (hoặc bot.c / bot.py), nằm ngay tại gốc ZIP
-├── search.hpp       tùy chọn, mã thuật toán của đội
-├── json.hpp         có trong starter; worker cũng cung cấp thư viện này
-├── README.md        tùy chọn
-└── LICENSE.MIT      tùy chọn, giấy phép thư viện JSON
+repo-cua-doi/
+├── bot/
+│   ├── bot.cpp       bắt buộc, hoặc bot.c / bot.py; chỉ một file chính
+│   ├── search.hpp    tùy chọn, mã thuật toán của đội
+│   └── json.hpp      có trong mẫu C++
+├── examples/         mẫu ngôn ngữ khác, không được chấm
+└── run_local.py      chỉ dùng debug trên máy mình
 ```
 
-ZIP tối đa **10 MiB**, sau giải nén tối đa **20 MiB**, từ 1 đến 64 entry. Tên file phân biệt hoa/thường. Chấp nhận file nguồn của ngôn ngữ đã chọn (C++: .cpp, .hpp, .h; C: .c, .h; Python: .py) cùng README.md và LICENSE.MIT. Không dùng thư mục con, symlink, file trùng tên, ZIP mã hóa, binary, Makefile, CMake hoặc script cài thư viện. C++ link các file .cpp trong ZIP; C link các file .c. Không trộn source C và C++ trong cùng bài.
+Repo tarball tối đa **10 MiB** nén, **24 MiB** giải nén; thư mục bot/ tối đa **20 MiB**, 1–64 file. Tên file phân biệt hoa/thường. Chỉ dùng source cùng ngôn ngữ (C++: .cpp/.hpp/.h; C: .c/.h; Python: .py) và giấy phép/README nếu cần. Không thư mục con, symlink, submodule, LFS, binary, Makefile, CMake hoặc script cài thư viện trong bot/. C++ link các .cpp, C link các .c; không trộn C và C++ trong cùng bài. Phần ngoài bot/ không được gửi chấm.
 
 Lệnh build của worker tương đương:
 
@@ -49,7 +50,7 @@ gcc -std=c11 -O2 -pipe -Wall -Wextra -I/sdk -I/source /source/*.c -o /out/bot -l
 # Python: lúc build chỉ kiểm cú pháp; khi chạy là pypy3 -I -S với bot.py làm điểm vào
 ```
 
-Có thể dùng thư viện chuẩn của ngôn ngữ: C++ có vector, queue, unordered_map, algorithm, chrono, random…; Python có collections, heapq, itertools, random, time…; C có thư viện chuẩn C và libm. Thư viện ngoài phải có source hợp lệ trong ZIP; không có bước tải dependency.
+Có thể dùng thư viện chuẩn của ngôn ngữ: C++ có vector, queue, unordered_map, algorithm, chrono, random…; Python có collections, heapq, itertools, random, time…; C có thư viện chuẩn C và libm. Thư viện ngoài phải có source hợp lệ trong bot/; không có bước tải dependency.
 
 ## 2. Vòng đời và quy tắc stdin/stdout
 
@@ -233,7 +234,7 @@ Nếu dùng iterative deepening, giữ best_move của **độ sâu đã hoàn t
 
 ## 7. Hiểu benchmark và đăng ký bot dự giải
 
-Nộp ZIP thành công chỉ xác nhận source đã được lưu và ZIP hợp lệ. Chưa có nghĩa là code đã build được hoặc bot đã đạt chuẩn. Job thường đi qua queued → building → validating → benchmarking → completed; failed/aborted cần xem lỗi.
+Hub nhận SHA mới chưa bảo đảm code build được hoặc bot đạt chuẩn. Job thường đi qua queued → building → validating → benchmarking → completed; failed/aborted cần xem lỗi.
 
 - **Build:** biên dịch C/C++ hoặc kiểm cú pháp Python; lỗi nằm trong job/report.
 - **Validating:** chạy process, gửi init và chờ ready.
@@ -251,11 +252,11 @@ Giữ **mã job**, **mã lỗi** và chi tiết trong báo cáo khi nhờ BTC h�
 
 | Mã / tình huống | Ý nghĩa | Cách xử lý |
 |---|---|---|
-| invalid_archive | ZIP sai cấu trúc, thiếu bot.cpp / bot.c / bot.py, file không đúng ngôn ngữ đã chọn, ZIP hỏng hoặc vượt giới hạn | Nén các file ở gốc; bỏ binary/thư mục; kiểm 10 MiB ZIP, 20 MiB giải nén, tối đa 64 entry |
-| invalid_request khi nộp version | Version không đúng định dạng | Dùng v1.0.0 hoặc v1.0.1, không dùng tên tùy ý |
-| version_conflict | Đội đã dùng version đó | Tăng version; source cũ không bị ghi đè |
+| invalid_archive | bot/ sai cấu trúc hoặc repo vượt giới hạn | Kiểm đúng một file chính và source cùng ngôn ngữ, bỏ binary/thư mục/link/LFS; tối đa 64 file nguồn |
+| invalid_request khi gắn repo | Tên repo/link không đúng mã đội | Dùng đúng tên repo và link hiển thị trên trang đội |
+| account_conflict khi gắn repo | Đội hoặc repo đã có kết nối | Nhờ BTC xử lý ngoại lệ; mỗi repo chỉ gắn một đội |
 | unsupported_runtime | Ngôn ngữ không hợp lệ | Chọn C++17, C11 hoặc Python 3.11 |
-| quota_exceeded | Đạt hạn mức của đội | Mỗi đội tối đa 4 tác vụ đang chạy và 4 yêu cầu đang chờ, 20 phiên bản source và 200 tác vụ; đợi tác vụ trước chạy xong |
+| quota_exceeded | Đạt hạn mức của đội | Mỗi đội tối đa 4 tác vụ đang chạy và 4 yêu cầu đang chờ; mặc định 30 bài nguồn mới/giờ; đợi hub thử lại |
 | superseded | Yêu cầu cũ được thay bằng yêu cầu mới hơn | Khi đội gửi benchmark mới cho cùng giải/cùng cấu hình (hoặc trận luyện tập mới) lúc yêu cầu cũ còn chờ, yêu cầu cũ nhường chỗ; tác vụ đang chạy không bị hủy |
 | build_error | Compiler không tạo được binary hợp lệ | Đọc dòng file:line trong log; kiểm include, cú pháp, hàm main và liên kết. Python: xem SyntaxError, nhớ dùng cú pháp Python 3.11 |
 | build_timeout | Build quá 30 giây | Giảm template/độ phức tạp compile; kiểm mã sinh hoặc header quá lớn |
@@ -276,7 +277,7 @@ Trong trận v2, lỗi bot ở startup có thể bị xử thua kỹ thuật; c�
 
 ## 9. Checklist trước khi chốt bot
 
-1. ZIP phẳng, file chính (bot.cpp / bot.c / bot.py) ở gốc, version chưa trùng, không có binary/script.
+1. Repo private đã gắn App; bot/ phẳng, đúng một bot.cpp / bot.c / bot.py, không binary/script/link/LFS.
 2. ready chỉ ba field, action chỉ sáu field; một JSON object + LF + flush mỗi response.
 3. stdout sạch; stderr gọn; EOF thì thoát.
 4. Copy đúng match_id/turn_id/state_version, giữ nguyên kiểu dữ liệu.
@@ -284,4 +285,4 @@ Trong trận v2, lỗi bot ở startup có thể bị xử thua kỹ thuật; c�
 6. Có fallback hợp lệ, deadline nội bộ và giới hạn RAM/search.
 7. Benchmark passed: true, 72 mẫu, đúng quỹ thời gian của giải; xem P95/max và báo cáo một phần nếu lỗi.
 8. Đã thử luyện tập với cả Đỏ và Xanh; đọc đúng tọa độ và nhận diện căn cứ.
-9. Chọn đúng version/benchmark trước khi BTC chốt; giữ source/version để tái lập kết quả.
+9. Xem SHA Đạt trên banner trước hạn; hub chốt bằng giờ push GitHub và lùi tối đa năm lần push khi cần. Giữ lịch sử Git để tái lập bản cũ.

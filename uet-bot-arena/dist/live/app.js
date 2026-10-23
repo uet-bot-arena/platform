@@ -13,9 +13,9 @@ import {publicRoute} from './access.js';
 import {readRuleForm,ruleEditor,rulePreviewMarkup,botRulesetField,botRulesetSelection,ruleFingerprint} from './experimental-ui.js';
 
 const api=new ArenaAPI(),app=document.getElementById('app'),modalRoot=document.getElementById('modal-root');
-const defaults=()=>({personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
+const defaults=()=>({github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
 const s={...defaults(),user:null,emailRequest:null,emailAddress:'',route:'home',ids:[],loading:false,adminTab:'accounts',registrationStatus:'pending',adminVisibility:'active',adminSearch:'',adminPage:1,opsTab:'jobs',opsPage:1,opsSearch:'',opsStatus:'',opsKind:'',opsTeam:''};
-let emailPoll;
+let emailPoll,githubPoll;
 let generation=0,board,competitionFeed,jobFeed,toastTimer,modalFocus,returnTo='home',issued=null,issuedGrader=null,refreshingGeneration=null;
 const authChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('uet-arena-session'):null;
 authChannel?.addEventListener('message',async()=>{try{const session=await api.request('/auth/me');Object.assign(s,defaults(),{user:session.user});openRoute();}catch(e){if(e.status===401){clearAccount();go('login');}else handleError(e);}});
@@ -38,7 +38,7 @@ function handleError(e){if(e.status===401&&s.user)expired();else if(e.code==='pa
 function parseRoute(){const raw=location.hash.replace(/^#\/?/,'')||'home',[path,query='']=raw.split('?'),parts=path.split('/');return{route:parts[0],ids:parts.slice(1),query:new URLSearchParams(query),raw};}
 async function loadData(route,ids,q){
   const data={};
-  if(s.user&&s.user.role!=='admin'&&['home','team','competitions'].includes(route))data.personal=await api.request('/users/me');
+  if(s.user&&s.user.role!=='admin'&&['home','team','submissions','competitions'].includes(route))data.personal=await api.request('/users/me');
   if(route==='matching')data.matching=await api.request('/matching');
   if(route==='users'){
     [data.people,data.teamPolicy,data.teamMerges,data.teamChoices]=await Promise.all([api.all('/admin/users'),api.request('/admin/team-policy'),api.request('/admin/team-merges'),api.all('/admin/teams')]);
@@ -54,6 +54,7 @@ async function loadData(route,ids,q){
   const work=[];
   if(s.user&&['rulesets','benchmark','practice','competitions','submissions'].includes(route))work.push(api.request(admin?'/admin/rulesets':'/rulesets').then(x=>data.rulesetCatalog=x));
   if(route==='rulesets'&&ids[0])work.push(api.request('/rulesets/'+enc(ids[0])).then(x=>data.ruleDetail=x));
+  if(s.user?.team_id&&!admin&&['team','submissions'].includes(route))work.push(api.request('/teams/me/github').then(x=>data.github=x));
   if(needsTeams)work.push(api.request('/teams/me').then(x=>data.team=x));
   if(s.user?.team_id&&['home','submissions','benchmark','practice','competitions','jobs','arena','replay'].includes(route)&&!admin){work.push(api.all('/submissions').then(x=>data.submissions=x));work.push(api.all('/jobs').then(x=>data.jobs=x));}
   if(['home','competitions','schedule','live','standings','arena','replay'].includes(route))work.push(api.all('/competitions').then(x=>data.competitions=x));
@@ -137,8 +138,13 @@ async function openRoute(){
         competitionFeed.start();
       }
       mountBoard(fixture);
-    }else{render();if(s.route==='jobs')watchJob(id);if(['register','recover','verify-email'].includes(s.route))watchEmail(id);}
+    }else{render();if(['team','submissions'].includes(s.route))watchGitHub(id);if(s.route==='jobs')watchJob(id);if(['register','recover','verify-email'].includes(s.route))watchEmail(id);}
   }catch(e){if(id!==generation)return;if(e.status===401){expired();return;}Object.assign(s,{loading:false,error:e.message,offline:!e.status});render();}
+}
+function watchGitHub(id){
+  clearTimeout(githubPoll);
+  if(!s.user?.team_id||!['team','submissions'].includes(s.route)||id!==generation)return;
+  githubPoll=setTimeout(async()=>{try{const next=await api.request('/teams/me/github');if(id===generation){s.github=next;patchPage();watchGitHub(id);}}catch(e){if(id===generation){handleError(e);watchGitHub(id);}}},3000);
 }
 function watchEmail(id){
   clearTimeout(emailPoll);
@@ -226,10 +232,8 @@ document.addEventListener('submit',e=>{
     }else if(form.id==='password-form'){
       const pw=data.get('new-password');if(pw.length<8)throw new Error('Mật khẩu mới phải có ít nhất 8 ký tự.');if(pw!==data.get('confirm-password'))throw new Error('Hai lần nhập mật khẩu mới chưa khớp.');
       const result=await api.post('/auth/password',{current_password:data.get('current-password'),new_password:pw});s.user=result.user;form.reset();authChanged();toast('Đã đổi mật khẩu và thu hồi các phiên cũ.');go('home');
-    }else if(form.id==='submission-form'){
-      const zip=data.get('source');if(!zip.size||zip.size>10*1024*1024)throw new Error('Chọn source ZIP dung lượng từ 1 byte đến 10 MiB.');
-      const magic=new Uint8Array(await zip.slice(0,4).arrayBuffer());if(magic[0]!==80||magic[1]!==75)throw new Error('Tệp chưa đúng định dạng ZIP.');
-      const result=await api.request('/submissions',{method:'POST',body:zip,headers:{'Content-Type':'application/zip','X-Submission-Version':v('version'),'X-Arena-Runtime':v('runtime')||'cpp17','X-Arena-Protocol':v('protocol_version')||'2','Idempotency-Key':keyFor(form)}});toast('Đã lưu phiên bản '+result.version);go('benchmark?submission='+result.id);
+    }else if(form.id==='github-attach-form'){
+      s.github=await api.post('/teams/me/github',{url:v('repository')});toast('Đã gắn repo; push lên main để kiểm tra.');render();
     }else if(form.id==='sample-bot-form'){
       const zip=data.get('source');if(!zip?.size||zip.size>10*1024*1024)throw new Error('Chọn ZIP tối đa 10 MiB.');
       await api.request('/admin/sample-bots',{method:'POST',body:zip,headers:{'Content-Type':'application/zip','X-Bot-Name':encodeURIComponent(v('bot-name')),'X-Bot-Level':v('bot-level'),'X-Arena-Runtime':v('runtime'),'Idempotency-Key':keyFor(form)}});toast('Đã thêm bot mẫu.');openRoute();

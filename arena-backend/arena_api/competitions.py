@@ -124,8 +124,8 @@ class Competitions:
             if self.db.execute("SELECT COUNT(*) FROM competitions").fetchone()[0] >= 100:
                 raise Fault("quota_exceeded", "Local beta allows 100 competitions")
             ident = uuid.uuid4().hex
-            self.db.execute("INSERT INTO competitions(id,title,status,config,created_ms) VALUES(?,?,'draft',?,?)",
-                            (ident, body["title"], json.dumps(config), now_ms()))
+            self.db.execute("INSERT INTO competitions(id,title,status,config,created_ms,submission_deadline) VALUES(?,?,'draft',?,?,?)",
+                            (ident, body["title"], json.dumps(config), now_ms(), body.get("submission_deadline")))
             return self.get(ident)
         return self.command(actor, "create", key, body, action, prepare)
 
@@ -156,7 +156,10 @@ class Competitions:
                     raise Fault('admin_conflict', 'Create a new competition to switch from legacy turn clocks to match clocks')
                 config['profile'] = requested
             config['max_teams'] = body['max_teams']
-            self.db.execute('UPDATE competitions SET title=?,config=?,revision=revision+1 WHERE id=?', (body['title'],json.dumps(config),ident))
+            deadline = body.get("submission_deadline", item.get("submission_deadline"))
+            if item.get("submission_deadline") is not None and now_ms() >= item["submission_deadline"] and deadline != item["submission_deadline"]:
+                raise Fault("admin_conflict", "Hạn đã qua; tạo giải khác để giữ nguồn chốt bất biến")
+            self.db.execute('UPDATE competitions SET title=?,config=?,submission_deadline=?,revision=revision+1 WHERE id=?', (body['title'],json.dumps(config),deadline,ident))
             return self.get(ident)
         return self.command(actor, 'edit:'+ident, key, body, action)
 
@@ -230,6 +233,8 @@ class Competitions:
                 self.teams.eligible(team)
             item = self.get(ident)
             self.require_status(item, "open")
+            if item.get("submission_deadline") is not None:
+                raise Fault("forbidden", "Hub tự chốt bài GitHub khi hết hạn; đội không chọn bài tay")
             count = self.db.execute("SELECT COUNT(*) FROM competition_entries WHERE competition_id=? AND team_id<>?", (ident, team)).fetchone()[0]
             if count >= item["config"]["max_teams"]:
                 raise Fault("quota_exceeded", "Competition entry limit reached")
@@ -244,6 +249,13 @@ class Competitions:
         def action():
             item = self.get(ident)
             self.require_status(item, "open")
+            if item.get("submission_deadline") is not None:
+                if now_ms() < item["submission_deadline"]:
+                    raise Fault("competition_conflict", "Chưa hết hạn nộp GitHub")
+                remaining = self.db.execute("SELECT COUNT(*) FROM github_repositories r JOIN teams t ON t.id=r.team_id LEFT JOIN github_deadlines d ON d.team_id=r.team_id AND d.competition_id=? WHERE t.archived_ms IS NULL AND t.season_id=? AND (d.state IS NULL OR d.state NOT IN ('locked','no_entry'))",
+                                            (ident, self.teams.season)).fetchone()[0]
+                if remaining:
+                    raise Fault("competition_conflict", "Hub đang kiểm bài tại hạn hoặc chờ BTC duyệt nguồn dự phòng")
             self.check_runtime(item["config"])
             entries = self.rows("SELECT * FROM competition_entries WHERE competition_id=? ORDER BY team_id", (ident,))
             if len(entries) < 2:
@@ -255,7 +267,10 @@ class Competitions:
                 if not account:
                     raise Fault("competition_conflict", "All entered teams must have active accounts at lock time")
                 current = self.qualification(item["config"], entry["team_id"], entry["submission_id"], entry["benchmark_id"])
-                if current != json.loads(entry["snapshot"]):
+                saved = json.loads(entry["snapshot"])
+                for key in ("github_sha", "github_pushed_ms", "deadline_source"):
+                    saved.pop(key, None)
+                if current != saved:
                     raise Fault("provenance_mismatch", "Entry qualification changed; team must enter again")
             if item["config"]["format"] == "swiss":
                 config = item["config"]

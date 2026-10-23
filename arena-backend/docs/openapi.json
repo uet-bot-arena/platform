@@ -2450,14 +2450,25 @@
             "cookieAuth": []
           }
         ]
-      },
+      }
+    },
+    "/api/v1/admin/teams/{ident}/submissions": {
       "post": {
         "tags": [
           "arena"
         ],
-        "summary": "Nộp raw ZIP; không nhận binary hoặc build script",
-        "operationId": "upload_api_v1_submissions_post",
+        "summary": "BTC nạp ZIP nội bộ cho đội; sinh viên dùng GitHub",
+        "operationId": "upload_api_v1_admin_teams__ident__submissions_post",
         "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          },
           {
             "name": "x-submission-version",
             "in": "header",
@@ -5766,6 +5777,288 @@
           }
         ]
       }
+    },
+    "/api/v1/teams/me/github": {
+      "get": {
+        "tags": [
+          "github"
+        ],
+        "summary": "Repo, 20 commit gần nhất và bản dự giải của đội",
+        "operationId": "view_api_v1_teams_me_github_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "github"
+        ],
+        "summary": "Đội trưởng gắn repo private đúng mã đội, một lần",
+        "operationId": "attach_api_v1_teams_me_github_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Repository"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/teams/{ident}/github": {
+      "get": {
+        "tags": [
+          "github"
+        ],
+        "summary": "BTC xem kết nối repo và nguồn chốt hạn",
+        "operationId": "admin_view_api_v1_admin_teams__ident__github_get",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "github"
+        ],
+        "summary": "BTC gắn repo ngoại lệ, có audit",
+        "operationId": "admin_attach_api_v1_admin_teams__ident__github_post",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Repository"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/competitions/{ident}/github/{team}/approve-fallback": {
+      "post": {
+        "tags": [
+          "github"
+        ],
+        "summary": "BTC duyệt nguồn hub quan sát khi activity không đọc được, có audit",
+        "operationId": "approve_api_v1_admin_competitions__ident__github__team__approve_fallback_post",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          },
+          {
+            "name": "team",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Team"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/github/webhook": {
+      "post": {
+        "tags": [
+          "github"
+        ],
+        "summary": "Webhook HMAC chỉ yêu cầu hub đọc lại API GitHub",
+        "operationId": "webhook_api_v1_github_webhook_post",
+        "parameters": [
+          {
+            "name": "x-hub-signature-256",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Hub-Signature-256"
+            }
+          },
+          {
+            "name": "x-github-delivery",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Github-Delivery"
+            }
+          },
+          {
+            "name": "x-github-event",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Github-Event"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6056,6 +6349,18 @@
             "minLength": 3,
             "title": "Title"
           },
+          "submission_deadline": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Deadline"
+          },
           "max_teams": {
             "type": "integer",
             "maximum": 4096.0,
@@ -6177,6 +6482,18 @@
             "maxLength": 100,
             "minLength": 3,
             "title": "Title"
+          },
+          "submission_deadline": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Deadline"
           },
           "max_teams": {
             "type": "integer",
@@ -7121,6 +7438,21 @@
         ],
         "title": "Release"
       },
+      "Repository": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 180,
+            "title": "Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "Repository"
+      },
       "ResetPassword": {
         "properties": {
           "temporary_password": {
@@ -7342,6 +7674,10 @@
             "type": "integer",
             "title": "Legacy Roster",
             "default": 1
+          },
+          "repo_code": {
+            "type": "string",
+            "title": "Repo Code"
           }
         },
         "additionalProperties": false,
@@ -7352,7 +7688,8 @@
           "email",
           "phone",
           "members",
-          "created_ms"
+          "created_ms",
+          "repo_code"
         ],
         "title": "TeamView"
       },

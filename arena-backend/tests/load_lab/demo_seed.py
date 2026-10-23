@@ -26,8 +26,9 @@ def source(runtime, kind):
     return (REPO / "sdk" / ENTRY[runtime]).read_text() if kind == "starter" else bot_source(kind)
 
 
-def upload(api, runtime, kind, version):
-    return api.json("POST", "/submissions", expected=(201,), content=zipped(source(runtime, kind), salt=version, name=ENTRY[runtime]),
+def upload(api, runtime, kind, version, admin):
+    team_id = api.json("GET", "/auth/me")["user"]["team_id"]
+    return admin.json("POST", "/admin/teams/"+team_id+"/submissions", expected=(201,), content=zipped(source(runtime, kind), salt=version, name=ENTRY[runtime]),
                     headers={"Content-Type": "application/zip", "X-Submission-Version": version, "X-Arena-Runtime": runtime})
 
 
@@ -82,10 +83,10 @@ def main():
         api.login("doi-" + slug, cred["temporary_password"])
         data = api.json("POST", "/auth/password", json={"current_password": cred["temporary_password"], "new_password": TEAM_PW})
         api.http.headers["X-CSRF-Token"] = data["csrf_token"]
-        teams.append({"slug": slug, "api": api, "sub": upload(api, runtime, kind, "v1.0.0")["id"]})
+        teams.append({"slug": slug, "api": api, "sub": upload(api, runtime, kind, "v1.0.0", admin)["id"]})
         print(f"{name}: {runtime}/{kind}", flush=True)
     zeta = teams[5]
-    broken = upload(zeta["api"], "cpp17", "compile_error", "v0.9.0")
+    broken = upload(zeta["api"], "cpp17", "compile_error", "v0.9.0", admin)
     wait(zeta["api"], zeta["api"].json("POST", "/benchmarks", expected=(202,), json={"submission_id": broken["id"], "match_ms": 60000})["id"], "zeta compile error")
     sample = admin.json("POST", "/admin/sample-bots", expected=(201,), content=zipped(bot_source("ab20"), salt="sample"),
                         headers={"Content-Type": "application/zip", "X-Bot-Name": "Alpha-beta 20ms", "X-Bot-Level": "hard", "X-Arena-Runtime": "cpp17"})

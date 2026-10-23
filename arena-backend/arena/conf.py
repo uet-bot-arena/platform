@@ -65,7 +65,7 @@ def load_config(path=None, required=None):
     return data, path.parent
 
 
-SECTIONS = {"hub", "email", "accounts", "verification", "grader", "publisher", "github"}
+SECTIONS = {"hub", "email", "accounts", "verification", "grader", "publisher", "github", "submissions"}
 
 
 class Secrets:

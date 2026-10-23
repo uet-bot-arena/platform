@@ -233,7 +233,10 @@ class NoHardcodedDeploymentValues(unittest.TestCase):
     """URLs, email addresses and keys belong in config/secrets files, not in code."""
     ALLOWED_URLS = {
         "https://json-schema.org/draft/2020-12/schema",  # JSON Schema identifier, not a deployment
-        "https://api.github.com",  # default of github.api_url, overridable
+        "https://api.github.com",  # fixed App API; fake transport in tests
+        "https://git-lfs.github.com/spec/v1",  # Git LFS pointer format
+        "https://github.com/apps/uet-bot-arena/installations/new",  # App identity from PLAN_M1
+        "https://github.com/uet-bot-arena/ott-bot-starter",  # approved public template
     }
 
     def sources(self):

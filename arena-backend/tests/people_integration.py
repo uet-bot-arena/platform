@@ -153,13 +153,13 @@ staff_domains=["vnu.test"]
                     minima.append(contrast(member))
                     member.screenshot(path=str(output/f"{scheme}-matching.png"), full_page=True)
                     member.goto(origin+"/#/submissions")
-                    expect(member.locator("#submission-form")).to_be_visible()
+                    expect(member.locator("#github-page")).to_be_visible()
+                    expect(member.locator('input[type=file]')).to_have_count(0)
                     starter = member.request.get(origin+"/api/v1/starter.zip")
                     assert starter.status==200
-                    member.locator("#submission-form [name=source]").set_input_files({"name":"source.zip","mimeType":"application/zip","buffer":starter.body()})
-                    member.locator("#submission-form [name=version]").fill(f"v1.0.{offset}")
-                    member.locator("#submission-form button[type=submit]").click()
-                    expect(member.locator("#benchmark-form")).to_be_visible()
+                    # This test covers Mailpit/rosters/native benchmark; GitHub has a dedicated E2E.
+                    team_id = member.request.get(origin+"/api/v1/auth/me").json()["user"]["team_id"]
+                    app.state.service.submit(team_id, f"v1.0.{offset}", "cpp17", starter.body(), "people-fixture-"+scheme)
                     submissions = owner.request.get(origin+"/api/v1/submissions").json()["items"]
                     assert len(submissions)==1, submissions
                     csrf = member.request.get(origin+"/api/v1/auth/me").json()["csrf_token"]

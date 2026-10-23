@@ -1,3 +1,4 @@
+import {githubPanel} from './github-ui.js';
 import {esc,head,panel,table,note,authFrame,field,password,errors,submit,link,button,select,date,empty} from './view.js';
 import {emailStatusText} from './email-ui.js';
 
@@ -24,7 +25,7 @@ export function accountTeamPage(s){
     const roster=table(['Thành viên','Vai trò',''],rows.map(m=>`<tr><td>${esc(m.display_name||'Thành viên')}</td><td>${m.captain?'Đội trưởng':'Thành viên'}</td><td>${captain&&!locked&&!m.captain?button('Chuyển quyền','team-captain',`data-user="${esc(m.id)}"`,'small')+button('Xóa','team-remove',`data-user="${esc(m.id)}"`,'small danger'):''}</td></tr>`));
     team=panel(t.name,(t.legacy_roster?note('Đội chuyển từ tài khoản cũ; roster '+t.members.length+' người do BTC duyệt vẫn giữ. Khi đổi thành viên, đội chuyển sang roster tài khoản cá nhân.'): '')+note(t.is_guest?'Đội khách · không vào bảng xếp hạng':(t.freshman?'Đội năm nhất · ':'')+rows.length+'/'+t.team_size+' thành viên'+(locked?' · Đã chốt':''))+roster+controls+(!locked?button('Rời đội','team-leave','','danger'):'')+note('Sau hạn lập đội, thay đổi thành viên cần BTC và được ghi nhật ký.')+link('submissions','Bot và phiên bản dự giải','small'));
   }
-  return '<div id="people-page">'+head('Cá nhân & đội',policy.team_deadline_ms?'Hạn lập đội: '+date(policy.team_deadline_ms):'Tự lập đội bốn người bằng mã mời.',link('matching','Ghép đội'))+'<div class="real-two-col">'+panel('Hồ sơ cá nhân',note(roles[p.role]||p.role)+profile)+team+'</div></div>';
+  return '<div id="people-page">'+head('Cá nhân & đội',policy.team_deadline_ms?'Hạn lập đội: '+date(policy.team_deadline_ms):'Tự lập đội bốn người bằng mã mời.',link('matching','Ghép đội'))+'<div class="real-two-col">'+panel('Hồ sơ cá nhân',note(roles[p.role]||p.role)+profile)+team+'</div>'+(t?githubPanel(s):'')+'</div>';
 }
 function locationOrigin(s){return s.origin||globalThis.location?.origin||'';}
 

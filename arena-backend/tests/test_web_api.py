@@ -28,6 +28,11 @@ def registration(name="Team One", email="captain@example.test"):
 
 
 class APIHarness(unittest.TestCase):
+    def upload(self, team, **kwargs):
+        """Fixture import uses BTC credentials; the student's ZIP route is closed in gói 7."""
+        ident = team.get("/api/v1/auth/me").json()["user"]["team_id"]
+        return self.client.post(f"/api/v1/admin/teams/{ident}/submissions", **kwargs)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.settings = Settings(data=Path(self.tmp.name), origin="http://127.0.0.1:4181")
@@ -157,10 +162,10 @@ class WebAPI(APIHarness):
         with zipfile.ZipFile(output, "w") as z:
             z.writestr("bot.cpp", "int main(){}")
         headers = {"Content-Type": "application/zip", "X-Submission-Version": "v1.0.0", "Idempotency-Key": "web-unit-upload"}
-        result = a.post("/api/v1/submissions", content=output.getvalue(), headers=headers)
+        result = self.upload(a, content=output.getvalue(), headers=headers)
         self.assertEqual(result.status_code, 201, result.text)
         self.assertNotIn("source_path", result.text)
-        self.assertEqual(a.post("/api/v1/submissions", content=output.getvalue(), headers=headers).json()["id"], result.json()["id"])
+        self.assertEqual(self.upload(a, content=output.getvalue(), headers=headers).json()["id"], result.json()["id"])
         self.assertEqual(b.get("/api/v1/submissions").json()["items"], [])
         result = b.post("/api/v1/benchmarks", json={"submission_id": result.json()["id"]}, headers={"Idempotency-Key": "web-unit-job"})
         self.assertEqual(result.status_code, 404)
@@ -229,7 +234,7 @@ class WebAPI(APIHarness):
         self.assertEqual(schema["info"]["version"], "0.6.0")
         self.assertEqual(schema["paths"]["/api/v1/matches"]["post"]["security"], [{"cookieAuth": [], "csrfAuth": []}])
         self.assertIn("Credentials", schema["components"]["schemas"])
-        self.assertIn("application/zip", schema["paths"]["/api/v1/submissions"]["post"]["requestBody"]["content"])
+        self.assertIn("application/zip", schema["paths"]["/api/v1/admin/teams/{ident}/submissions"]["post"]["requestBody"]["content"])
         self.assertEqual(self.client.get("/docs").status_code, 200)
 
 
@@ -248,7 +253,7 @@ class MigrationAndPersistence(unittest.TestCase):
             accounts = Accounts(store)
             self.assertEqual(accounts.principal("migration-only-existing-token")["user"]["id"], "existing-admin")
             self.assertTrue(accounts.verify(accounts.one("SELECT password_hash FROM accounts")["password_hash"], "migration-only-existing-password"))
-            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], [1, 2, 3, 4, 5, 6, 7])
+            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], [1, 2, 3, 4, 5, 6, 7, 8])
             self.assertEqual(store.db.execute("SELECT COUNT(*) FROM competitions").fetchone()[0], 0)
             store.db.close()
 
@@ -298,7 +303,7 @@ class MigrationAndPersistence(unittest.TestCase):
             store = Store(directory, recover_jobs=False)
             accounts = Accounts(store)
             self.assertEqual(accounts.principal(token)["user"]["role"], "admin")
-            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], [1, 2, 3, 4, 5, 6, 7])
+            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], [1, 2, 3, 4, 5, 6, 7, 8])
             store.db.close()
 
     def test_single_controller_lease_and_public_secure_cookie_config(self):

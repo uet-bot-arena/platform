@@ -64,15 +64,17 @@ def main():
                     page.goto(origin+'/#/login');page.locator('[name=username]').fill(name);page.locator('[name=login-password]').fill(PASSWORD)
                     page.locator('#login-form button[type=submit]').click();expect(page.locator('.sidebar')).to_be_visible()
                 def upload(page,runtime,version,broken=False):
-                    page.goto(origin+'/#/submissions');page.locator('[name=runtime]').select_option(runtime)
-                    page.locator('[name=version]').fill(version)
+                    page.goto(origin+'/#/submissions');expect(page.locator('#github-page')).to_be_visible()
+                    expect(page.locator('input[type=file]')).to_have_count(0)
                     entry={'cpp17':'bot.cpp','c11':'bot.c','python3':'bot.py'}[runtime]
                     raw=io.BytesIO()
                     with zipfile.ZipFile(raw,'w',zipfile.ZIP_DEFLATED) as z:
                         z.writestr(entry,'def broken(:\n' if broken else (ROOT/'sdk'/entry).read_text())
                         if runtime=='c11':z.write(ROOT/'sdk/jsmn.h','jsmn.h')
-                    page.locator('[name=source]').set_input_files({'name':'bot.zip','mimeType':'application/zip','buffer':raw.getvalue()})
-                    page.locator('#submission-form button[type=submit]').click();page.wait_for_url('**/#/benchmark?submission=*')
+                    # Native fixture import; students use GitHub, covered by github_integration.py.
+                    team_id=page.request.get(origin+'/api/v1/auth/me').json()['user']['team_id']
+                    source=app.state.service.submit(team_id,version,runtime,raw.getvalue(),'browser-'+version+'-'+runtime)
+                    page.goto(origin+'/#/benchmark?submission='+source['id'])
                 guest.goto(origin+'/#/home');expect(guest.locator('.sidebar')).to_be_visible()
                 expect(guest.get_by_role('link',name='Đội & tài khoản',exact=True)).to_have_count(0)
                 guest.goto(origin+'/#/admin');guest.wait_for_url('**/#/login')

@@ -166,7 +166,7 @@ class ExperimentalAPI(APIHarness):
         store=self.app.state.store
         starter=team.get('/api/v1/experimental/starter.zip')
         self.assertEqual(starter.status_code,200)
-        source=team.post('/api/v1/submissions',content=starter.content,headers={'Idempotency-Key':uuid.uuid4().hex,'Content-Type':'application/zip','X-Submission-Version':'v1.0.0','X-Arena-Protocol':'3'})
+        source=self.upload(team, content=starter.content,headers={'Idempotency-Key':uuid.uuid4().hex,'Content-Type':'application/zip','X-Submission-Version':'v1.0.0','X-Arena-Protocol':'3'})
         self.assertEqual(source.status_code,201,source.text);source=source.json()
         self.assertEqual(source['protocol_version'],3)
         with patch('arena.service.Service.runtime_for',return_value='sha256:'+'1'*64):

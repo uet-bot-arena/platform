@@ -54,6 +54,11 @@ def main():
             grader = start_grader(app, settings.origin, "bwrap", 2)
 
             def request(client, method, path, expected=200, **kwargs):
+                # gói 7: old native fixtures import ZIP through BTC, never the student route.
+                if method == 'POST' and path == '/submissions':
+                    team_id = client.get('/api/v1/auth/me').json()['user']['team_id']
+                    path = '/admin/teams/' + team_id + '/submissions'
+                    client = admin
                 response = client.request(method, "/api/v1" + path, **kwargs)
                 assert response.status_code == expected, (path, response.status_code, response.text[:1000])
                 return response

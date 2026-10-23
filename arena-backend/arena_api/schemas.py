@@ -168,6 +168,7 @@ class TeamView(Model):
     locked_ms: int | None = None
     recruiting: int = 0
     legacy_roster: int = 1
+    repo_code: str
 
 
 class AdminTeamCreate(Model):
@@ -186,6 +187,7 @@ class AdminTeamEdit(Registration):
 
 class CompetitionCreate(TimeControl):
     title: str = Field(min_length=3, max_length=100)
+    submission_deadline: int | None = Field(default=None, ge=0)
     max_teams: int = Field(default=16, ge=2, le=4096)
     format: Literal["double_round_robin", "swiss"] = "double_round_robin"
     rounds: int | None = Field(default=None, ge=1, le=64)

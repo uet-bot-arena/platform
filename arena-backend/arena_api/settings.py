@@ -76,6 +76,13 @@ class GitHubSettings:
     # Hosts (e.g. a Quick Tunnel name) allowed only for the webhook path.
     webhook_hosts: tuple = ()
     max_tarball_bytes: int = 10 * 1024 * 1024
+    repo_prefix: str = "ott2026-"
+    poll_seconds: int = 60
+
+
+@dataclass(frozen=True)
+class SubmissionSettings:
+    max_per_hour: int = 30
 
 
 HUB_ENV = {"data_dir": "ARENA_API_DATA", "origin": "ARENA_API_ORIGIN", "cookie_secure": "ARENA_API_COOKIE_SECURE",
@@ -105,6 +112,7 @@ class Settings:
     grader: GraderSettings = UNSET
     publisher: PublisherSettings = UNSET
     github: GitHubSettings = UNSET
+    submissions: SubmissionSettings = UNSET
     secrets: Secrets = field(default=UNSET, repr=False)
     config_file: Path | None = None
 
@@ -165,11 +173,16 @@ def load(names, path=None, env=None):
         interval_seconds=section.integer("interval_seconds", 5, 1, 60),
         output_dir=section.path("output_dir", None))
     section.finish()
-    section = Reader(data, "github")
+    section = Reader(data, "github", env=env, env_map={"webhook_hosts": "ARENA_GITHUB_WEBHOOK_HOSTS"})
     values["github"] = GitHubSettings(
         api_url=section.string("api_url", "https://api.github.com", r"https://[A-Za-z0-9.-]+(?::\d+)?"),
         webhook_hosts=section.strings("webhook_hosts", []),
-        max_tarball_bytes=section.integer("max_tarball_bytes", 10 * 1024 * 1024, 1024, 100 * 1024 * 1024))
+        max_tarball_bytes=section.integer("max_tarball_bytes", 10 * 1024 * 1024, 1024, 10 * 1024 * 1024),
+        repo_prefix=section.string("repo_prefix", "ott2026-", r"[a-z0-9-]{1,40}"),
+        poll_seconds=section.integer("poll_seconds", 60, 5, 3600))
+    section.finish()
+    section = Reader(data, "submissions")
+    values["submissions"] = SubmissionSettings(max_per_hour=section.integer("max_per_hour", 30, 1, 1000))
     section.finish()
     for host in values["github"].webhook_hosts:
         if not re.fullmatch(r"[a-z0-9.-]+(?::\d+)?", host):
@@ -244,6 +257,8 @@ def account_rules(data):
 
 
 def validate(settings):
+    if settings.github.api_url != "https://api.github.com":
+        raise ConfigError("github.api_url phải là api.github.com qua HTTPS; test dùng transport giả")
     for network in settings.trusted_proxies:
         try:
             ipaddress.ip_network(network.strip())

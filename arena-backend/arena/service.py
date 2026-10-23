@@ -47,13 +47,15 @@ def queue_slot(job):
     """Waiting jobs of one team that serve the same purpose share a slot (see Service.enqueue).
 
     Benchmarks for one competition, or for one clock/rules combination, share a slot; all
-    practice matches of a team share one slot.
+    practice matches of a team share one slot. Managed GitHub checks have separate slots,
+    so a manual practice request cannot replace a check needed at the deadline.
     """
+    prefix = "auto:" if job.get("managed") else ""
     if job.get("kind") != "benchmark":
-        return "practice"
+        return prefix + "practice"
     if job.get("competition_id"):
-        return "benchmark:competition:" + job["competition_id"]
-    return "benchmark:" + "|".join(((job.get("profile") or {}).get("id", ""), (job.get("ruleset") or {}).get("id") or "",
+        return prefix + "benchmark:competition:" + job["competition_id"]
+    return prefix + "benchmark:" + "|".join(((job.get("profile") or {}).get("id", ""), (job.get("ruleset") or {}).get("id") or "",
                                      (job.get("basic_rules") or {}).get("hash") or ""))
 
 
@@ -65,6 +67,7 @@ class Service:
     def __init__(self, store, start_worker=True, workers=None, grader=None, artifacts=None):
         self.store = store
         self.rulesets = None
+        self.max_submissions_per_hour = 30
         self.competitions = None
         self.grader = grader or GraderDefaults()
         # Anchor lease timestamps once: wall-clock corrections must not shorten a live lease.
@@ -132,21 +135,26 @@ class Service:
                 "grader_slots": sum(g["slots"] or 0 for g in online), "platforms": platforms, "codon_enabled": False}
 
     # ---- submissions --------------------------------------------------------------------
-    def submit(self, team, version, runtime, raw, key, protocol_version=2):
+    def submit(self, team, version, runtime, raw, key, protocol_version=2, *, channel="internal", channel_ref=None, pushed_ms=None, message=""):
         if type(protocol_version) is not int or protocol_version not in (2, 3):
             raise Fault('unsupported_protocol', 'Chỉ hỗ trợ SDK v2 (OTTv2) hoặc v3 (Experimental)')
         if runtime not in ("cpp17", "c11", "python3"):
             raise Fault("unsupported_runtime", "Choose cpp17, c11 or python3")
-        if not re.fullmatch(r"v?\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]{1,24})?", version):
+        if channel not in ("internal", "github") or (channel == "github" and
+                (not isinstance(channel_ref, str) or not re.fullmatch(r"[0-9a-f]{40}", channel_ref) or version != channel_ref[:7])):
+            raise Fault("invalid_request", "Invalid submission provenance")
+        if channel != "github" and not re.fullmatch(r"v?\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]{1,24})?", version):
             raise Fault("invalid_request", "Expected semantic version, e.g. v1.0.0")
         source_hash = hashlib.sha256(raw).hexdigest()
         operation_hash = digest({"version": version, "runtime": runtime, "zip_sha256": source_hash,
-                                 **({'protocol_version': 3} if protocol_version == 3 else {})})
+                                 **({'protocol_version': 3} if protocol_version == 3 else {}),
+                                 **({"channel": channel, "channel_ref": channel_ref} if channel == "github" else {})})
 
         def check():
-            if len(self.store.list("submission", team)) >= 20:
-                raise Fault("quota_exceeded", "Local beta allows 20 submissions per team")
-            if any(s["version"] == version for s in self.store.list("submission", team)):
+            previous = self.store.list("submission", team)
+            if sum(s["created_unix_ms"] > now_ms() - 3_600_000 for s in previous) >= self.max_submissions_per_hour:
+                raise Fault("rate_limited", "Đã hết lượt nhận bài trong giờ; hub sẽ thử lại sau")
+            if channel != "github" and any(s["version"] == version for s in previous):
                 raise Fault("version_conflict", "Version already exists; submit a new version")
 
         def prepare():
@@ -160,13 +168,14 @@ class Service:
             check()
             directory, manifest = prepared
             return self.store.create("submission", team, {"version": version, "runtime": runtime,
-                "protocol_version": protocol_version, "source_path": str(directory), "source": manifest, "artifact": None})
+                "protocol_version": protocol_version, "source_path": str(directory), "source": manifest, "artifact": None,
+                "channel": channel, "channel_ref": channel_ref, "pushed_ms": pushed_ms, "message": message})
         return self.store.deduplicate(team, "submission", key, operation_hash, create, prepare)
 
     def public_submission(self, item):
         return {k: v for k, v in item.items() if k != "source_path"}
 
-    def enqueue(self, team, kind, body, key):
+    def enqueue(self, team, kind, body, key, *, managed=False):
         if kind not in ("benchmark", "match"):
             raise Fault("invalid_request", "Unknown job kind")
         # Practice runs on any grader; a competition's benchmark must use its platform and toolchain.
@@ -221,13 +230,11 @@ class Service:
             if not isinstance(ident, str):
                 raise Fault("invalid_request", "Missing submission ID")
             self.store.get(ident, sample["owner"] if sample and index == sample_index else team, "submission")
-        slot = queue_slot({"kind": kind, "profile": p.public(), "competition_id": body.get("competition_id"),
+        slot = queue_slot({"kind": kind, "managed": managed, "profile": p.public(), "competition_id": body.get("competition_id"),
                            "basic_rules": pack, "ruleset": {"id": ruleset_id} if ruleset_id else None})
 
         def check(replaced=0):
             jobs = self.store.list("job", team)
-            if len(jobs) >= 200:
-                raise Fault("quota_exceeded", "Local beta allows 200 jobs per team")
             active = [j for j in jobs if j["status"] not in (*TERMINAL, "queued")]
             if len(active) >= 4:
                 raise Fault("quota_exceeded", "At most four running jobs per team")
@@ -264,6 +271,7 @@ class Service:
                 self.store.update(old["id"], status="aborted", error={"code": "superseded", "detail": "Replaced by the team's newer request for the same purpose before it started"})
                 self.store.event(old["id"], "aborted", {"code": "superseded"})
             job = self.store.create("job", team, {"kind": kind, "status": "queued", "submission_ids": ids,
+                **({"managed": True} if managed else {}),
                 "profile": p.public(), "requires": {"platform": platform, "runtime_id": runtime_id},
                 "engine_id": engine.ENGINE_ID, "engine_sha256": engine.ENGINE_SHA256, "adjudication": dict(CURRENT),
                 "report": None, "error": None,
@@ -275,7 +283,7 @@ class Service:
             self.store.event(job["id"], "queued", {"kind": kind})
             self.pending.put(job["id"], kind=kind, platform=platform, runtime_id=runtime_id)
             return {**job, "queue_position": self.pending.position(job["id"])}
-        return self.store.deduplicate(team, kind, key, digest(body), create, prepare)
+        return self.store.deduplicate(team, kind, key, digest({**body, "managed": True} if managed else body), create, prepare)
 
     # ---- grader registry ----------------------------------------------------------------
     def create_grader(self, name, actor):

@@ -79,3 +79,8 @@ output_dir = "/home/ten-ban/uet-arena-data/snapshots"
 api_url = "https://api.github.com"
 webhook_hosts = []            # ví dụ ["ten-ngau-nhien.trycloudflare.com"]; chỉ nhận ở đường dẫn webhook
 max_tarball_bytes = 10485760
+repo_prefix = "ott2026-"
+poll_seconds = 60
+
+[submissions]
+max_per_hour = 30

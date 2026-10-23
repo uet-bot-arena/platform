@@ -17,7 +17,7 @@ def unpack(raw, target, limits, runtime="cpp17"):
             items = archive.infolist()
             if not items or len(items) > 64:
                 raise Fault("invalid_archive", "Expected 1..64 ZIP entries")
-            total, seen = 0, set()
+            total, seen, portable_names = 0, set(), set()
             for item in items:
                 path = PurePosixPath(item.filename)
                 mode = item.external_attr >> 16
@@ -26,6 +26,13 @@ def unpack(raw, target, limits, runtime="cpp17"):
                 if len(path.parts) != 1 or path.name in (".", "..") or "\\" in item.filename or ":" in item.filename or path.is_absolute():
                     raise Fault("invalid_archive", "Unsafe ZIP path")
                 name = path.name
+                # The same source must unpack identically on Linux and Windows graders.
+                device = name.split(".", 1)[0].rstrip(" ").casefold()
+                reserved = {"con", "prn", "aux", "nul"} | {p + n for p in ("com", "lpt") for n in "123456789¹²³"}
+                if (name.casefold() in portable_names or name.rstrip(" .") != name or len(name.encode("utf-8")) > 240
+                        or device in reserved or any(ord(c) < 32 or c in '<>"|?*' for c in name)):
+                    raise Fault("invalid_archive", "Source filenames must be unique and portable to Windows/Linux")
+                portable_names.add(name.casefold())
                 if runtime == "python3" and name == "__main__.py":
                     raise Fault("invalid_archive", "bot.py is the entry point; __main__.py is reserved")
                 if name in seen or stat.S_ISLNK(mode) or (stat.S_IFMT(mode) not in (0, stat.S_IFREG)) or item.flag_bits & 1:
@@ -41,7 +48,7 @@ def unpack(raw, target, limits, runtime="cpp17"):
             # Validate everything before writing; read() checks CRC and refuses
             # malformed compression. No ZipFile.extract or user-controlled dirs.
             payloads = {item.filename: archive.read(item) for item in items}
-    except (zipfile.BadZipFile, RuntimeError, NotImplementedError, OSError) as exc:
+    except (zipfile.BadZipFile, RuntimeError, NotImplementedError, OSError, UnicodeError) as exc:
         raise Fault("invalid_archive", str(exc)) from exc
     target.mkdir(parents=True, mode=0o755)
     hashes = {}

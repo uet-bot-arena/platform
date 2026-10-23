@@ -58,6 +58,11 @@ def main():
                     kwargs["headers"] = {"Idempotency-Key": uuid.uuid4().hex, **kwargs.get("headers", {})}
                     if "json" not in kwargs and "content" not in kwargs:
                         kwargs["json"] = {}
+                # gói 7: old native fixtures import ZIP through BTC, never the student route.
+                if method == 'POST' and path == '/submissions':
+                    team_id = client.get('/api/v1/auth/me').json()['user']['team_id']
+                    path = '/admin/teams/' + team_id + '/submissions'
+                    client = admin
                 response = client.request(method, "/api/v1" + path, **kwargs)
                 assert response.status_code == expected, (path, response.status_code, response.text[:1500])
                 return response

@@ -11,7 +11,7 @@ from arena import engine
 from arena.config import profile, match_profile
 from arena.protocol import Fault
 from arena.service import TERMINAL
-from arena_api.dependencies import COOKIE, team_principal
+from arena_api.dependencies import COOKIE, team_principal, admin_principal
 from arena_api.schemas import Benchmark, Match, TeamView
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -126,16 +126,24 @@ def submissions(request: Request, limit: int = Query(50, ge=1, le=100), offset: 
     return {"items": [service.public_submission(s) for s in items[offset:offset + limit]], "total": len(items), "limit": limit, "offset": offset}
 
 
-@router.post("/submissions", status_code=201, summary="Nộp raw ZIP; không nhận binary hoặc build script",
+@router.post("/submissions", include_in_schema=False)
+def closed_upload(auth=Depends(team_principal)):
+    raise Fault("forbidden", "Đội nộp bài qua repo GitHub đã gắn; không nhận ZIP trên web")
+
+
+@router.post("/admin/teams/{ident}/submissions", status_code=201, summary="BTC nạp ZIP nội bộ cho đội; sinh viên dùng GitHub",
              openapi_extra={"requestBody": {"required": True, "content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}}}})
-async def upload(request: Request, x_submission_version: str = Header(), idempotency_key: str = Header(),
-                 x_arena_runtime: str = Header("cpp17"), x_arena_protocol:int=Header(2), auth=Depends(team_principal)):
+async def upload(ident: str, request: Request, x_submission_version: str = Header(), idempotency_key: str = Header(),
+                 x_arena_runtime: str = Header("cpp17"), x_arena_protocol:int=Header(2), auth=Depends(admin_principal)):
     if request.headers.get("Content-Type", "").split(";")[0] != "application/zip":
         raise Fault("invalid_request", "Expected application/zip")
     raw = await request.body()
     from starlette.concurrency import run_in_threadpool
     service = request.app.state.service
-    item = await run_in_threadpool(service.submit, auth["user"]["team_id"], x_submission_version, x_arena_runtime, raw, idempotency_key,x_arena_protocol)
+    request.app.state.accounts.team(ident)
+    item = await run_in_threadpool(service.submit, ident, x_submission_version, x_arena_runtime, raw, idempotency_key,x_arena_protocol)
+    with request.app.state.store.transaction():
+        request.app.state.accounts.audit(auth["user"]["id"], "submission.internal_import", item["id"])
     return service.public_submission(item)
 
 

@@ -51,7 +51,7 @@ def probe_loop(origin, stop, samples):
         stop.wait(0.5)
 
 
-def team_flow(t, origin, match_ms, t0, apis, retry_s=3.0, poll_s=2.0):
+def team_flow(t, origin, match_ms, t0, apis, retry_s=3.0, poll_s=2.0, admin=None):
     api = Api(origin, t["ip"])
     apis[t["username"]] = api
     tl = t["timeline"] = {}
@@ -63,7 +63,9 @@ def team_flow(t, origin, match_ms, t0, apis, retry_s=3.0, poll_s=2.0):
         mark("logged_in")
         raw = zipped(bot_source(t["bot"]), salt=t["username"])
         a = time.monotonic()
-        sub = api.json("POST", "/submissions", expected=(201,), content=raw,
+        # Legacy capacity fixture: BTC imports source; the gói 10 test uses GitHub intake.
+        team_id = api.json("GET", "/auth/me")["user"]["team_id"]
+        sub = admin.json("POST", "/admin/teams/"+team_id+"/submissions", expected=(201,), content=raw,
                        headers={"Content-Type": "application/zip", "X-Submission-Version": "v1.0.0"})
         t["upload_ms"] = round((time.monotonic() - a) * 1000)
         t["submission_id"] = sub["id"]
@@ -233,7 +235,7 @@ def main():
         prober.start()
         apis, t0 = {}, time.monotonic()
         with cf.ThreadPoolExecutor(max_workers=len(teams)) as pool:
-            futures = [pool.submit(team_flow, t, origin, args.match_ms, t0, apis, args.retry_s, args.poll_s) for t in teams]
+            futures = [pool.submit(team_flow, t, origin, args.match_ms, t0, apis, args.retry_s, args.poll_s, admin) for t in teams]
             done_count = 0
             for _ in cf.as_completed(futures):
                 done_count += 1
