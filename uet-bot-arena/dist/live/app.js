@@ -13,7 +13,7 @@ import {publicRoute} from './access.js';
 import {readRuleForm,ruleEditor,rulePreviewMarkup,botRulesetField,botRulesetSelection,ruleFingerprint} from './experimental-ui.js';
 
 const api=new ArenaAPI(),app=document.getElementById('app'),modalRoot=document.getElementById('modal-root');
-const defaults=()=>({github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
+const defaults=()=>({teamElo:null,github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
 const s={...defaults(),user:null,emailRequest:null,emailAddress:'',route:'home',ids:[],loading:false,adminTab:'accounts',registrationStatus:'pending',adminVisibility:'active',adminSearch:'',adminPage:1,opsTab:'jobs',opsPage:1,opsSearch:'',opsStatus:'',opsKind:'',opsTeam:''};
 let emailPoll,githubPoll;
 let generation=0,board,competitionFeed,jobFeed,toastTimer,modalFocus,returnTo='home',issued=null,issuedGrader=null,refreshingGeneration=null;
@@ -24,7 +24,7 @@ const terminal=status=>['completed','failed','aborted'].includes(status);
 const uuid=()=>crypto.randomUUID();
 const enc=encodeURIComponent;
 function toast(message){const el=document.getElementById('toast');el.className='toast show';el.textContent=message;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),6000);}
-function clearView(){clearTimeout(emailPoll);competitionFeed?.close();competitionFeed=null;board?.close();board=null;jobFeed?.close();jobFeed=null;closeModal();}
+function clearView(){clearTimeout(eloPoll);clearTimeout(emailPoll);competitionFeed?.close();competitionFeed=null;board?.close();board=null;jobFeed?.close();jobFeed=null;closeModal();}
 function render(){app.innerHTML=page(s);const title={home:'UET Bot Arena',login:'Đăng nhập',register:'Đăng ký đội',recover:'Cấp lại mật khẩu','change-password':'Đổi mật khẩu'}[s.route]||document.querySelector('#main h1')?.textContent||'UET Bot Arena';document.title=title==='UET Bot Arena'?title:title+' · UET Bot Arena';mobileSidebar();}
 function mobileSidebar(){const sidebar=document.querySelector('.sidebar');if(sidebar)sidebar.inert=matchMedia('(max-width:760px)').matches&&!s.menuOpen;}
 matchMedia('(max-width:760px)').addEventListener('change',mobileSidebar);
@@ -39,6 +39,7 @@ function parseRoute(){const raw=location.hash.replace(/^#\/?/,'')||'home',[path,
 async function loadData(route,ids,q){
   const data={};
   if(s.user&&s.user.role!=='admin'&&['home','team','submissions','competitions'].includes(route))data.personal=await api.request('/users/me');
+  if(route==='team'&&s.user?.team_id)data.teamElo=await api.request('/team/elo');
   if(route==='matching')data.matching=await api.request('/matching');
   if(route==='users'){
     [data.people,data.teamPolicy,data.teamMerges,data.teamChoices]=await Promise.all([api.all('/admin/users'),api.request('/admin/team-policy'),api.request('/admin/team-merges'),api.all('/admin/teams')]);
@@ -138,13 +139,23 @@ async function openRoute(){
         competitionFeed.start();
       }
       mountBoard(fixture);
-    }else{render();if(['team','submissions'].includes(s.route))watchGitHub(id);if(s.route==='jobs')watchJob(id);if(['register','recover','verify-email'].includes(s.route))watchEmail(id);}
+    }else{render();watchElo(id);if(['team','submissions'].includes(s.route))watchGitHub(id);if(s.route==='jobs')watchJob(id);if(['register','recover','verify-email'].includes(s.route))watchEmail(id);}
   }catch(e){if(id!==generation)return;if(e.status===401){expired();return;}Object.assign(s,{loading:false,error:e.message,offline:!e.status});render();}
+}
+let eloPoll;
+function watchElo(id){
+  clearTimeout(eloPoll);
+  if(id!==generation||!['competitions','standings'].includes(s.route)||s.competition?.config.format!=='elo')return;
+  eloPoll=setTimeout(async()=>{try{
+    const cid=s.competition.id;
+    const [competition,standings]=await Promise.all([api.request('/competitions/'+cid),api.request('/competitions/'+cid+'/standings')]);
+    if(id===generation){Object.assign(s,{competition,standings});patchPage();watchElo(id);}
+  }catch(e){if(id===generation){handleError(e);watchElo(id);}}},3000);
 }
 function watchGitHub(id){
   clearTimeout(githubPoll);
   if(!s.user?.team_id||!['team','submissions'].includes(s.route)||id!==generation)return;
-  githubPoll=setTimeout(async()=>{try{const next=await api.request('/teams/me/github');if(id===generation){s.github=next;patchPage();watchGitHub(id);}}catch(e){if(id===generation){handleError(e);watchGitHub(id);}}},3000);
+  githubPoll=setTimeout(async()=>{try{const [next,elo]=await Promise.all([api.request('/teams/me/github'),s.route==='team'?api.request('/team/elo'):Promise.resolve(null)]);if(id===generation){s.github=next;if(elo)s.teamElo=elo;patchPage();watchGitHub(id);}}catch(e){if(id===generation){handleError(e);watchGitHub(id);}}},3000);
 }
 function watchEmail(id){
   clearTimeout(emailPoll);
@@ -234,9 +245,6 @@ document.addEventListener('submit',e=>{
       const result=await api.post('/auth/password',{current_password:data.get('current-password'),new_password:pw});s.user=result.user;form.reset();authChanged();toast('Đã đổi mật khẩu và thu hồi các phiên cũ.');go('home');
     }else if(form.id==='github-attach-form'){
       s.github=await api.post('/teams/me/github',{url:v('repository')});toast('Đã gắn repo; push lên main để kiểm tra.');render();
-    }else if(form.id==='sample-bot-form'){
-      const zip=data.get('source');if(!zip?.size||zip.size>10*1024*1024)throw new Error('Chọn ZIP tối đa 10 MiB.');
-      await api.request('/admin/sample-bots',{method:'POST',body:zip,headers:{'Content-Type':'application/zip','X-Bot-Name':encodeURIComponent(v('bot-name')),'X-Bot-Level':v('bot-level'),'X-Arena-Runtime':v('runtime'),'Idempotency-Key':keyFor(form)}});toast('Đã thêm bot mẫu.');openRoute();
     }else if(form.id==='benchmark-form'){
       const job=await api.post('/benchmarks',{submission_id:v('submission_id'),...(s.benchmarkCompetition?{competition_id:s.benchmarkCompetition}:timeBody(data)),...botRulesetSelection(s,[v('submission_id')],v('ruleset_id'))},keyFor(form));go('jobs/'+job.id);
     }else if(form.id==='practice-form'){

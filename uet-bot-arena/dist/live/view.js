@@ -17,7 +17,6 @@ export const head=(title,sub='',actions='')=>`<div class="page-heading"><div><h1
 export const empty=(title,text='')=>`<div class="empty-state"><h3>${esc(title)}</h3>${text?`<p>${esc(text)}</p>`:''}</div>`;
 const statusLabels={draft:'Bản nháp',open:'Mở đăng ký',locked:'Đã chốt',running:'Đang chạy',paused:'Tạm dừng',completed:'Hoàn tất',pending:'Chờ',queued:'Đã vào hàng đợi',starting:'Đang chuẩn bị',building:'Đang biên dịch',validating:'Đang khởi động',benchmarking:'Đang benchmark',playing:'Đang đấu',failed:'Lỗi',aborted:'Đã dừng',attention:'Cần xử lý',approved:'Đã duyệt',rejected:'Từ chối'};
 export const statusLabel=status=>statusLabels[status]||status;
-export const levelLabels={easy:'Dễ',medium:'Trung bình',hard:'Khó',expert:'Rất khó'};
 export const runtimeLabels={cpp17:'C++17',c11:'C11',python3:'Python 3.11 (PyPy)'};
 export const runtimeLabel=runtime=>runtimeLabels[runtime]||runtime||'C++17';
 export const badge=(status,label='')=>`<span class="badge ${['running','playing','benchmarking'].includes(status)?'live':['completed','approved'].includes(status)?'success':['failed','rejected'].includes(status)?'danger':['attention','paused'].includes(status)?'warning':'neutral'}">${esc(label||statusLabel(status))}</span>`;

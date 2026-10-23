@@ -345,6 +345,18 @@ class GraderAPI(APIHarness):
         for bad in ({"type": "completed", "data": {}}, {"type": "phase", "data": {"phase": "completed"}}, {"type": "x", "data": {}}):
             self.assertEqual(machine.post(path, json={"fencing": leased["fencing"], "events": [bad]}).status_code, 400)
 
+    def test_timing_uses_pinned_lease_identity_after_grader_metadata_changes(self):
+        team,issued=self.create_team()
+        job=self.practice(team,issued['account']['team_id'])
+        client,machine=self.machine()
+        leased=self.lease(client)
+        with self.store.lock,self.store.db:
+            self.store.db.execute('UPDATE graders SET platform=?,runtime_id=? WHERE id=?',('windows',WINDOWS,machine['id']))
+        response=client.post(f"/api/v1/grader/leases/{leased['lease_id']}/result",json={
+            'fencing':leased['fencing'],'status':'completed','report':play_out(self.store.get(job['id']))})
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(self.store.db.execute('SELECT platform,runtime_id FROM duration_samples WHERE job=?',(job['id'],)).fetchone(),('linux',LINUX))
+
     def test_result_losing_lease_during_verification_cannot_overwrite_the_next_run(self):
         team, issued = self.create_team()
         job = self.practice(team, issued["account"]["team_id"])
@@ -363,6 +375,7 @@ class GraderAPI(APIHarness):
         self.assertEqual((current["status"], current["lease_id"]), ("starting", second[0]["lease_id"]))
         self.assertIsNone(current["report"])
         self.assertEqual(self.service.grader_row(machine["id"])["jobs_done"], 0)
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM duration_samples WHERE job=?",(job['id'],)).fetchone()[0],0)
 
     def test_events_and_artifacts_recheck_the_lease_before_publishing(self):
         team, issued = self.create_team()
@@ -404,6 +417,7 @@ class GraderAPI(APIHarness):
         answer = windows.post(f"/api/v1/grader/leases/{leased['lease_id']}/result", json={"fencing": leased["fencing"], "status": "completed", "report": report})
         self.assertEqual(answer.json()["status"], "failed")
         self.assertEqual(self.store.get(job["id"])["error"]["code"], "result_mismatch")
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM duration_samples WHERE job=?",(job['id'],)).fetchone()[0],0)
         fixture = job["official"]["fixture_id"]
         self.assertEqual(self.comp.fixture(comp["id"], fixture)["status"], "attention")
         self.assertTrue(all(s["played"] == 0 for s in self.comp.standings(comp["id"])["items"]))
@@ -669,6 +683,10 @@ class GraderClientEndToEnd(unittest.TestCase):
                 self.assertEqual(types.count("completed"), 1)
                 self.assertEqual(store.db.execute("SELECT COUNT(*) FROM builds").fetchone()[0], 1)
                 self.assertEqual(service.graders()[0]["jobs_done"], 1)
+                sample=store.db.execute("SELECT kind,profile_id,platform,runtime_id,duration_ms FROM duration_samples WHERE job=?",(job['id'],)).fetchone()
+                self.assertIsNotNone(sample)
+                self.assertEqual(sample[:4],('match',job['profile']['id'],'linux',LINUX))
+                self.assertGreaterEqual(sample[4],0)
             finally:
                 if grader:
                     grader.stopping.set()

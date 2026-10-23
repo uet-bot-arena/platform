@@ -144,6 +144,7 @@ def create_app(settings=None, start_worker=True):
             service = Service(store, start_worker=start_worker, grader=settings.grader)
             service.max_submissions_per_hour = settings.submissions.max_per_hour
             app.state.service = service
+            sample_bots.ensure_starter(service)
             from arena_api.rulesets import RuleCatalog
             app.state.rulesets = RuleCatalog(store, app.state.accounts)
             service.rulesets = app.state.rulesets

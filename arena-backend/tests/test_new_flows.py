@@ -53,13 +53,34 @@ class NewFlows(APIHarness):
         self.assertTrue(all('buchholz' in r for r in standings['items']))
         self.assertEqual([(r['points'],r['buchholz']) for r in standings['items']],sorted([(r['points'],r['buchholz']) for r in standings['items']],reverse=True))
 
+    def test_one_starter_is_idempotent_and_old_catalog_is_disabled(self):
+        from arena_api.sample_bots import ensure_starter
+        from pathlib import Path
+        store=self.app.state.store
+        service=self.app.state.service
+        before=len(store.list('submission'))
+        legacy=store.create('sample_bot','organizer',dict(name='Old hard bot',level='hard',enabled=True,
+            runtime='cpp17',protocol_version=2,submission_id='old',owner='sample:old'))
+        ensure_starter(service); ensure_starter(service)
+        self.assertEqual(len(store.list('submission')),before)
+        self.assertFalse(store.get(legacy['id'])['enabled'])
+        catalog=self.client.get('/api/v1/admin/sample-bots').json()['items']
+        self.assertEqual(len(catalog),1)
+        sample=store.get(catalog[0]['id'])
+        source=store.get(sample['submission_id'])
+        for name in ('bot.cpp','json.hpp'):
+            self.assertEqual((Path(source['source_path'])/name).read_text(),
+                (Path(__file__).resolve().parents[2]/'starter/bot'/name).read_text())
+        self.post(self.client,'/admin/sample-bots/'+legacy['id']+'/enabled',{'enabled':True},expected=404)
+
     def test_organizer_sample_privacy_and_disable(self):
         team,issued=self.create_team()
         raw=io.BytesIO()
         with zipfile.ZipFile(raw,'w') as z:z.writestr('bot.py','print("secret-source-marker")')
-        upload=self.client.post('/api/v1/admin/sample-bots',content=raw.getvalue(),headers={'Content-Type':'application/zip','X-Bot-Name':'Practice sample','X-Bot-Level':'easy','X-Arena-Runtime':'python3','Idempotency-Key':'sample-catalog-idempotency'})
-        self.assertEqual(upload.status_code,201,upload.text)
-        sample=upload.json();catalog=team.get('/api/v1/sample-bots').json()
+        catalog=team.get('/api/v1/sample-bots').json()
+        self.assertEqual(len(catalog['items']),1)
+        sample=catalog['items'][0]
+        self.assertNotIn('level',sample)
         self.assertNotIn('secret-source-marker',json.dumps(catalog));self.assertNotIn('submission_id',catalog['items'][0])
         own=self.app.state.service.submit(issued['account']['team_id'],'v1.0.0','python3',raw.getvalue(),'own-source-test')
         job=self.post(team,'/matches',{'red_submission_id':own['id'],'sample_bot_id':sample['id'],'delegate_timeout_claims':True},expected=202)

@@ -88,6 +88,8 @@ class Service:
                 artifact_sha256 TEXT NOT NULL, grader_id TEXT, created_ms INTEGER NOT NULL,
                 PRIMARY KEY(submission_id, platform, runtime_id));
             """)
+        from arena.eta import Timing
+        self.timing = Timing(store)
         self.pending = DurableJobQueue(store)
         # A restarted hub starts fresh clocks; no result from its previous leases may win.
         with store.lock:
@@ -523,7 +525,11 @@ class Service:
         with self.store.lock, self.store.db:
             # Verification runs outside the lock: expiry/revocation may win meanwhile.
             self.active_lease(grader, lease_id, fencing)
-            self.store.db.execute("UPDATE grader_leases SET status='completed',ended_ms=? WHERE id=?", (self.lease_now_ms(), lease_id))
+            ended = self.lease_now_ms()
+            created = self.store.db.execute("SELECT created_ms FROM grader_leases WHERE id=?", (lease_id,)).fetchone()[0]
+            self.store.db.execute("UPDATE grader_leases SET status='completed',ended_ms=? WHERE id=?", (ended, lease_id))
+            if status == 'completed':
+                self.timing.record(job,job["runtime"],created,ended)
             self.store.db.execute("UPDATE graders SET jobs_done=jobs_done+1 WHERE id=?", (grader["id"],))
             fields = {"status": status, "report": report}
             if status == "failed":

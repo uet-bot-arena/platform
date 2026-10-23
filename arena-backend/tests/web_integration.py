@@ -139,7 +139,8 @@ def main():
             assert all_jobs['total'] == 1 and 'report' not in all_jobs['items'][0]
             assert request(admin, 'GET', '/admin/jobs/'+match['id']).json()['report']['result'] == actual_report['result']
             sources = request(admin, 'GET', '/admin/submissions').json()['items']
-            assert len(sources) == 1 and 'source_path' not in sources[0]
+            assert len(sources) == 2 and sum(s['team_id']=='sample:starter' for s in sources)==1
+            assert all('source_path' not in s for s in sources)  # built-in starter plus this team's upload
             request(team, 'GET', '/admin/metrics', expected=403)
             checked('organizer_metrics_and_reports_match_real_worker_results')
             request(admin, "POST", f"/admin/accounts/{issued['account']['id']}/password", json={})

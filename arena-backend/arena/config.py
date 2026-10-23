@@ -39,8 +39,8 @@ def profile(turn_ms=15_000):
 
 
 def match_profile(match_ms=300_000):
-    if type(match_ms) is not int or match_ms not in (60_000, 300_000):
-        raise ValueError("match_ms must be 60000 (Bullet) or 300000 (Normal)")
+    if type(match_ms) is not int or match_ms not in (10_000, 60_000, 300_000):
+        raise ValueError("match_ms must be 10000 (Ladder), 60000 (Bullet) or 300000 (Normal)")
     return Profile(id=f"ottv2-bank-{match_ms // 1000}s-v2", match_ms=match_ms, turn_ms=match_ms)
 
 

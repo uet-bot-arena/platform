@@ -13,7 +13,7 @@ from arena_api.schemas import CompetitionEdit, Revision
 router = APIRouter(prefix="/api/v1", tags=["competitions"])
 
 
-@router.post("/admin/competitions", status_code=201, summary="Tạo giải vòng tròn hai lượt; ghim engine/image/SDK/profile")
+@router.post("/admin/competitions", status_code=201, summary="Tạo giải Elo, vòng tròn hoặc Swiss; ghim engine/runtime/SDK/profile")
 def create(body: CompetitionCreate, request: Request, idempotency_key: str = Header(), auth=Depends(admin_principal)):
     return request.app.state.competitions.create(auth["user"]["id"], body.model_dump(exclude_none=True), idempotency_key)
 
@@ -107,7 +107,7 @@ def fixtures(ident: str, request: Request, limit: int = Query(50, ge=1, le=100),
     return request.app.state.competitions.schedule(ident, admin, limit, offset)
 
 
-@router.get("/competitions/{ident}/standings", summary="Điểm = 3 × thắng + hòa; bằng tổng điểm đồng hạng; chỉ tính fixture hoàn tất hợp lệ")
+@router.get("/competitions/{ident}/standings", summary="Bảng Elo hoặc điểm theo thể thức; chỉ tính kết quả hoàn tất hợp lệ")
 def standings(ident: str, request: Request, admin=Depends(spectator_admin)):
     return request.app.state.competitions.standings(ident, admin)
 
@@ -198,3 +198,16 @@ def events(ident: str, fixture_id: str, request: Request, after: int = Query(0, 
             yield ": heartbeat\n\n"
             await asyncio.sleep(1)
     return StreamingResponse(stream(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"})
+
+
+@router.get('/competitions/{ident}/elo/export',summary='Kết quả theo mã ván để tính lại Elo và điểm vòng tròn; không chứa source')
+def elo_export(ident: str,request: Request,stage: str=Query('official',pattern='^(ladder|official)$'),admin=Depends(spectator_admin)):
+    comp=request.app.state.competitions
+    comp.view(ident,admin)
+    return comp.elo.book.export(ident,stage)
+
+
+@router.get('/team/elo',summary='SHA đang đấu, bản dự kiến đợt sau và ván/Elo của chính đội')
+def team_elo(request: Request,auth=Depends(team_principal)):
+    with request.app.state.store.lock:
+        return request.app.state.competitions.elo.team_view(auth['user']['team_id'])

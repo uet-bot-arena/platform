@@ -37,6 +37,8 @@ class Competitions:
         self.thread = threading.Thread(target=self.loop, daemon=True, name="competition-scheduler")
         self.scheduler_error = None
         self.suite_sha256 = digest(fixtures())
+        from arena_api.elo_scheduler import EloScheduler
+        self.elo = EloScheduler(self)
         # Running competitions keep scheduling; interrupted games get a fresh attempt.
         # A competition explicitly paused by the organiser stays paused.
         self.reconcile()
@@ -119,6 +121,8 @@ class Competitions:
                           toolchains={"cpp17":"g++ -std=c++17 -O2", "c11":"gcc -std=c11 -O2", "python3":PYTHON_TOOLCHAIN})
             if config["format"] == "swiss":
                 config["ranking"] = "points_buchholz"
+            if config['format']=='elo':
+                config.update(ladder=body.get('ladder',dict(round_hours=2)),official=body.get('official',dict(general_rounds=20,group_size=64,finalists=16,k=[[20,32],[None,16]])),ranking='round_robin_points',scoring=dict(win=1,draw=.5,loss=0))
             return config
         def action(config):
             if self.db.execute("SELECT COUNT(*) FROM competitions").fetchone()[0] >= 100:
@@ -149,6 +153,8 @@ class Competitions:
                 raise Fault("admin_conflict", "Basic rules are immutable; create another competition")
             if body.get("format", config["format"]) != config["format"] or body.get("rounds") not in (None, config.get("rounds")):
                 raise Fault("admin_conflict", "Format and rounds are immutable; create another competition")
+            if config['format']=='elo' and any(body.get(k,config[k])!=config[k] for k in ('ladder','official')):
+                raise Fault('admin_conflict','Luật Elo giữ cố định từ khi tạo giải')
             if requested != config['profile']:
                 if item['status'] != 'draft' or entries:
                     raise Fault('admin_conflict', 'Time control can only change in an empty draft')
@@ -185,7 +191,7 @@ class Competitions:
             self.require_status(item, *allowed[target])
             if target == "running":
                 self.check_runtime(item["config"])
-                if item["config"].pop("pairing_error", None):
+                if item["config"].pop("pairing_error", None) or item["config"].pop("elo_error", None):
                     # Resuming retries the Swiss pairing once on the next scheduler tick.
                     self.db.execute("UPDATE competitions SET config=? WHERE id=?", (json.dumps(item["config"]), ident))
             self.db.execute("UPDATE competitions SET status=?,revision=revision+1 WHERE id=?", (target, ident))
@@ -272,6 +278,11 @@ class Competitions:
                     saved.pop(key, None)
                 if current != saved:
                     raise Fault("provenance_mismatch", "Entry qualification changed; team must enter again")
+            if item['config']['format']=='elo':
+                if item.get('submission_deadline') is None:
+                    raise Fault('competition_conflict','Giải Elo cần hạn nộp GitHub')
+                self.db.execute("UPDATE competitions SET status='locked',locked_ms=?,revision=revision+1 WHERE id=?",(now_ms(),ident))
+                return {**self.get(ident),'fixture_count':0}
             if item["config"]["format"] == "swiss":
                 config = item["config"]
                 count = len(entries)
@@ -316,12 +327,25 @@ class Competitions:
         return self.command(actor, "withdraw:" + ident + ":" + team, key, {}, action)
 
     def fixture(self, ident, fixture_id):
+        if self.get(ident)['config']['format']=='elo':
+            row=self.one('SELECT g.*,r.competition_id,r.phase,r.number AS round_number FROM elo_games g JOIN elo_rounds r ON r.id=g.round_id WHERE r.competition_id=? AND g.id=?',(ident,fixture_id))
+            if row is None:raise Fault('not_found','Không có ván này')
+            return row
         row = self.one("SELECT * FROM competition_fixtures WHERE competition_id=? AND id=?", (ident, fixture_id))
         if row is None:
             raise Fault("not_found", "Fixture not found")
         return row
 
     def retry(self, actor, ident, fixture_id, key):
+        if self.get(ident)['config']['format']=='elo':
+            def action():
+                self.require_status(self.get(ident),'running','paused','locked')
+                row=self.fixture(ident,fixture_id)
+                if row['status']!='attention':raise Fault('competition_conflict','Chỉ chạy lại ván cần BTC xử lý')
+                self.db.execute("UPDATE elo_games SET status='pending',auto_retries=0 WHERE id=?",(fixture_id,))
+                self.db.execute("UPDATE elo_rounds SET status='running' WHERE id=?",(row['round_id'],))
+                return dict(id=ident,fixture_id=fixture_id,status='pending')
+            return self.command(actor,'retry:'+fixture_id,key,{},action)
         self.reconcile()
         def action():
             self.require_status(self.get(ident), "locked", "running", "paused")
@@ -333,6 +357,19 @@ class Competitions:
             self.db.execute("UPDATE competition_fixtures SET status='pending',auto_retries=0 WHERE id=?", (fixture_id,))
             return {"id": fixture_id, "status": "pending", "next_attempt": number + 1}
         return self.command(actor, "retry:" + fixture_id, key, {}, action)
+
+    @staticmethod
+    def valid_report(job,config):
+        report=job.get('report') or {};result=report.get('result')
+        rules=policy(config.get('adjudication'))
+        return (job["status"] == "completed" and report.get("eligible_for_tournament") is True
+                  and not report.get("error") and not report.get("aborted") and isinstance(result, dict)
+                  and valid_result(result, rules, experimental=bool(config.get("ruleset"))) and report.get("adjudication", LEGACY) == rules
+                  and (report.get("final_state") or {}).get("result") == result
+                  and (report.get("ruleset") or {}).get("hash") == (config.get("ruleset") or {}).get("hash")
+                  and (report.get("basic_rules") or {}).get("hash") == (config.get("basic_rules") or {}).get("hash")
+                  and report.get("engine_sha256") == config["engine_sha256"]
+                  and runtime_of(report) == runtime_of(config) and report.get("profile") == config["profile"])
 
     def reconcile(self):
         if hasattr(self, "teams"):
@@ -346,15 +383,7 @@ class Competitions:
                 report = job.get("report") or {}
                 result = report.get("result")
                 config = self.get(row["competition_id"])["config"]
-                rules = policy(config.get("adjudication"))
-                valid = (job["status"] == "completed" and report.get("eligible_for_tournament") is True
-                         and not report.get("error") and not report.get("aborted") and isinstance(result, dict)
-                         and valid_result(result, rules, experimental=bool(config.get("ruleset"))) and report.get("adjudication", LEGACY) == rules
-                         and (report.get("final_state") or {}).get("result") == result
-                         and (report.get("ruleset") or {}).get("hash") == (config.get("ruleset") or {}).get("hash")
-                         and (report.get("basic_rules") or {}).get("hash") == (config.get("basic_rules") or {}).get("hash")
-                         and report.get("engine_sha256") == config["engine_sha256"]
-                         and runtime_of(report) == runtime_of(config) and report.get("profile") == config["profile"])
+                valid = self.valid_report(job,config)
                 status = "completed" if valid else "attention"
                 error = None if valid else (job.get("error") or report.get("error") or {}).get("code", "unscored_attempt")
                 retry = not valid and error in INFRASTRUCTURE and row["auto_retries"] < self.max_attempts
@@ -363,7 +392,7 @@ class Competitions:
                                 (fixture_status, json.dumps(result) if valid else None, int(retry), row["id"]))
                 self.db.execute("UPDATE competition_attempts SET status=?,error_code=? WHERE job_id=?", (status, error, job["id"]))
                 self.accounts.audit("system", "competition.result" if valid else "competition.retry" if retry else "competition.attention", row["id"])
-            for row in self.rows("SELECT id FROM competitions WHERE status IN ('running','paused')"):
+            for row in self.rows("SELECT id FROM competitions WHERE status IN ('running','paused') AND COALESCE(json_extract(config,'$.format'),'double_round_robin')<>'elo'"):
                 remaining = self.db.execute("SELECT COUNT(*) FROM competition_fixtures WHERE competition_id=? AND status<>'completed'", (row["id"],)).fetchone()[0]
                 if remaining == 0 and self.get(row["id"])["config"].get("format") == "swiss":
                     config = self.get(row["id"])["config"]
@@ -428,7 +457,25 @@ class Competitions:
             self.db.execute("UPDATE competitions SET config=?,revision=revision+1 WHERE id=?", (json.dumps(config),ident))
             self.accounts.audit("system", "competition.swiss_round", ident)
 
+    def match_job(self,item,entries,fixture_id,number,config=None):
+        config=config or item['config']
+        platform,runtime_id=self.platform_of(config)
+        job = {"id": uuid.uuid4().hex, "team_id": "competition:" + item["id"], "created_unix_ms": now_ms(),
+               "kind": "match", "status": "queued", "submission_ids": [e["submission_id"] for e in entries],
+               "profile": config["profile"], "requires": {"platform": platform, "runtime_id": runtime_id}, "engine_id": config["engine_id"],
+               "engine_sha256": config["engine_sha256"], "report": None, "error": None,
+               **({"basic_rules":config["basic_rules"]} if config.get("basic_rules") else {}),
+               **({"ruleset":config["ruleset"],"protocol_version":3} if config.get("ruleset") else {}),
+               "official": {"competition_id": item["id"], "fixture_id": fixture_id, "attempt": number,
+                            "entries": entries, **({"ruleset":config["ruleset"]} if config.get("ruleset") else {}),
+                            **({"basic_rules":config["basic_rules"]} if config.get("basic_rules") else {}), "engine_sha256": config["engine_sha256"],
+                            "sdk_sha256": config["sdk_sha256"], "build_flags": config["build_flags"],
+                            **({"runtime_flags":config["runtime_flags"]} if config.get("runtime_flags") else {}),
+                            "adjudication": policy(config.get("adjudication"))}}
+        return job
+
     def tick(self):
+        self.elo.tick()
         self.reconcile()
         with self.store.lock:
             if self.stop.is_set() or self.service.stop.is_set() or self.service.pending.full():
@@ -445,18 +492,7 @@ class Competitions:
             entries = [json.loads(self.one("SELECT snapshot FROM competition_entries WHERE competition_id=? AND team_id=?", (item["id"], row[side + "_team_id"]))["snapshot"]) for side in engine.SIDES]
             number = self.db.execute("SELECT COUNT(*)+1 FROM competition_attempts WHERE fixture_id=?", (row["id"],)).fetchone()[0]
             platform, runtime_id = self.platform_of(config)
-            job = {"id": uuid.uuid4().hex, "team_id": "competition:" + item["id"], "created_unix_ms": now_ms(),
-                   "kind": "match", "status": "queued", "submission_ids": [e["submission_id"] for e in entries],
-                   "profile": config["profile"], "requires": {"platform": platform, "runtime_id": runtime_id}, "engine_id": config["engine_id"],
-                   "engine_sha256": config["engine_sha256"], "report": None, "error": None,
-                   **({"basic_rules":config["basic_rules"]} if config.get("basic_rules") else {}),
-                   **({"ruleset":config["ruleset"],"protocol_version":3} if config.get("ruleset") else {}),
-                   "official": {"competition_id": item["id"], "fixture_id": row["id"], "attempt": number,
-                                "entries": entries, **({"ruleset":config["ruleset"]} if config.get("ruleset") else {}),
-                                **({"basic_rules":config["basic_rules"]} if config.get("basic_rules") else {}), "engine_sha256": config["engine_sha256"],
-                                "sdk_sha256": config["sdk_sha256"], "build_flags": config["build_flags"],
-                                **({"runtime_flags":config["runtime_flags"]} if config.get("runtime_flags") else {}),
-                                "adjudication": policy(config.get("adjudication"))}}
+            job = self.match_job(item,entries,row['id'],number)
             with self.db:
                 self.db.execute("INSERT INTO documents VALUES(?,?,?,?)", (job["id"], "job", job["team_id"], json.dumps(job)))
                 self.db.execute("UPDATE competition_fixtures SET status='queued',current_job_id=? WHERE id=?", (job["id"], row["id"]))
@@ -514,7 +550,14 @@ class Competitions:
             # Deliberate whitelist: no contact info, binary/build log, benchmark
             # report or private worker job ID in the shared competition view.
             item["entries"] = [{"team_id": e["team_id"], "name": e["name"], "version": json.loads(e["snapshot"])["version"], "accepted_ms": e["accepted_ms"]} for e in entries]
-            counts = {r["status"]: r["n"] for r in self.rows("SELECT status,COUNT(*) n FROM competition_fixtures WHERE competition_id=? GROUP BY status", (ident,))}
+            if item['config']['format']=='elo':
+                item['elo']=self.elo.public(ident)
+                known={r['id']:r['name'] for r in self.rows("SELECT t.id,t.name FROM teams t JOIN elo_ratings r ON r.team_id=t.id WHERE r.competition_id=?",(ident,))}
+                existing={e['team_id'] for e in item['entries']}
+                item['entries'].extend(dict(team_id=t,name=name,version='',accepted_ms=None) for t,name in known.items() if t not in existing)
+                counts={r['status']:r['n'] for r in self.rows('SELECT g.status,COUNT(*) AS n FROM elo_games g JOIN elo_rounds r ON r.id=g.round_id WHERE r.competition_id=? GROUP BY g.status',(ident,))}
+            else:
+                counts = {r["status"]: r["n"] for r in self.rows("SELECT status,COUNT(*) n FROM competition_fixtures WHERE competition_id=? GROUP BY status", (ident,))}
             item["fixture_counts"] = {s: counts.get(s, 0) for s in ("pending", "queued", "completed", "attention")}
             if not admin:
                 item["config"] = self.public_config(item["config"])
@@ -527,7 +570,12 @@ class Competitions:
                 "result": json.loads(row["result"]) if row["result"] else None}
 
     def schedule(self, ident, admin=False, limit=50, offset=0):
-        self.view(ident, admin)
+        item=self.view(ident, admin)
+        if item['config']['format']=='elo':
+            with self.store.lock:
+                total=self.one('SELECT COUNT(*) AS n FROM elo_games g JOIN elo_rounds r ON r.id=g.round_id WHERE r.competition_id=?',(ident,))['n']
+                rows=self.rows('SELECT g.*,r.competition_id,r.phase FROM elo_games g JOIN elo_rounds r ON r.id=g.round_id WHERE r.competition_id=? ORDER BY r.started_ms,r.phase,r.number,g.ordinal LIMIT ? OFFSET ?',(ident,limit,offset))
+                return dict(items=[self.fixture_view(r)|dict(phase=r['phase']) for r in rows],total=total,limit=limit,offset=offset)
         with self.store.lock:
             total = self.db.execute("SELECT COUNT(*) FROM competition_fixtures WHERE competition_id=?", (ident,)).fetchone()[0]
             rows = self.rows("SELECT * FROM competition_fixtures WHERE competition_id=? ORDER BY ordinal LIMIT ? OFFSET ?", (ident, limit, offset))
@@ -536,6 +584,7 @@ class Competitions:
     def standings(self, ident, admin=False):
         with self.store.lock:
             item = self.view(ident, admin)
+            if item['config']['format']=='elo':return self.elo.standings(ident)
             scores = {e["team_id"]: {**e, "played": 0, "wins": 0, "draws": 0, "losses": 0} for e in item["entries"]}
             for row in self.rows("SELECT * FROM competition_fixtures WHERE competition_id=? AND status='completed'", (ident,)):
                 result = json.loads(row["result"])
@@ -586,12 +635,14 @@ class Competitions:
         self.reconcile()
         with self.store.lock:
             self.fixture(ident, fixture_id)
-            return {"items": self.rows("SELECT * FROM competition_attempts WHERE fixture_id=? ORDER BY number", (fixture_id,))}
+            table,field=("elo_attempts","game_id") if self.get(ident)["config"]["format"]=="elo" else ("competition_attempts","fixture_id")
+            return {"items":self.rows(f"SELECT * FROM {table} WHERE {field}=? ORDER BY number",(fixture_id,))}
 
     def attempt_job(self, ident, fixture_id, number):
         with self.store.lock:
             self.fixture(ident, fixture_id)
-            row = self.one("SELECT job_id FROM competition_attempts WHERE fixture_id=? AND number=?", (fixture_id, number))
+            table,field=("elo_attempts","game_id") if self.get(ident)["config"]["format"]=="elo" else ("competition_attempts","fixture_id")
+            row = self.one(f"SELECT job_id FROM {table} WHERE {field}=? AND number=?", (fixture_id, number))
             if row is None:
                 raise Fault("not_found", "Attempt not found")
             return self.store.get(row["job_id"], "competition:" + ident, "job")
@@ -605,7 +656,10 @@ class Competitions:
         """Public fixture progress only; never expose attempt IDs or bot reports."""
         with self.store.lock:
             item = self.view(ident, admin)
-            rows = self.rows('SELECT * FROM competition_fixtures WHERE competition_id=? ORDER BY ordinal', (ident,))
+            if item['config']['format']=='elo':
+                rows=self.rows('SELECT g.*,r.competition_id FROM elo_games g JOIN elo_rounds r ON r.id=g.round_id WHERE r.competition_id=? ORDER BY r.started_ms,g.ordinal',(ident,))
+            else:
+                rows = self.rows('SELECT * FROM competition_fixtures WHERE competition_id=? ORDER BY ordinal', (ident,))
             return {'competition_id': ident, 'status': item['status'],
                     'fixtures': [self.fixture_view(row) for row in rows]}
 

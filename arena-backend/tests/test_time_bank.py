@@ -16,7 +16,7 @@ from arena_api.schemas import Match, Benchmark, CompetitionCreate
 class TimeBank(unittest.TestCase):
     def test_default_bank_preserves_exact_legacy_profiles(self):
         self.assertEqual(request_profile({}), match_profile(300000))
-        for ms in (60000,300000):
+        for ms in (10000,60000,300000):
             self.assertEqual(stored_profile(match_profile(ms).public()), match_profile(ms))
         for ms in (15000,30000,60000,300000):
             old=profile(ms).public()

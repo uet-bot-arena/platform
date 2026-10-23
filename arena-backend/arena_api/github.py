@@ -215,12 +215,12 @@ class GitHub:
             return
         if job and job["status"] == "completed":
             passed = (job.get("report") or {}).get("passed") is True
-            self.execute("UPDATE github_checks SET state=? WHERE team_id=? AND sha=? AND purpose=?", ("pass" if passed else "fail", team, sha, purpose))
+            self.execute("UPDATE github_checks SET state=?,finished_ms=? WHERE team_id=? AND sha=? AND purpose=?", ("pass" if passed else "fail", self.clock(), team, sha, purpose))
             self.execute("UPDATE github_commits SET state=? WHERE team_id=? AND sha=?", ("pass" if passed else "fail", team, sha))
             return
         error = (job or {}).get("error") or {}
         if job and error.get("code") in BOT_ERRORS:
-            self.execute("UPDATE github_checks SET state='fail' WHERE team_id=? AND sha=? AND purpose=?", (team, sha, purpose))
+            self.execute("UPDATE github_checks SET state='fail',finished_ms=? WHERE team_id=? AND sha=? AND purpose=?", (self.clock(), team, sha, purpose))
             self.execute("UPDATE github_commits SET state='fail',error=? WHERE team_id=? AND sha=?", (error.get("detail", "Bot không qua kiểm tra")[:500], team, sha))
             return
         if error.get("code") == "superseded":
@@ -233,7 +233,7 @@ class GitHub:
                            "WHERE g.team_id=? AND g.submission_id=? AND c.purpose=? AND c.state='pass' LIMIT 1",
                            (team, commit["submission_id"], purpose))
             if old:
-                self.execute("UPDATE github_checks SET job_id=?,state='pass' WHERE team_id=? AND sha=? AND purpose=?", (old["job_id"], team, sha, purpose))
+                self.execute("UPDATE github_checks SET job_id=?,state='pass',finished_ms=? WHERE team_id=? AND sha=? AND purpose=?", (old["job_id"], self.clock(), team, sha, purpose))
                 self.execute("UPDATE github_commits SET state='pass' WHERE team_id=? AND sha=?", (team, sha))
                 return
             body = {"submission_id": commit["submission_id"], **({"match_ms": 60_000} if purpose == "practice" else {"competition_id": purpose})}

@@ -1,0 +1,33 @@
+import {esc,head,panel,table,note,link,date,badge,empty} from './view.js';
+
+const phases={ladder:'Ladder',general:'Vòng chung',round_robin:'Vòng tròn'};
+const timeRange=eta=>eta?`còn khoảng ${Math.ceil(eta.lower_seconds/60)}–${Math.ceil(eta.upper_seconds/60)} phút`:'';
+export function eloProgress(progress){
+  if(!progress)return '';
+  const c=progress.current;
+  const state=c?.state==='completed'?'Đã xong · Elo/điểm đã cập nhật':c?.state==='running'?'Đang đấu':c?.state==='attention'?'Cần BTC xử lý':'Đang xếp hàng';
+  const seconds=progress.next_round_ms?Math.max(0,Math.ceil((progress.next_round_ms-progress.server_ms)/1000)):0;
+  const countdown=[Math.floor(seconds/3600),Math.floor(seconds/60)%60,seconds%60].map(n=>String(n).padStart(2,'0')).join(':');
+  return `<section class="elo-progress" aria-live="polite">${c?`<h3>${esc(phases[c.phase]||c.phase)} ${c.phase==='round_robin'?'':'· Đợt '+c.number+(c.phase==='general'&&progress.general_total_rounds?'/'+progress.general_total_rounds:'')}</h3><p>${state} ${c.state==='running'?timeRange(c.eta):''}</p><progress aria-label="Số ván hoàn tất" value="${c.completed}" max="${c.total||1}"></progress><p>${c.completed}/${c.total} ván · Bắt đầu ${date(c.started_ms)}${c.completed_ms?' · Xong '+date(c.completed_ms):''}</p>`:note('Đang chờ đợt đấu đầu tiên.')}${progress.next_round_ms?`<p>Đợt sau: ${date(progress.next_round_ms)} · Đếm ngược <strong>${countdown}</strong></p>`:''}${progress.announcement_eta?`<p>Dự kiến công bố sau khoảng ${Math.ceil(progress.announcement_eta.lower_seconds/60)}–${Math.ceil(progress.announcement_eta.upper_seconds/60)} phút</p>`:''}</section>`;
+}
+export function eloStandings(s){
+  const data=s.standings;if(!data)return empty('Chưa có bảng xếp hạng');
+  const points=data.ranking==='round_robin_points',rows=data.items.filter(t=>!t.is_guest);
+  const rule=points?'Điểm → đối đầu giữa các đội bằng điểm → số ván thắng → Elo sau vòng chung. Elo giữ nguyên trong vòng tròn.':'Elo cập nhật sau khi cả đợt xong. Chỉ các ván Đấu được tính; luyện tập không tính Elo.';
+  const score=table(['Hạng','Đội',points?'Điểm':'Elo','Ván',...(points?['Đối đầu','Thắng','Elo vòng chung']:['Tăng tuần này'])],rows.map(t=>`<tr><td>${t.rank??'—'}</td><td>${esc(t.name)}</td><td><strong>${points?t.points:t.rating.toFixed(2)}</strong></td><td>${t.played}</td>${points?`<td>${t.head_to_head}</td><td>${t.wins}</td><td>${t.rating.toFixed(2)}</td>`:`<td>${(t.sprint_gain??0)>=0?'+':''}${(t.sprint_gain??0).toFixed(2)}</td>`}</tr>`));
+  let matrix='';
+  if(points&&rows.length){
+    const games=new Map(data.matrix.map(g=>[g.red_team_id+'/'+g.blue_team_id,g]));
+    const gameLink=(a,b)=>{const g=games.get(a+'/'+b);if(!g)return '—';const score=!g.result?'…':g.result.reason==='double_startup_failure'?'0':g.result.winner==='red'?'1':g.result.winner==='blue'?'0':'½';return link(`${g.status==='completed'?'replay':'arena'}/${s.competition.id}/${g.id}`,score,'small');};
+    matrix=`<details class="elo-matrix"><summary>Ma trận kết quả từng cặp · mở từng ván để xem replay/trực tiếp</summary>${note('Mỗi ô: ván đội ở hàng cầm Đỏ, rồi ván đội đó cầm Xanh. Số là điểm của đội ở hàng; … là chưa xong.')}<div class="elo-matrix-scroll" tabindex="0" role="region" aria-label="Ma trận vòng tròn, cuộn ngang để xem các đối thủ">${table(['Đội',...rows.map(t=>t.name)],rows.map(a=>`<tr><th scope="row">${esc(a.name)}</th>${rows.map(b=>`<td>${a.team_id===b.team_id?'—':gameLink(a.team_id,b.team_id)+' / '+(()=>{const g=games.get(b.team_id+'/'+a.team_id);if(!g)return '—';const label=!g.result?'…':g.result.reason==='double_startup_failure'?'0':g.result.winner==='blue'?'1':g.result.winner==='red'?'0':'½';return link(`${g.status==='completed'?'replay':'arena'}/${s.competition.id}/${g.id}`,label,'small');})()}</td>`).join('')}</tr>`))}</div></details>`;
+  }
+  return `<div id="elo-page">${eloProgress(data.progress)}${note(rule)}${data.provisional?note('Bảng tạm thời; còn ván chưa hoàn tất.'):''}${score}${matrix}</div>`;
+}
+export function eloCompetition(s,actions){
+  const c=s.competition,r=c.config.official;
+  return `<div class="elo-competition">${head(c.title,'Ladder Elo → vòng chung → vòng tròn tính điểm',actions)}${note(`Hơn ${r.group_size} đội: ${r.general_rounds} đợt vòng chung, rồi ${r.group_size} đội đầu vòng tròn hai màu; chọn ${r.finalists}. Từ ${r.group_size} đội trở xuống đá vòng tròn luôn.`)}${c.config.elo_error?note(c.config.elo_error):''}${panel('Xếp hạng',eloStandings(s),link('standings?competition='+c.id,'Mở bảng điểm','small'))}${note('Nộp qua GitHub; hub tự kiểm tra và chốt SHA tại hạn. Push mới trong lúc đấu vào ladder từ đợt sau.')}${link('team','SHA và các ván của đội','small')}${link('schedule?competition='+c.id,'Lịch đấu / replay','small')}<a class="btn small" href="/api/v1/competitions/${esc(c.id)}/elo/export?stage=official">Kết quả để tính lại</a></div>`;
+}
+export function eloTeam(s){
+  const graph=history=>{if(history.length<2)return '';const values=history.map(h=>h.rating),low=Math.min(...values),span=Math.max(1,Math.max(...values)-low);return `<figure><figcaption>Elo qua các đợt ladder</figcaption><svg viewBox="0 0 400 100" role="img" aria-label="Biểu đồ Elo theo đợt"><polyline fill="none" stroke="currentColor" stroke-width="2" points="${history.map((h,i)=>`${i*400/(history.length-1)},${95-(h.rating-low)/span*90}`).join(' ')}"/></svg></figure>`;};
+  return (s.teamElo?.items||[]).map(c=>{const r=c.current;return panel(c.title,`${r?`<p>${esc(phases[r.phase])} ${r.phase==='round_robin'?'':'· Đợt '+r.number} · ${badge(r.status)}</p><p>SHA đang dùng: <code>${esc(r.sha)}</code></p><p>Elo ${r.elo_before.toFixed(2)} → ${r.elo_after===null?'chờ cả đợt xong':r.elo_after.toFixed(2)}</p>${table(['Đối thủ','Kết quả',''],r.games.map(g=>`<tr><td>${esc(g.opponent_name)}</td><td>${g.result?(g.result.winner===null?'Hòa':(g.result.winner==='red')===(g.red_team_id===s.user.team_id)?'Thắng':'Thua'):badge(g.status)}</td><td>${link(`${g.status==='completed'?'replay':'arena'}/${c.competition_id}/${g.id}`,g.status==='completed'?'Replay':'Xem trực tiếp','small')}</td></tr>`))}`:note('Đội chưa có ván trong đợt nào.')}${graph(c.history||[])}${c.ladder_open===false?note('Đã hết hạn ladder; bot chính thức được khóa theo GitHub.'): `<p>SHA sẽ dùng đợt sau: <code>${esc(c.next_sha||'Chưa có bản Đạt')}</code></p>`}${c.latest_sha?`<p>Push mới nhất: <code>${esc(c.latest_sha)}</code> · Kiểm tra: ${esc(({pass:'Đạt',fail:'Lỗi',checking:'Đang kiểm tra',queued:'Đang chờ'})[c.check_state]||'Đang chờ')}</p>`:''}`);}).join('');
+}

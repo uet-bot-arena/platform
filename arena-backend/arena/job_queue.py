@@ -9,6 +9,11 @@ import time
 from arena.protocol import Fault
 
 
+def official_priority(job):
+    official=job.get('official')
+    return bool(official) and (not isinstance(official,dict) or official.get('phase')!='ladder')
+
+
 class DurableJobQueue:
     """SQLite is the queue; only claimed jobs leave it. No global admission cap."""
     maxsize = 0
@@ -27,7 +32,7 @@ class DurableJobQueue:
             for job in reversed(store.list("job")):
                 if job["status"] == "queued":
                     requires = job.get("requires") or {}
-                    self.put(job["id"], official=bool(job.get("official")), kind=job.get("kind"),
+                    self.put(job["id"], official=official_priority(job), kind=job.get("kind"),
                              platform=requires.get("platform"), runtime_id=requires.get("runtime_id"))
                 else:
                     self.remove(job["id"])
@@ -37,7 +42,7 @@ class DurableJobQueue:
             if kind is None:
                 try:
                     job = self.store.get(ident)
-                    kind, official = job.get("kind"), official or bool(job.get("official"))
+                    kind, official = job.get("kind"), official or official_priority(job)
                 except Fault as exc:
                     if exc.code != 'not_found':
                         raise

@@ -88,9 +88,7 @@ def main():
     zeta = teams[5]
     broken = upload(zeta["api"], "cpp17", "compile_error", "v0.9.0", admin)
     wait(zeta["api"], zeta["api"].json("POST", "/benchmarks", expected=(202,), json={"submission_id": broken["id"], "match_ms": 60000})["id"], "zeta compile error")
-    sample = admin.json("POST", "/admin/sample-bots", expected=(201,), content=zipped(bot_source("ab20"), salt="sample"),
-                        headers={"Content-Type": "application/zip", "X-Bot-Name": "Alpha-beta 20ms", "X-Bot-Level": "hard", "X-Arena-Runtime": "cpp17"})
-    alpha = teams[0]
+    sample = admin.json("GET", "/admin/sample-bots")["items"][0]
     practice = alpha["api"].json("POST", "/matches", expected=(202,), json={"red_submission_id": alpha["sub"], "sample_bot_id": sample["id"],
                                                                           "sample_side": "red", "match_ms": 60000, "delegate_timeout_claims": True})
     wait(alpha["api"], practice["id"], "practice alpha (blue) vs sample bot (red)")

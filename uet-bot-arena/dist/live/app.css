@@ -15,7 +15,7 @@
   --space: 8px;
 }
 @media (prefers-color-scheme: dark) {
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, .real-auth) {
+  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, .real-auth) {
     color-scheme: dark;
     --ink: #e2eae4; --muted: #b0c0b5; --green: #9ad7b6; --green-soft: #263d32;
     --navy: #9ad7b6; --line: #3e5146; --paper: #1d2c24; --bg: #142019;
@@ -475,23 +475,23 @@ details>summary { cursor: pointer; color: var(--green); }.empty-state { padding:
 
 /* Native grader and email pages; the complete theme switch follows in package 9. */
 @media (prefers-color-scheme: dark) {
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, .real-auth) .workspace { background: var(--bg); }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, .real-auth) :is(.sidebar, .topbar, .page-heading, .person-avatar,
+  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, .real-auth) .workspace { background: var(--bg); }
+  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, .real-auth) :is(.sidebar, .topbar, .page-heading, .person-avatar,
   .panel, .stat, .admin-kpis .stat, .real-card, .modal, .input, .select, .btn) {
     background: var(--paper); color: var(--ink); border-color: var(--line);
   }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, .real-auth) .nav-item { color: var(--muted); }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, .real-auth) :is(.nav-item:hover, .icon-btn:hover, th, .report-json, .credential-value) { background: #26382d; }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, .real-auth) .nav-item.active { color: var(--green); background: var(--green-soft); }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, .real-auth) .btn:hover { background: #304837; border-color: #759981; }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, .real-auth) .btn.primary { background: #9ad7b6; border-color: #9ad7b6; color: #142019; }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, .real-auth) .btn.primary:hover { background: #b5e6cb; }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, .real-auth) :is(.btn.danger, .btn.danger-button) { color: #f0b2a8; border-color: #96675e; background: var(--paper); }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, .real-auth) .skip-link { color: #142019; }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, .real-auth) .badge { color: #c4d4c9; background: #34483b; }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, .real-auth) :is(.badge.success, .badge.live) { color: #b0e6c3; background: #264a34; }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, .real-auth) .badge.danger { color: #f3b9ae; background: #512f29; }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, .real-auth) .badge.warning { color: #eed29c; background: #4e4028; }
+  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, .real-auth) .nav-item { color: var(--muted); }
+  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, .real-auth) :is(.nav-item:hover, .icon-btn:hover, th, .report-json, .credential-value) { background: #26382d; }
+  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, .real-auth) .nav-item.active { color: var(--green); background: var(--green-soft); }
+  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, .real-auth) .btn:hover { background: #304837; border-color: #759981; }
+  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, .real-auth) .btn.primary { background: #9ad7b6; border-color: #9ad7b6; color: #142019; }
+  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, .real-auth) .btn.primary:hover { background: #b5e6cb; }
+  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, .real-auth) :is(.btn.danger, .btn.danger-button) { color: #f0b2a8; border-color: #96675e; background: var(--paper); }
+  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, .real-auth) .skip-link { color: #142019; }
+  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, .real-auth) .badge { color: #c4d4c9; background: #34483b; }
+  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, .real-auth) :is(.badge.success, .badge.live) { color: #b0e6c3; background: #264a34; }
+  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, .real-auth) .badge.danger { color: #f3b9ae; background: #512f29; }
+  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, .real-auth) .badge.warning { color: #eed29c; background: #4e4028; }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -501,3 +501,8 @@ details>summary { cursor: pointer; color: var(--green); }.empty-state { padding:
 }
 /* The gradients are opaque; declare their lightest stop for text contrast checks. */
 .auth-brand-panel { background-color: #326951; }
+
+.elo-progress progress { width: 100%; accent-color: var(--green); }
+.elo-matrix-scroll { overflow-x: auto; max-width: 100%; }
+.elo-matrix-scroll td { white-space: nowrap; }
+.elo-matrix summary { cursor: pointer; padding: 1rem 0; }

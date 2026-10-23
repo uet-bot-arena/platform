@@ -1,0 +1,123 @@
+"""Scheduler tests use synthetic qualified records/results, not hardware timings."""
+import json
+from unittest.mock import patch
+from arena.elo import round_robin_rank
+from arena.ladder_clock import boundary
+from test_elo_rounds import EloFixture
+import test_competitions as competition_helpers
+
+
+class EloScheduling(EloFixture):
+    def configure(self,deadline=9_000_000_000_000,group=2):
+        cfg=dict(self.item['config'],format='elo',ladder=dict(round_hours=2),
+                 official=dict(general_rounds=3,group_size=group,finalists=2,k=[[20,32],[None,16]]))
+        with self.store.transaction():
+            self.store.db.execute("UPDATE competitions SET status='open',config=?,submission_deadline=? WHERE id=?",(json.dumps(cfg),deadline,self.ident))
+            for team,entry in self.entries.items():
+                self.store.db.execute('INSERT INTO competition_entries VALUES(?,?,?,?,?,?)',(self.ident,team,entry['submission_id'],entry['benchmark_id'],json.dumps(entry),1))
+        return self.comp.get(self.ident)
+
+    def test_fixed_calendar_skips_busy_boundary_and_takes_snapshot_at_next_fixed_time(self):
+        item=self.configure();scheduler=self.comp.elo
+        start=boundary(1_792_728_000_000)
+        with patch.object(scheduler.book,'latest_passes',return_value=self.entries) as latest:
+            scheduler.advance(item,start+1)
+            scheduler.advance(item,start+7_200_000)
+            latest.assert_called_once_with(self.ident,start+7_200_000)
+            rid=self.comp.one('SELECT id FROM elo_rounds')['id']
+            scheduler.advance(item,start+14_400_000)  # busy: consume this fixed boundary
+            self.complete_games(rid);scheduler.book.finish(rid,start+14_400_100)
+            scheduler.advance(item,start+14_400_200)
+            self.assertEqual(len(self.comp.rows('SELECT id FROM elo_rounds')),1)
+            scheduler.advance(item,start+21_600_000)
+            self.assertEqual(latest.call_args.args,(self.ident,start+21_600_000))
+            self.assertEqual(len(self.comp.rows('SELECT id FROM elo_rounds')),2)
+
+    def test_scheduler_runs_general_then_unbarriered_round_robin_and_publishes_seeds(self):
+        item=self.configure(deadline=1000);scheduler=self.comp.elo
+        with self.store.transaction():self.store.db.execute("UPDATE competitions SET status='running' WHERE id=?",(self.ident,))
+        jobs=[]
+        for i in range(80):
+            scheduler.advance(self.comp.get(self.ident),2000+i)
+            scheduler.dispatch()
+            try:jid=self.app.state.service.pending.get_nowait()
+            except Exception:continue
+            self.app.state.service.pending.task_done()
+            job=self.store.get(jid);jobs.append(job)
+            competition_helpers.CompetitionAPI.finish(self,job,winner='red')
+            scheduler.reconcile()
+            if self.comp.get(self.ident)['status']=='completed':break
+        scheduler.advance(self.comp.get(self.ident),3000)
+        final=self.comp.get(self.ident)
+        self.assertEqual(final['status'],'completed')
+        self.assertEqual(len(jobs),14)
+        self.assertEqual([r['phase'] for r in self.comp.rows('SELECT phase FROM elo_rounds ORDER BY started_ms')],['general']*3+['round_robin'])
+        rr=self.comp.one("SELECT id FROM elo_rounds WHERE phase='round_robin'")['id']
+        self.assertEqual(final['config']['finalists'],scheduler.book.get(rr)['after_state']['standings'])
+        self.assertEqual(len(final['config']['finalists']),2)
+        self.assertTrue(all(job['official']['phase']!='ladder' for job in jobs))
+        guest=self.other_client()
+        for path in ('','/standings','/fixtures','/watch','/elo/export'):
+            response=guest.get('/api/v1/competitions/'+self.ident+path)
+            self.assertEqual(response.status_code,200,response.text)
+            for private in ('source_path','artifact_sha256','benchmark_report','runtime_id'):
+                self.assertNotIn(private,response.text)
+        board=guest.get('/api/v1/competitions/'+self.ident+'/fixtures/'+jobs[-1]['official']['fixture_id']+'/events')
+        self.assertEqual(board.status_code,200)
+        standings=guest.get('/api/v1/competitions/'+self.ident+'/standings').json()
+        self.assertEqual(standings['ranking'],'round_robin_points')
+        self.assertEqual(len(standings['matrix']),2)
+        self.assertEqual([r['team_id'] for r in standings['items']],[r['team_id'] for r in final['config']['finalists']])
+
+    def test_small_season_starts_round_robin_without_general(self):
+        self.configure(deadline=1000,group=64)
+        with self.store.transaction():self.store.db.execute("UPDATE competitions SET status='running' WHERE id=?",(self.ident,))
+        self.comp.elo.advance(self.comp.get(self.ident),2000)
+        row=self.comp.one('SELECT id,phase FROM elo_rounds')
+        self.assertEqual(row['phase'],'round_robin')
+        self.assertEqual(len(self.book.games(row['id'])),12)
+
+    def test_infrastructure_retry_does_not_score_and_stops_after_configured_k(self):
+        self.configure(deadline=1000,group=64)
+        with self.store.transaction():self.store.db.execute("UPDATE competitions SET status='running' WHERE id=?",(self.ident,))
+        scheduler=self.comp.elo;scheduler.advance(self.comp.get(self.ident),2000)
+        for number in range(4):
+            scheduler.dispatch()
+            jid=self.app.state.service.pending.get_nowait();self.app.state.service.pending.task_done()
+            self.store.update(jid,status='failed',error=dict(code='worker_lost',detail='synthetic lost worker'))
+            scheduler.reconcile()
+        row=self.comp.one("SELECT * FROM elo_games WHERE auto_retries=3")
+        self.assertEqual(row['status'],'attention')
+        self.assertEqual(self.comp.one('SELECT status FROM elo_rounds')['status'],'attention')
+        self.assertTrue(all(r['games']==0 for r in self.comp.rows('SELECT * FROM elo_ratings')))
+        path=f'/admin/competitions/{self.ident}/fixtures/{row["id"]}'
+        attempts=self.client.get('/api/v1'+path+'/attempts')
+        self.assertEqual(attempts.status_code,200)
+        self.assertEqual(len(attempts.json()['items']),4)
+        self.post(self.client,path+'/retry')
+        self.assertEqual(self.comp.one('SELECT status FROM elo_rounds')['status'],'running')
+        self.assertEqual(self.comp.fixture(self.ident,row['id'])['auto_retries'],0)
+
+    def test_api_accepts_large_elo_defaults_but_requires_deadline_and_valid_selection(self):
+        body=dict(title='API Elo defaults',format='elo',max_teams=1000,match_ms=60000,submission_deadline=9_000_000_000_000)
+        item=self.post(self.client,'/admin/competitions',body,expected=201)
+        self.assertEqual(item['config']['official'],dict(general_rounds=20,group_size=64,finalists=16,k=[[20,32],[None,16]]))
+        self.assertEqual(item['config']['ladder'],dict(round_hours=2))
+        self.assertEqual(item['config']['scoring'],dict(win=1,draw=.5,loss=0))
+        edited=self.post(self.client,'/admin/competitions/'+item['id']+'/edit',dict(title='Elo renamed',max_teams=1000,match_ms=60000,expected_revision=item['revision']))
+        self.assertEqual(edited['config']['format'],'elo')
+        self.assertEqual(edited['config']['official'],item['config']['official'])
+        self.post(self.client,'/admin/competitions',dict(body,submission_deadline=None),expected=422)
+        self.post(self.client,'/admin/competitions',dict(body,official=dict(group_size=8,finalists=16)),expected=422)
+
+    def test_deadline_auto_locks_only_resolved_entries_then_starts_official(self):
+        self.configure(deadline=1000,group=64)
+        with self.store.transaction():
+            for team,entry in self.entries.items():
+                saved=dict(entry);saved.pop('bot_hash')
+                self.store.db.execute('UPDATE competition_entries SET snapshot=? WHERE competition_id=? AND team_id=?',(json.dumps(saved),self.ident,team))
+        self.comp.elo.advance(self.comp.get(self.ident),2000)
+        self.assertEqual(self.comp.get(self.ident)['status'],'running')
+        self.assertEqual(self.comp.rows('SELECT * FROM competition_fixtures'),[])
+        self.comp.elo.advance(self.comp.get(self.ident),2001)
+        self.assertEqual(self.comp.one('SELECT phase FROM elo_rounds')['phase'],'round_robin')

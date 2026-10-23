@@ -175,8 +175,14 @@ class WindowsBot:
                         raise Fault("timeout", "Complete response arrived at/after deadline")
                     line, trailing = bytes(self.buffer).split(b"\n", 1)
                     self.buffer.clear()
-                    if trailing or not written.is_set():
+                    if trailing:
                         raise Fault("protocol_error", "Extra or premature response")
+                    # ReadFile can return the bot's reply before the writer thread
+                    # resumes after WriteFile. The bot is frozen; finish that write.
+                    if not written.wait(max(0, (deadline-monotonic_ns())/1e9)):
+                        raise Fault("protocol_error", "Response before request delivery completed")
+                    if self.writer_error is not None:
+                        raise Fault("crash", "Bot closed stdin")
                     check_work_quota(self.work, self.container.folder)
                     msg = response(line.rstrip(b"\r"), message, kind)
                     after = self.metrics()

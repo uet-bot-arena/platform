@@ -2887,7 +2887,7 @@
         "tags": [
           "competitions"
         ],
-        "summary": "Tạo giải vòng tròn hai lượt; ghim engine/image/SDK/profile",
+        "summary": "Tạo giải Elo, vòng tròn hoặc Swiss; ghim engine/runtime/SDK/profile",
         "operationId": "create_api_v1_admin_competitions_post",
         "parameters": [
           {
@@ -3958,7 +3958,7 @@
         "tags": [
           "competitions"
         ],
-        "summary": "Điểm = 3 × thắng + hòa; bằng tổng điểm đồng hạng; chỉ tính fixture hoàn tất hợp lệ",
+        "summary": "Bảng Elo hoặc điểm theo thể thức; chỉ tính kết quả hoàn tất hợp lệ",
         "operationId": "standings_api_v1_competitions__ident__standings_get",
         "parameters": [
           {
@@ -4122,6 +4122,87 @@
         },
         "security": [
           {},
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/competitions/{ident}/elo/export": {
+      "get": {
+        "tags": [
+          "competitions"
+        ],
+        "summary": "Kết quả theo mã ván để tính lại Elo và điểm vòng tròn; không chứa source",
+        "operationId": "elo_export_api_v1_competitions__ident__elo_export_get",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          },
+          {
+            "name": "stage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(ladder|official)$",
+              "default": "official",
+              "title": "Stage"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/team/elo": {
+      "get": {
+        "tags": [
+          "competitions"
+        ],
+        "summary": "SHA đang đấu, bản dự kiến đợt sau và ván/Elo của chính đội",
+        "operationId": "team_elo_api_v1_team_elo_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
           {
             "cookieAuth": []
           }
@@ -4872,100 +4953,6 @@
         "security": [
           {
             "cookieAuth": []
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "sample-bots"
-        ],
-        "summary": "Upload",
-        "operationId": "upload_api_v1_admin_sample_bots_post",
-        "parameters": [
-          {
-            "name": "x-bot-name",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "X-Bot-Name"
-            }
-          },
-          {
-            "name": "x-bot-level",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "easy",
-              "title": "X-Bot-Level"
-            }
-          },
-          {
-            "name": "x-arena-runtime",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "cpp17",
-              "title": "X-Arena-Runtime"
-            }
-          },
-          {
-            "name": "x-arena-protocol",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 2,
-              "title": "X-Arena-Protocol"
-            }
-          },
-          {
-            "name": "idempotency-key",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/zip": {
-              "schema": {
-                "type": "string",
-                "format": "binary"
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "cookieAuth": [],
-            "csrfAuth": []
           }
         ]
       }
@@ -6194,6 +6181,7 @@
               {
                 "type": "integer",
                 "enum": [
+                  10000,
                   60000,
                   300000
                 ]
@@ -6316,6 +6304,7 @@
               {
                 "type": "integer",
                 "enum": [
+                  10000,
                   60000,
                   300000
                 ]
@@ -6372,7 +6361,8 @@
             "type": "string",
             "enum": [
               "double_round_robin",
-              "swiss"
+              "swiss",
+              "elo"
             ],
             "title": "Format",
             "default": "double_round_robin"
@@ -6389,6 +6379,30 @@
               }
             ],
             "title": "Rounds"
+          },
+          "ladder": {
+            "$ref": "#/components/schemas/LadderOptions",
+            "default": {
+              "round_hours": 2
+            }
+          },
+          "official": {
+            "$ref": "#/components/schemas/OfficialOptions",
+            "default": {
+              "general_rounds": 20,
+              "group_size": 64,
+              "finalists": 16,
+              "k": [
+                [
+                  20,
+                  32
+                ],
+                [
+                  null,
+                  16
+                ]
+              ]
+            }
           },
           "basic_rules": {
             "anyOf": [
@@ -6450,6 +6464,7 @@
               {
                 "type": "integer",
                 "enum": [
+                  10000,
                   60000,
                   300000
                 ]
@@ -6503,13 +6518,20 @@
             "default": 16
           },
           "format": {
-            "type": "string",
-            "enum": [
-              "double_round_robin",
-              "swiss"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "double_round_robin",
+                  "swiss",
+                  "elo"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Format",
-            "default": "double_round_robin"
+            "title": "Format"
           },
           "rounds": {
             "anyOf": [
@@ -6523,6 +6545,26 @@
               }
             ],
             "title": "Rounds"
+          },
+          "ladder": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LadderOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "official": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OfficialOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "basic_rules": {
             "anyOf": [
@@ -6981,6 +7023,20 @@
         ],
         "title": "IssuedCredential"
       },
+      "LadderOptions": {
+        "properties": {
+          "round_hours": {
+            "type": "integer",
+            "maximum": 24.0,
+            "minimum": 1.0,
+            "title": "Round Hours",
+            "default": 2
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LadderOptions"
+      },
       "LeaseRequest": {
         "properties": {
           "wait_seconds": {
@@ -7027,6 +7083,7 @@
               {
                 "type": "integer",
                 "enum": [
+                  10000,
                   60000,
                   300000
                 ]
@@ -7205,6 +7262,68 @@
           "proposal_id"
         ],
         "title": "Merge"
+      },
+      "OfficialOptions": {
+        "properties": {
+          "general_rounds": {
+            "type": "integer",
+            "maximum": 64.0,
+            "minimum": 1.0,
+            "title": "General Rounds",
+            "default": 20
+          },
+          "group_size": {
+            "type": "integer",
+            "maximum": 128.0,
+            "minimum": 2.0,
+            "title": "Group Size",
+            "default": 64
+          },
+          "finalists": {
+            "type": "integer",
+            "maximum": 128.0,
+            "minimum": 1.0,
+            "title": "Finalists",
+            "default": 16
+          },
+          "k": {
+            "items": {
+              "prefixItems": [
+                {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "K",
+            "default": [
+              [
+                20,
+                32
+              ],
+              [
+                null,
+                16
+              ]
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "OfficialOptions"
       },
       "PasswordChange": {
         "properties": {

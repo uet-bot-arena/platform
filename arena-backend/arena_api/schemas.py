@@ -87,7 +87,7 @@ class Recovery(Model):
 
 
 class TimeControl(Model):
-    match_ms: Literal[60000, 300000] | None = None
+    match_ms: Literal[10000, 60000, 300000] | None = None
     turn_ms: Literal[15000, 30000, 60000, 300000] | None = None
 
     @model_validator(mode="after")
@@ -185,12 +185,34 @@ class AdminTeamEdit(Registration):
     expected_revision: int = Field(ge=1)
 
 
+class LadderOptions(Model):
+    round_hours: int = Field(default=2,ge=1,le=24)
+
+
+class OfficialOptions(Model):
+    general_rounds: int = Field(default=20,ge=1,le=64)
+    group_size: int = Field(default=64,ge=2,le=128)
+    finalists: int = Field(default=16,ge=1,le=128)
+    k: list[tuple[int | None,int]] = [(20,32),(None,16)]
+
+    @model_validator(mode='after')
+    def validate_rules(self):
+        if self.finalists>self.group_size:
+            raise ValueError('Finalists cannot exceed round-robin group')
+        if (len(self.k)!=2 or type(self.k[0][0]) is not int or self.k[0][0]<1 or self.k[1][0] is not None
+                or any(type(v) is not int or not 1<=v<=64 for _,v in self.k)):
+            raise ValueError('K needs one positive game threshold and a final unbounded tier')
+        return self
+
+
 class CompetitionCreate(TimeControl):
     title: str = Field(min_length=3, max_length=100)
     submission_deadline: int | None = Field(default=None, ge=0)
     max_teams: int = Field(default=16, ge=2, le=4096)
-    format: Literal["double_round_robin", "swiss"] = "double_round_robin"
+    format: Literal["double_round_robin", "swiss", "elo"] = "double_round_robin"
     rounds: int | None = Field(default=None, ge=1, le=64)
+    ladder: LadderOptions = LadderOptions()
+    official: OfficialOptions = OfficialOptions()
     basic_rules: dict | None = None
     ruleset_id: str | None = Field(default=None, pattern=r'^[0-9a-f]{32}$')
     # Official matches run only on graders of this platform and toolchain (runtime_id);
@@ -202,6 +224,8 @@ class CompetitionCreate(TimeControl):
     def validate_options(self):
         if self.format == "double_round_robin" and self.max_teams > 32:
             raise ValueError("Round robin supports up to 32 teams; choose Swiss")
+        if self.format=='elo' and self.submission_deadline is None:
+            raise ValueError('Elo requires a GitHub submission deadline')
         if self.basic_rules:
             from arena.basic_rules import check_playable, normalize
             check_playable(normalize(self.basic_rules))
@@ -219,6 +243,9 @@ class CompetitionCreate(TimeControl):
 
 
 class CompetitionEdit(CompetitionCreate):
+    format: Literal['double_round_robin','swiss','elo'] | None = None
+    ladder: LadderOptions | None = None
+    official: OfficialOptions | None = None
     expected_revision: int = Field(ge=1)
 
 
