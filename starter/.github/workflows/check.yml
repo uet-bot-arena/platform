@@ -1,0 +1,14 @@
+name: Kiểm bot
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  protocol:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4, pinned 2026-10-23
+        with:
+          persist-credentials: false
+      - name: Kiểm build và giao thức của bot đang nộp
+        run: python3 run_local.py --check
