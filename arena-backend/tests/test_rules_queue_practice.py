@@ -104,7 +104,7 @@ class QueueSlots(unittest.TestCase):
         self.patch.start()
         self.service = Service(self.store, start_worker=False)
         config = {"profile": match_profile(60_000).public(), "grader_platform": "windows", "runtime_id": "sha256:" + "9" * 64}
-        self.service.competitions = type("Competitions", (), {"view": lambda _, ident: {"config": config}})()
+        self.service.competitions = type("Competitions", (), {"view": lambda _, ident: {"config": config}, "get": lambda _, ident: {"config": config}})()
 
     def tearDown(self):
         self.patch.stop()
@@ -158,6 +158,22 @@ class QueueSlots(unittest.TestCase):
             self.assertIsNone(self.service.pending.claim("linux", "sha256:" + "9" * 64))
             self.assertIsNone(self.service.pending.claim("windows", "sha256:" + "8" * 64))
             self.assertEqual(self.service.pending.claim("windows", "sha256:" + "9" * 64), job["id"])
+
+    def test_check_eta_uses_compatible_slots_and_hides_unknown_mixed_work(self):
+        source=self.submission()
+        first=self.benchmark(source,competition_id='c'*32)
+        second=self.benchmark(source,competition_id='d'*32)
+        runtime=dict(platform='windows',runtime_id='sha256:'+'9'*64)
+        now=self.service.lease_now_ms()
+        self.service.timing.record(first,runtime,now-10000,now)
+        with patch.object(self.service,'graders',return_value=[dict(**runtime,slots=2)]):
+            eta=self.service.job_eta(second)
+            self.assertEqual((eta['lower_seconds'],eta['upper_seconds']),(7,13))
+            urgent=self.store.create('job','competition:c',dict(kind='match',status='queued',profile=match_profile(60000).public()))
+            self.service.pending.put(urgent['id'],official=True,kind='match')
+            self.assertIsNone(self.service.job_eta(second))
+        with patch.object(self.service,'graders',return_value=[]):
+            self.assertIsNone(self.service.job_eta(second))
 
     def test_in_place_retry_stops_once_the_board_is_public(self):
         job = self.benchmark(self.submission())

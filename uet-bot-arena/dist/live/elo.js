@@ -1,7 +1,7 @@
-import {esc,head,panel,table,note,link,date,badge,empty} from './view.js';
+import {esc,head,panel,table,note,link,date,badge,empty,etaRange} from './view.js';
 
 const phases={ladder:'Ladder',general:'Vòng chung',round_robin:'Vòng tròn'};
-const timeRange=eta=>eta?`còn khoảng ${Math.ceil(eta.lower_seconds/60)}–${Math.ceil(eta.upper_seconds/60)} phút`:'';
+const timeRange=etaRange;
 export function eloProgress(progress){
   if(!progress)return '';
   const c=progress.current;

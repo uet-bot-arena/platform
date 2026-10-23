@@ -265,6 +265,15 @@ class Cluster:
             self.api(client, "POST", f"/competitions/{comp['id']}/entry", json={"submission_id": submission_id, "benchmark_id": bench_id,
                                                                                 "delegate_timeout_claims": True})
         self.api(self.admin, "POST", f"/admin/competitions/{comp['id']}/lock")
+        self.api(self.admin, 'POST', '/admin/retention/run')
+        blobs=list((self.data/'grader-artifacts'/'windows').iterdir())
+        self.check('retention_compresses_frozen_windows_binaries', bool(blobs) and all(p.suffix=='.gz' for p in blobs))
+        import shutil
+        for name in ('win-1','win-2'):
+            cache=self.shared/('state-'+name)/'artifacts'
+            for path in cache.iterdir():
+                assert path.resolve().is_relative_to(self.shared.resolve()),path
+                shutil.rmtree(path) if path.is_dir() else path.unlink()
         self.api(self.admin, "POST", f"/admin/competitions/{comp['id']}/start")
         # Practice from team A while the Windows graders are busy: only the bwrap grader is free.
         practice = self.api(a, "POST", "/benchmarks", expected=202, json={"submission_id": entries[0][1], "match_ms": 60000})
@@ -311,9 +320,20 @@ class Cluster:
                    attempts=[{k: x[k] for k in ("number", "status", "error_code")} for x in attempts])
         jobs = self.official_jobs()
         self.check("bwrap_grader_never_ran_official_work", all(j.get("worker") != "wsl-1" for j in jobs))
+        completed=next(j for j in jobs if j['status']=='completed')
+        full=self.api(self.admin,'GET','/admin/jobs/'+completed['id'])
+        with sqlite3.connect(self.data/'arena.sqlite') as db:
+            raw=db.execute("SELECT json_type(data,'$.report.moves') FROM documents WHERE id=?",(completed['id'],)).fetchone()[0]
+            archive=db.execute('SELECT length(data) FROM replay_archives WHERE job=?',(completed['id'],)).fetchone()
+        self.check('native_replay_report_hydrates_from_gzip_without_raw_job_duplicate',raw is None and bool(archive) and bool(full['report']['moves']),gzip_bytes=archive[0] if archive else None)
         done = self.wait_job(a, practice["id"])
         self.check("practice_check_may_run_on_linux_grader", done["status"] == "completed", grader=done.get("worker"),
                    platform=done["runtime"]["platform"])
+        linux_comp=self.api(self.admin,'POST','/admin/competitions',expected=201,json=dict(title='Compressed source bwrap fixture',max_teams=2,grader_platform='linux',match_ms=60000))
+        self.api(self.admin,'POST',f"/admin/competitions/{linux_comp['id']}/open")
+        linux_check=self.api(a,'POST','/benchmarks',expected=202,json=dict(submission_id=entries[0][1],competition_id=linux_comp['id']))
+        linux_done=self.wait_job(a,linux_check['id'])
+        self.check('bwrap_compiles_compressed_source_and_checks_500ms_samples',linux_done['status']=='completed' and linux_done['runtime']['platform']=='linux' and linux_done['profile']['turn_ms']==500,grader=linux_done.get('worker'),status=linux_done['status'],error=linux_done.get('error'))
         items = self.listing()
         self.check("grader_list_shows_killed_grader_offline", not items[victim]["online"],
                    online={n: items[n]["online"] for n in items})
@@ -350,7 +370,7 @@ class Cluster:
                 self.results.setdefault("logs", {})[name] = item["log"].read_text(errors="replace")[-4000:]
         out = ROOT / "test-results" / "m1"
         out.mkdir(parents=True, exist_ok=True)
-        filename = {"lease-probe": "grader-lease-probe.json", "installers": "grader-installers.json", "hub-restart": "hub-restart.json", "github": "github-native.json", "elo-timing": "elo-windows-timing-cluster.json", "elo-native": "elo-native-cluster.json", "elo-scheduler": "elo-scheduler-cluster.json"}.get(
+        filename = {"lease-probe": "grader-lease-probe.json", "installers": "grader-installers.json", "hub-restart": "hub-restart.json", "github": "github-native.json", "elo-timing": "elo-windows-timing-cluster.json", "elo-native": "elo-native-cluster.json", "elo-scheduler": "elo-scheduler-cluster.json", "benchmark-timing": "benchmark-windows-cluster.json"}.get(
             self.results.get("mode"), "grader-cluster.json")
         (out / filename).write_text(json.dumps(self.results, ensure_ascii=False, indent=2), encoding="utf-8")
         shutil.rmtree(self.shared, ignore_errors=True)

@@ -30,10 +30,10 @@ test('all public pages render for guests with no team or admin controls',()=>{
   const detail=page({...base,route:'competitions',ids:['cup']});
   assert.match(detail,/tư cách khách/);
   assert.match(detail,/#\/replay\/cup\/game/);
-  assert.doesNotMatch(detail,/id="entry-form"|Đến benchmark/);
+  assert.doesNotMatch(detail,/id="entry-form"|Đến kiểm tra/);
   assert.match(page({...base,route:'home'}),/Xem trận không cần đăng nhập/);
 });
 test('team entry and admin operations remain available to signed-in accounts',()=>{
-  assert.match(page({...base,route:'competitions',ids:['cup'],user:{role:'team',team_id:'one'}}),/Đến benchmark/);
+  assert.match(page({...base,route:'competitions',ids:['cup'],user:{role:'team',team_id:'one'}}),/Đến kiểm tra/);
   assert.match(page({...base,route:'competitions',user:{role:'admin'}}),/id="competition-form"/);
 });

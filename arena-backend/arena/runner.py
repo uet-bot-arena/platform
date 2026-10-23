@@ -255,7 +255,9 @@ class Runner:
         report["suite_sha256"] = digest(cases)
         report["warmups"] = 0
         clocks = {side: p.match_ms for side in engine.SIDES} if p.match_ms is not None else None
-        if clocks is not None:
+        if p.turn_ms==500 and p.match_ms is None:
+            report["clock_scope"]="per_sample_500_ms"
+        elif clocks is not None:
             report["clock_scope"] = "one cumulative bank across all 72 benchmark samples"
         self.phase(job, "benchmarking", total=len(cases) * 3)
         for index, case in enumerate(cases * 3):

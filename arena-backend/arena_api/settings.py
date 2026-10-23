@@ -85,6 +85,17 @@ class SubmissionSettings:
     max_per_hour: int = 30
 
 
+@dataclass(frozen=True)
+class RetentionSettings:
+    replay_games: int = 50
+    check_reports: int = 20
+    source_versions: int = 3
+    binary_versions: int = 2
+    interval_seconds: int = 3600
+    disk_warning_percent: int = 60
+    disk_cleanup_percent: int = 75
+
+
 HUB_ENV = {"data_dir": "ARENA_API_DATA", "origin": "ARENA_API_ORIGIN", "cookie_secure": "ARENA_API_COOKIE_SECURE",
            "trusted_proxies": "ARENA_TRUSTED_PROXIES", "connection_limit": "ARENA_CONNECTION_LIMIT",
            "thread_limit": "ARENA_THREAD_LIMIT", "hash_workers": "ARENA_HASH_WORKERS", "ui_root": "ARENA_UI_ROOT",
@@ -113,6 +124,7 @@ class Settings:
     publisher: PublisherSettings = UNSET
     github: GitHubSettings = UNSET
     submissions: SubmissionSettings = UNSET
+    retention: RetentionSettings = UNSET
     secrets: Secrets = field(default=UNSET, repr=False)
     config_file: Path | None = None
 
@@ -170,7 +182,7 @@ def load(names, path=None, env=None):
         raise ConfigError("Cấu hình sai: grader.heartbeat_seconds phải nhỏ hơn một nửa grader.lease_seconds")
     section = Reader(data, "publisher", base)
     values["publisher"] = PublisherSettings(
-        interval_seconds=section.integer("interval_seconds", 5, 1, 60),
+        interval_seconds=section.integer("interval_seconds", 5, 5, 10),
         output_dir=section.path("output_dir", None))
     section.finish()
     section = Reader(data, "github", env=env, env_map={"webhook_hosts": "ARENA_GITHUB_WEBHOOK_HOSTS"})
@@ -184,6 +196,18 @@ def load(names, path=None, env=None):
     section = Reader(data, "submissions")
     values["submissions"] = SubmissionSettings(max_per_hour=section.integer("max_per_hour", 30, 1, 1000))
     section.finish()
+    section = Reader(data, 'retention')
+    values['retention'] = RetentionSettings(
+        replay_games=section.integer('replay_games', 50, 0, 10000),
+        check_reports=section.integer('check_reports', 20, 1, 1000),
+        source_versions=section.integer('source_versions', 3, 3, 3),
+        binary_versions=section.integer('binary_versions', 2, 2, 2),
+        interval_seconds=section.integer('interval_seconds', 3600, 60, 86400),
+        disk_warning_percent=section.integer('disk_warning_percent', 60, 1, 99),
+        disk_cleanup_percent=section.integer('disk_cleanup_percent', 75, 2, 100))
+    section.finish()
+    if values['retention'].disk_warning_percent >= values['retention'].disk_cleanup_percent:
+        raise ConfigError('retention.disk_warning_percent phải nhỏ hơn disk_cleanup_percent')
     for host in values["github"].webhook_hosts:
         if not re.fullmatch(r"[a-z0-9.-]+(?::\d+)?", host):
             raise ConfigError("Cấu hình sai: github.webhook_hosts chỉ chứa tên máy, ví dụ abc.trycloudflare.com")

@@ -1,12 +1,13 @@
-import {esc,head,panel,note,table,field,errors,submit,link,date,short} from './view.js';
+import {esc,head,panel,note,table,field,errors,submit,link,date,short,etaRange} from './view.js';
 
 const stateNames={detected:'Đang nhận bài',checking:'Đang kiểm tra',pass:'Đạt',fail:'Lỗi',replaced:'Đã thay bằng bản mới'};
 export function githubProgress(commit){
   const checks=commit.checks||[],active=checks.find(c=>['waiting','checking'].includes(c.state));
   if(active){
-    if(active.phase==='queued'||!active.job_id){const p=active.queue_position;return 'Đang chờ'+(p?' · vị trí '+p+'/'+Math.max(p,active.queue_total||p):'');}
-    if(active.phase==='building')return 'Đang biên dịch';
-    return 'Đang kiểm tra '+(active.samples||0)+'/72';
+    const eta=active.eta?' · '+etaRange(active.eta):'';
+    if(active.phase==='queued'||!active.job_id){const p=active.queue_position;return 'Đang chờ'+(p?' · vị trí '+p+'/'+Math.max(p,active.queue_total||p):'')+eta;}
+    if(active.phase==='building')return 'Đang biên dịch'+eta;
+    return 'Đang kiểm tra '+(active.samples||0)+'/72'+eta;
   }
   return stateNames[commit.state]||commit.state;
 }

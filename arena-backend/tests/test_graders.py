@@ -16,7 +16,7 @@ from arena import engine
 from arena.adjudication import CURRENT
 from arena.config import match_profile, profile
 from arena.protocol import Fault
-from arena.runner import fixtures
+from arena.runner import fixtures,digest
 from arena.verify import verify
 import test_competitions as competition_tests
 from test_web_api import APIHarness
@@ -115,6 +115,15 @@ class Verification(unittest.TestCase):
             verify(job, "completed", bad)
         with self.assertRaises(Fault):
             verify(job, "completed", {**report, "samples": samples[:71]})
+
+    def test_new_benchmark_rejects_changed_profile_missing_scope_and_late_samples(self):
+        from arena.config import benchmark_profile,match_profile
+        p=benchmark_profile().public();job=dict(id='bounded',kind='benchmark',profile=p)
+        cases=fixtures()
+        report=dict(passed=True,profile=p,clock_scope='per_sample_500_ms',suite_sha256=digest(cases),samples=[dict(case_id=c['id'],action=engine.legal_moves(c['state'])[0],wall_ms=1) for c in cases*3])
+        verify(job,'completed',report)
+        for updates in (dict(profile=match_profile(60000).public()),dict(clock_scope='bank'),dict(samples=[dict(x,wall_ms=500) for x in report['samples']])):
+            with self.assertRaises(Fault):verify(job,'completed',dict(report,**updates))
 
 
 class GraderAPI(APIHarness):
@@ -553,6 +562,7 @@ class GraderLifecycle(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.grader = Grader("http://localhost", "test", state_dir=self.tmp.name, backend_factory=FakeBackend)
         self.grader.client = Mock()
+        self.grader.settings = {"heartbeat_seconds":5}  # Negotiated before run_lease in production.
         self.lease = {"lease_id": "lease-test", "fencing": 7, "job": {"id": "job-test", "kind": "match"}}
 
     def test_release_all_stops_bots_and_returns_fenced_leases(self):

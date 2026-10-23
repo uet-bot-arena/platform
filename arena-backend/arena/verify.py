@@ -5,6 +5,7 @@ it reports is replayed here. A report whose moves, final board or result disagre
 replay is rejected (result_mismatch) and never scored.
 """
 from arena import engine
+import math
 from arena.adjudication import CURRENT, policy, position_key
 from arena.config import stored_profile
 from arena.protocol import Fault
@@ -34,10 +35,15 @@ def verify_benchmark(job, report):
         raise mismatch("benchmark needs 72 passed samples")
     if report.get("suite_sha256") != digest(cases):
         raise mismatch("benchmark suite differs")
+    bounded=job.get('profile',{}).get('turn_ms')==500
+    if bounded and (report.get('profile')!=job['profile'] or report.get('clock_scope')!='per_sample_500_ms'):
+        raise mismatch('benchmark must use its pinned per-sample 500 ms clock')
     for index, sample in enumerate(samples):
         case = cases[index % len(cases)]
         if not isinstance(sample, dict) or sample.get("case_id") != case["id"]:
             raise mismatch(f"sample {index} is for another case")
+        if bounded and (type(sample.get('wall_ms')) not in (int,float) or not math.isfinite(sample['wall_ms']) or not 0<=sample['wall_ms']<500):
+            raise mismatch(f'sample {index} exceeds its 500 ms clock')
         action = sample.get("action")
         if not isinstance(action, dict) or "resign" in action:
             raise mismatch(f"sample {index} has no legal move")

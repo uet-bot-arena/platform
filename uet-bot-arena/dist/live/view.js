@@ -15,7 +15,7 @@ export const field=(label,name,extra='',type='text',value='')=>`<label class="fi
 export const password=(label,name,autocomplete='current-password')=>`<div class="field"><label for="${name}">${esc(label)}</label><div class="password-wrap"><input class="input" id="${name}" type="password" name="${name}" required maxlength="128" autocomplete="${autocomplete}"><button type="button" data-action="password" data-target="${name}" aria-label="Hiện mật khẩu">Hiện</button></div></div>`;
 export const head=(title,sub='',actions='')=>`<div class="page-heading"><div><h1>${esc(title.replace(/[.]$/,''))}</h1>${sub?`<p>${esc(sub)}</p>`:''}</div>${actions?`<div class="page-actions">${actions}</div>`:''}</div>`;
 export const empty=(title,text='')=>`<div class="empty-state"><h3>${esc(title)}</h3>${text?`<p>${esc(text)}</p>`:''}</div>`;
-const statusLabels={draft:'Bản nháp',open:'Mở đăng ký',locked:'Đã chốt',running:'Đang chạy',paused:'Tạm dừng',completed:'Hoàn tất',pending:'Chờ',queued:'Đã vào hàng đợi',starting:'Đang chuẩn bị',building:'Đang biên dịch',validating:'Đang khởi động',benchmarking:'Đang benchmark',playing:'Đang đấu',failed:'Lỗi',aborted:'Đã dừng',attention:'Cần xử lý',approved:'Đã duyệt',rejected:'Từ chối'};
+const statusLabels={draft:'Bản nháp',open:'Mở đăng ký',locked:'Đã chốt',running:'Đang chạy',paused:'Tạm dừng',completed:'Hoàn tất',pending:'Chờ',queued:'Đã vào hàng đợi',starting:'Đang chuẩn bị',building:'Đang biên dịch',validating:'Đang khởi động',benchmarking:'Đang kiểm tra',playing:'Đang đấu',failed:'Lỗi',aborted:'Đã dừng',attention:'Cần xử lý',approved:'Đã duyệt',rejected:'Từ chối'};
 export const statusLabel=status=>statusLabels[status]||status;
 export const runtimeLabels={cpp17:'C++17',c11:'C11',python3:'Python 3.11 (PyPy)'};
 export const runtimeLabel=runtime=>runtimeLabels[runtime]||runtime||'C++17';
@@ -30,8 +30,8 @@ export const table=(headers,rows)=>`<div class="table-wrap"><table><thead><tr>${
 export const errors=()=>'<div class="form-error" role="alert"></div>';
 export const submit=label=>`<button type="submit" class="btn primary">${esc(label)}</button>`;
 
-const nav=[['home','Tổng quan','grid'],['live','Trực tiếp','radio'],['schedule','Lịch thi đấu','calendar'],['standings','Bảng xếp hạng','trophy'],['competitions','Giải đấu','shield']];
-const teamNav=[['team','Cá nhân & đội','users'],['submissions','Nộp bot','upload'],['benchmark','Test & benchmark','code'],['practice','Luyện tập','play']];
+const nav=[['home','Tổng quan','grid'],['queue','Tình trạng chấm','clock'],['live','Trực tiếp','radio'],['schedule','Lịch thi đấu','calendar'],['standings','Bảng xếp hạng','trophy'],['competitions','Giải đấu','shield']];
+const teamNav=[['team','Cá nhân & đội','users'],['submissions','Nộp bot','upload'],['benchmark','Kiểm tra bot','code'],['practice','Luyện tập','play']];
 const names=Object.fromEntries([...nav,...teamNav,['guide','Tài liệu & thể lệ'],['admin','Đội & tài khoản'],['graders','Máy chấm'],['email','Gửi email'],['matching','Ghép đội'],['users','Người dùng & lập đội'],['operations','Vận hành bot'],['rulesets','Ruleset add-on'],['audit','Nhật ký quản trị'],['arena','Phòng thi đấu'],['replay','Replay'],['jobs','Chi tiết tác vụ']]);
 export function shell(s,content) {
   const user=s.user, admin=user?.role==='admin';
@@ -42,3 +42,5 @@ export function shell(s,content) {
 export function authFrame(content) {
   return `<main class="real-auth" id="main" tabindex="-1"><section class="auth-brand-panel"><a class="brand" href="#/home">${logo()}<span><strong>UET Bot Arena</strong><small>Đại học Công nghệ</small></span></a><div class="auth-story"><h1>Thi đấu bot OTTv2</h1><p>Đăng ký đội, nộp bot Python, C hoặc C++ và theo dõi các trận đấu Oẳn Tù Tì trên bàn cờ.</p><dl class="auth-facts"><div><dt>Ngôn ngữ</dt><dd>Python 3.11 / C11 / C++17</dd></div><div><dt>Thể thức</dt><dd>Swiss / Vòng tròn hai lượt</dd></div><div><dt>Tài khoản</dt><dd>Email trường · Mỗi người một tài khoản</dd></div></dl><a class="auth-public-link" href="#/live">Xem trận không cần đăng nhập ${icon('arrow')}</a></div><small>UET Bot Arena · OTTv2</small></section><section class="real-auth-content">${content}</section></main>`;
 }
+
+export const etaRange=eta=>!eta?'':eta.upper_seconds<120?`còn khoảng ${Math.floor(eta.lower_seconds)}–${Math.ceil(eta.upper_seconds)} giây`:`còn khoảng ${Math.ceil(eta.lower_seconds/60)}–${Math.ceil(eta.upper_seconds/60)} phút`;

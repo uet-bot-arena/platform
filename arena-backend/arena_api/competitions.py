@@ -11,7 +11,7 @@ import uuid
 
 from arena import engine, sandbox, experimental, basic_rules
 from arena.adjudication import CURRENT, LEGACY, policy, valid_result
-from arena.config import BUILD_FLAGS, PYTHON_TOOLCHAIN, request_profile, stored_profile, scale_profile, runtime_flags
+from arena.config import benchmark_profile, BUILD_FLAGS, PYTHON_TOOLCHAIN, request_profile, stored_profile, scale_profile, runtime_flags
 from arena.protocol import Fault
 from arena.service import TERMINAL, digest, fixtures
 from arena_api.accounts import now_ms
@@ -217,24 +217,29 @@ class Competitions:
     def qualification(self, config, team, submission_id, benchmark_id):
         source = self.store.get(submission_id, team, "submission")
         job = self.store.get(benchmark_id, team, "job")
-        report = job.get("report") or {}
+        report = job.get("report") or job.get('qualification') or {}
+        check_profile=benchmark_profile()
+        if config.get('basic_rules'):
+            d=config['basic_rules']['definition'];check_profile=scale_profile(check_profile,d['rows']*d['cols'])
         artifacts = report.get("artifacts") or []
         artifact = artifacts[0] if len(artifacts) == 1 else {}
         if (source.get("runtime") not in ("cpp17", "c11", "python3") or job.get("kind") != "benchmark" or job["status"] != "completed"
                 or job.get("submission_ids") != [submission_id] or report.get("passed") is not True
                 or (report.get("ruleset") or {}).get("hash") != (config.get("ruleset") or {}).get("hash")
                 or (report.get("basic_rules") or {}).get("hash") != (config.get("basic_rules") or {}).get("hash")
-                or report.get("error") or report.get("aborted") or len(report.get("samples", [])) != 72
+                or report.get("error") or report.get("aborted") or (len(report.get('samples', [])) if job.get('report') else report.get('sample_count')) != 72
                 or (report.get("turn_wall_ms") or {}).get("samples") != 72
-                or report.get("profile") != config["profile"] or runtime_of(report) != runtime_of(config)
+                or report.get("profile") not in (check_profile.public(),config["profile"])
+                or job.get("profile",report.get("profile"))!=report.get("profile") or runtime_of(report) != runtime_of(config)
                 or report.get("engine_sha256") != config["engine_sha256"] or report.get("suite_sha256") != config["suite_sha256"]
                 or report.get("suite_id") != config["suite_id"] or artifact.get("source") != source.get("source")
                 or runtime_of(artifact) != runtime_of(config) or artifact.get("sdk_sha256") != config["sdk_sha256"]
                 or artifact.get("flags") != config.get("runtime_flags",{"cpp17":config["build_flags"]}).get(source.get("runtime")) or not artifact.get("artifact_sha256")
                 or artifact.get("runtime", "cpp17") != source.get("runtime")):
-            raise Fault("qualification_required", "A completed 72-sample benchmark under this exact competition profile/toolchain is required")
+            raise Fault("qualification_required", "A completed 72-sample check under the pinned rules/toolchain is required")
         return {"team_id": team, "submission_id": submission_id, "version": source["version"], "source": source["source"],
-                "artifact_sha256": artifact["artifact_sha256"], "benchmark_id": benchmark_id, "benchmark_report_sha256": digest(report)}
+                "artifact_sha256": artifact["artifact_sha256"], "benchmark_id": benchmark_id,
+                "benchmark_report_sha256": digest(report) if job.get('report') else report['report_sha256']}
 
     def enter(self, actor, team, ident, body, key):
         def action():
@@ -275,7 +280,12 @@ class Competitions:
                 account = self.one("SELECT id FROM accounts WHERE team_id=? AND locked=0 AND must_change=0", (entry["team_id"],))
                 if not account:
                     raise Fault("competition_conflict", "All entered teams must have active accounts at lock time")
+                other=self.one("SELECT e.submission_id FROM competition_entries e JOIN competitions c ON c.id=e.competition_id WHERE e.team_id=? AND e.competition_id<>? AND c.status IN ('locked','running','paused') AND e.submission_id<>? LIMIT 1",(entry['team_id'],ident,entry['submission_id']))
+                if other:
+                    raise Fault('competition_conflict','Đội đang có bot khác được ghim trong giải chưa xong; hoàn tất giải đó trước để giữ đúng giới hạn cache')
                 current = self.qualification(item["config"], entry["team_id"], entry["submission_id"], entry["benchmark_id"])
+                if not self.service.has_artifact(item['config']['grader_platform'],current['artifact_sha256']):
+                    raise Fault('qualification_required','Binary cũ đã dọn; kiểm tra lại commit trước khi chốt bot dự giải')
                 saved = json.loads(entry["snapshot"])
                 for key in ("github_sha", "github_pushed_ms", "deadline_source"):
                     saved.pop(key, None)

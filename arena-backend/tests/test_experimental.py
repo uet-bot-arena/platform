@@ -181,7 +181,7 @@ class ExperimentalAPI(APIHarness):
         with self.assertRaises(Fault):experimental.provider(tampered)
         # Even matching runtime metrics must not qualify a different ruleset.
         config=comp['config'];artifact=dict(source=source['source'],runtime_id=config['runtime_id'],sdk_sha256=config['sdk_sha256'],flags=config['build_flags'],artifact_sha256='a'*64)
-        report=dict(passed=True,samples=[{}]*72,turn_wall_ms={'samples':72},profile=config['profile'],runtime_id=config['runtime_id'],engine_sha256=config['engine_sha256'],suite_id=config['suite_id'],suite_sha256=config['suite_sha256'],artifacts=[artifact],ruleset=job['ruleset'])
+        report=dict(passed=True,samples=[{}]*72,turn_wall_ms={'samples':72},profile=job['profile'],runtime_id=config['runtime_id'],engine_sha256=config['engine_sha256'],suite_id=config['suite_id'],suite_sha256=config['suite_sha256'],artifacts=[artifact],ruleset=job['ruleset'])
         store.update(job['id'],status='completed',report=report)
         self.app.state.competitions.qualification(config,team_id,source['id'],job['id'])
         report['ruleset']={**job['ruleset'],'hash':'0'*64};store.update(job['id'],report=report)

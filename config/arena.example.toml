@@ -84,3 +84,13 @@ poll_seconds = 60
 
 [submissions]
 max_per_hour = 30
+
+# Lịch sử bot nằm trong git của đội. Hub giữ cache cần thiết để chấm.
+[retention]
+replay_games = 50
+check_reports = 20
+source_versions = 3
+binary_versions = 2
+interval_seconds = 3600
+disk_warning_percent = 60
+disk_cleanup_percent = 75

@@ -91,6 +91,19 @@ class EloRounds(EloFixture):
         for phase,stamp in (('general',3000),('top',5000)):
             rid=self.book.start(self.ident,phase,1,stamp,self.entries)
             self.complete_games(rid);self.book.finish(rid,stamp+1000)
+        from arena_api.retention import Retention
+        from arena_api.settings import RetentionSettings
+        pruned=[];official=[]
+        for row in self.comp.rows('SELECT id,phase FROM elo_rounds WHERE competition_id=?',(self.ident,)):
+            for game in self.book.games(row['id']):
+                job=self.store.create('job','competition:'+self.ident,dict(kind='match',status='completed',submission_ids=[],
+                    official=dict(phase=row['phase'],entries=[dict(team_id=game['red_team_id']),dict(team_id=game['blue_team_id'])]),
+                    report=dict(result=json.loads(game['result']),moves=[{}],samples=[{}])))
+                self.store.event(job['id'],'completed',dict(result=json.loads(game['result'])))
+                (pruned if row['phase']=='ladder' else official).append(job['id'])
+        Retention(self.comp.service,RetentionSettings(replay_games=0)).run()
+        self.assertTrue(all(not self.store.events(j) for j in pruned))
+        self.assertTrue(all(self.store.events(j) for j in official))
         for stage in ('ladder','official'):
             exported=self.book.export(self.ident,stage)
             serialized=json.dumps(exported)

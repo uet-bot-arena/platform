@@ -43,11 +43,11 @@ def public_job(job, full=False):
         return job
     result = {key: value for key, value in job.items() if key not in ("report",)}
     if job["kind"] == "benchmark":
-        report = job.get("report") or {}
+        report = job.get("report") or job.get('check_summary') or {}
         result["benchmark_summary"] = {"passed": report.get("passed") is True,
-                                       "samples": len(report.get("samples", [])),
+                                       "samples": len(report['samples']) if isinstance(report.get('samples'), list) else report.get('samples', 0),
                                        "suite_id": report.get("suite_id"),
-                                       "turn_wall_ms": report.get("turn_wall_ms")}
+                                       "turn_wall_ms": report.get("turn_wall_ms"), 'reason': report.get('reason')}
     return result
 
 
@@ -167,7 +167,8 @@ def jobs(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Q
 @router.get("/jobs/{ident}", summary="Chi tiết job gồm báo cáo nếu có")
 def job(ident: str, request: Request, auth=Depends(team_principal)):
     value = public_job(request.app.state.store.get(ident, auth["user"]["team_id"], "job"), full=True)
-    return {**value, "queue_position": request.app.state.service.pending.position(ident)}
+    return {**value, "queue_position": request.app.state.service.pending.position(ident),
+            'eta':request.app.state.service.job_eta(value)}
 
 
 @router.get("/jobs/{ident}/report", summary="Tải báo cáo timing/provenance; 409 khi chưa có báo cáo")
@@ -188,7 +189,8 @@ def events(ident: str, request: Request, after: int = Query(0, ge=0, le=92233720
             raise Fault("invalid_request", "Invalid Last-Event-ID")
         after = int(last_event_id)
     if "text/event-stream" not in request.headers.get("Accept", ""):
-        return {"items": [private_event(job, e) for e in store.events(ident, after)]}
+        return {"items": [private_event(job, e) for e in store.events(ident, after)],
+                **({'replay_pruned':True} if job.get('replay_pruned') else {})}
 
     async def stream():
         cursor, until = after, time.monotonic() + 60
@@ -197,7 +199,9 @@ def events(ident: str, request: Request, after: int = Query(0, ge=0, le=92233720
                 return
             try:
                 # Revoked/expired sessions must not keep a live feed open.
-                await asyncio.to_thread(request.app.state.accounts.principal, request.cookies.get(COOKIE, ""))
+                value=await request.app.state.broadcast.principal(request.app.state.accounts,request.cookies.get(COOKIE, ""))
+                if value['user']['team_id']!=team_id:
+                    raise Fault('unauthorized','Đội đã thay đổi')
             except Fault:
                 yield 'event: auth_expired\ndata: {}\n\n'
                 return
@@ -215,4 +219,4 @@ def events(ident: str, request: Request, after: int = Query(0, ge=0, le=92233720
                 return
             yield ": heartbeat\n\n"
             await asyncio.sleep(1)
-    return StreamingResponse(stream(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"})
+    return StreamingResponse(request.app.state.broadcast.limited(auth["user"]["id"],stream()), media_type="text/event-stream", headers={"X-Accel-Buffering": "no", "Cache-Control":"no-cache"})

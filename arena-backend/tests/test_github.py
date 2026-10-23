@@ -246,15 +246,19 @@ class GitHubAPI(APIHarness):
         else:
             source = self.store.get(job["submission_ids"][0])
             if purpose == "practice":
-                report = {"passed": True, "samples": [{}] * 72}
+                report = {"passed": True, "samples": [{}] * 72, "artifacts":[{"artifact_sha256":"4"*64}]}
             else:
                 config = self.app.state.competitions.get(purpose)["config"]
                 artifact = {"artifact_sha256": "4" * 64, "source": source["source"], "runtime_id": config["runtime_id"],
                             "flags": ["pypy3", "-I", "-S"], "runtime": "python3", "sdk_sha256": config["sdk_sha256"]}
-                report = {"passed": True, "samples": [{}] * 72, "turn_wall_ms": {"samples": 72}, "profile": config["profile"],
+                report = {"passed": True, "samples": [{}] * 72, "turn_wall_ms": {"samples": 72}, "profile": job["profile"],
                           "runtime_id": config["runtime_id"], "engine_sha256": config["engine_sha256"], "suite_id": config["suite_id"],
                           "suite_sha256": config["suite_sha256"], "artifacts": [artifact]}
-            self.store.update(job["id"], status="completed", report=report)
+            platform=(job.get('requires') or {}).get('platform') or 'linux'
+            folder=self.app.state.service.artifacts/platform
+            folder.mkdir(parents=True,exist_ok=True)
+            (folder/('4'*64)).write_bytes(b'synthetic-only-binary')
+            self.store.update(job['id'],status='completed',report=report,runtime={'platform':platform})
         self.g.tick()
 
     def competition(self, deadline):
@@ -477,6 +481,64 @@ class GitHubAPI(APIHarness):
         choice = self.g.one("SELECT * FROM github_deadlines WHERE competition_id=?", (ident,))
         self.assertEqual(choice["state"], "needs_approval")
         self.assertEqual([r["sha"] for r in json.loads(choice["candidates"])], [first, second])
+
+    def test_retention_old_pass_still_enters_ladder_after_25_failed_pushes(self):
+        from arena_api.elo_rounds import RoundBook
+        from arena_api.retention import Retention
+        self.attach()
+        ident=self.competition(self.clock+1_000_000)
+        good=self.push()
+        self.complete(good,ident)
+        before=RoundBook(self.app.state.competitions).latest_passes(ident,self.clock,self.team_id)
+        self.assertEqual(before[self.team_id]['github_sha'],good)
+        for n in range(2,27):
+            sha=self.push(n,files={'bot/bot.py':f'# invalid fixture {n}'.encode()})
+            self.complete(sha,ident,error='illegal_action')
+        Retention(self.app.state.service).run()
+        after=RoundBook(self.app.state.competitions).latest_passes(ident,self.clock,self.team_id)
+        self.assertEqual(before,after)
+        check=self.g.one('SELECT job_id FROM github_checks WHERE sha=? AND purpose=?',(good,ident))
+        self.assertIsNone(self.store.get(check['job_id'])['report'])
+        self.assertEqual(self.store.get(check['job_id'])['qualification']['sample_count'],72)
+
+    def test_pruned_source_is_refetched_by_exact_sha_without_adding_a_cached_version(self):
+        from arena_api.retention import Retention
+        self.attach()
+        first=self.push();self.complete(first)
+        old=self.push(2,files={'bot/bot.py':b'# old failed bot'})
+        self.complete(old,error='illegal_action')
+        source=self.store.get(self.g.one('SELECT submission_id FROM github_commits WHERE sha=?',(old,))['submission_id'])
+        self.push(3,files={'bot/bot.py':b'# latest bot'})
+        Retention(self.app.state.service).run()
+        folder=Path(source['source_path'])
+        self.assertFalse(folder.exists());self.assertFalse(folder.with_suffix('.zip').exists())
+        raw=self.app.state.service.submission_archive(source)
+        self.assertEqual(hashlib.sha256(raw).hexdigest(),source['source']['zip_sha256'])
+        self.assertFalse(folder.with_suffix('.zip').exists())
+        self.fake.commits[old]['sha']='f'*40
+        with self.assertRaises(Fault) as raised:self.app.state.service.submission_archive(source)
+        self.assertEqual(raised.exception.code,'provenance_mismatch')
+
+        self.fake.commits[old]['sha']=old
+        self.push(4,files={'bot/bot.py':b'# old failed bot'})
+        self.app.state.service.submission_archive(source)
+        self.assertTrue(folder.with_suffix('.zip').exists())
+        self.assertFalse(self.store.get(source['id'])['cache_pruned'])
+
+    def test_deadline_rechecks_a_pass_whose_compiled_binary_was_pruned(self):
+        self.attach();ident=self.competition(self.clock+10_000)
+        sha=self.push();self.complete(sha,ident)
+        old=self.g.one('SELECT job_id FROM github_checks WHERE sha=? AND purpose=?',(sha,ident))['job_id']
+        path=self.app.state.service.artifact_path({},'windows','4'*64)
+        self.assertTrue(path.resolve().is_relative_to(self.store.root.resolve()))
+        path.unlink()
+        self.clock+=20_000;self.g.tick()
+        self.assertEqual(self.g.one('SELECT state FROM github_deadlines WHERE competition_id=?',(ident,))['state'],'checking')
+        self.g.tick()
+        new=self.g.one('SELECT job_id FROM github_checks WHERE sha=? AND purpose=?',(sha,ident))['job_id']
+        self.assertNotEqual(old,new)
+        self.complete(sha,ident)
+        self.assertEqual(self.g.one('SELECT state FROM github_deadlines WHERE competition_id=?',(ident,))['state'],'locked')
 
     def test_windows_filename_collisions_and_devices_are_student_errors(self):
         self.attach()

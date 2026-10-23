@@ -44,6 +44,10 @@ def match_profile(match_ms=300_000):
     return Profile(id=f"ottv2-bank-{match_ms // 1000}s-v2", match_ms=match_ms, turn_ms=match_ms)
 
 
+def benchmark_profile():
+    return Profile(id='ottv2-check-500ms-v1',turn_ms=500,job_wall_ms=90_000)
+
+
 def request_profile(body):
     if body.get("match_ms") is not None and body.get("turn_ms") is not None:
         raise ValueError("Choose match_ms or legacy turn_ms, not both")
@@ -56,8 +60,10 @@ def stored_profile(value):
         if type(area) is not int or not 49 <= area <= 225:
             raise ValueError("Invalid board area")
         clock = "match_ms" if value.get("match_ms") is not None else "turn_ms"
-        return scale_profile(request_profile({clock: value[clock]}), area)
-    return match_profile(value["match_ms"]) if value.get("match_ms") is not None else profile(value["turn_ms"])
+        base=benchmark_profile() if clock=='turn_ms' and value[clock]==500 else request_profile({clock:value[clock]})
+        return scale_profile(base, area)
+    return (match_profile(value["match_ms"]) if value.get("match_ms") is not None else
+            benchmark_profile() if value['turn_ms']==500 else profile(value["turn_ms"]))
 
 
 def scale_profile(p, area):

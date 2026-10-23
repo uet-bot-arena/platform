@@ -1,7 +1,7 @@
 // Watch only fixture metadata. The board keeps its own move/clock SSE stream.
 export class CompetitionFollow {
-  constructor(api,{competitionId,fixtureId,onSwitch,onExpired,onError,onState}) {
-    Object.assign(this,{api,competitionId,fixtureId,onSwitch,onExpired,onError,onState});
+  constructor(api,{competitionId,fixtureId,currentFixture,onSwitch,onExpired,onError,onState}) {
+    Object.assign(this,{api,competitionId,fixtureId,currentFixture,onSwitch,onExpired,onError,onState});
     this.enabled=true;this.disposed=false;
     this.checkbox=document.getElementById('follow-competition');
     this.message=document.getElementById('competition-follow-message');
@@ -24,15 +24,17 @@ export class CompetitionFollow {
   pause(){if(this.disposed)return;this.enabled=false;this.checkbox.checked=false;this.update();}
   update(){
     if(this.disposed||!this.state)return;
-    const current=this.state.fixtures.find(f=>f.id===this.fixtureId);
+    const index=this.state.fixtures.findIndex(f=>f.id===this.fixtureId);
+    const current=index>=0?this.state.fixtures[index]:this.currentFixture;
     if(!current)return;
-    const later=this.state.fixtures.filter(f=>f.ordinal>current.ordinal);
+    this.currentFixture=current;
+    const later=index>=0?this.state.fixtures.slice(index+1):this.state.fixtures;
     const next=later.find(f=>f.status==='queued')||later.find(f=>f.status==='pending')||later.filter(f=>f.status==='completed').at(-1);
     this.review.href='#/replay/'+this.competitionId+'/'+current.id;
     this.next.hidden=!next;
     if(next){this.next.href='#/arena/'+this.competitionId+'/'+next.id;this.next.textContent='Trận tiếp theo · #'+next.ordinal;}
     if(['completed','attention'].includes(current.status)&&['queued','completed'].includes(next?.status)&&this.enabled){
-      const previous=this.fixtureId;this.fixtureId=next.id;
+      const previous=this.fixtureId;this.fixtureId=next.id;this.currentFixture=next;
       this.onSwitch(next,previous);this.update();return;
     }
     this.message.textContent=!this.enabled?'Đã tắt tự chuyển trận · Giữ bàn hiện tại.':

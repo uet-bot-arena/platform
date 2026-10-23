@@ -105,7 +105,9 @@ async def put_artifact(platform: str, sha256: str, request: Request, x_lease_id:
 @router.get("/grader/artifacts/{platform}/{sha256}", summary="Tải binary đã build theo SHA-256")
 def get_artifact(platform: str, sha256: str, request: Request, who=Depends(grader)):
     path = request.app.state.service.artifact_path(who, platform, sha256)
-    return Response(path.read_bytes(), media_type="application/octet-stream")
+    import gzip
+    data = path.read_bytes()
+    return Response(gzip.decompress(data) if path.suffix == '.gz' else data, media_type="application/octet-stream")
 
 
 @router.get("/grader/sources/{submission_id}", summary="Source của bài nộp trong lease đang giữ, dạng ZIP")

@@ -1,7 +1,7 @@
 import {select} from './view.js';
 
 export const matchControls=[['10000','Ladder · 10 giây / đội'],['60000','Bullet · 1 phút / đội'],['300000','Đấu thường · 5 phút / đội']];
-export const timeLabel=p=>p?.match_ms?(matchControls.find(([ms])=>Number(ms)===p.match_ms)?.[1]||`${p.match_ms/1000} giây / đội`):`${(p?.turn_ms||15000)/1000}s / lượt (luật cũ)`;
+export const timeLabel=p=>p?.id?.startsWith('ottv2-check-500ms-v1')?'Kiểm tra · 0,5 giây / mẫu':p?.match_ms?(matchControls.find(([ms])=>Number(ms)===p.match_ms)?.[1]||`${p.match_ms/1000} giây / đội`):`${(p?.turn_ms||15000)/1000}s / lượt (luật cũ)`;
 export const timeQuery=p=>p?.match_ms?'match='+p.match_ms:'turn='+(p?.turn_ms||15000);
 export function timeField(p={match_ms:300000}) {
   const legacy=!p.match_ms&&p.turn_ms;

@@ -13,7 +13,7 @@ import {publicRoute} from './access.js';
 import {readRuleForm,ruleEditor,rulePreviewMarkup,botRulesetField,botRulesetSelection,ruleFingerprint} from './experimental-ui.js';
 
 const api=new ArenaAPI(),app=document.getElementById('app'),modalRoot=document.getElementById('modal-root');
-const defaults=()=>({teamElo:null,github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
+const defaults=()=>({queue:null,rankingLookup:null,historyTotal:null,teamElo:null,github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
 const s={...defaults(),user:null,emailRequest:null,emailAddress:'',route:'home',ids:[],loading:false,adminTab:'accounts',registrationStatus:'pending',adminVisibility:'active',adminSearch:'',adminPage:1,opsTab:'jobs',opsPage:1,opsSearch:'',opsStatus:'',opsKind:'',opsTeam:''};
 let emailPoll,githubPoll;
 let generation=0,board,competitionFeed,jobFeed,toastTimer,modalFocus,returnTo='home',issued=null,issuedGrader=null,refreshingGeneration=null;
@@ -53,6 +53,7 @@ async function loadData(route,ids,q){
   const admin=s.user?.role==='admin';
   const needsTeams=s.user?.team_id&&['home','team','submissions','benchmark','practice','competitions','jobs','arena','replay'].includes(route)&&!admin;
   const work=[];
+  if(route==='queue')work.push(api.snapshot('queue.json').then(x=>data.queue=x));
   if(s.user&&['rulesets','benchmark','practice','competitions','submissions'].includes(route))work.push(api.request(admin?'/admin/rulesets':'/rulesets').then(x=>data.rulesetCatalog=x));
   if(route==='rulesets'&&ids[0])work.push(api.request('/rulesets/'+enc(ids[0])).then(x=>data.ruleDetail=x));
   if(s.user?.team_id&&!admin&&['team','submissions'].includes(route))work.push(api.request('/teams/me/github').then(x=>data.github=x));
@@ -78,6 +79,7 @@ async function loadData(route,ids,q){
   const cid=route==='competitions'?ids[0]:['arena','replay'].includes(route)?ids[0]==='practice'?null:ids[0]:route==='benchmark'?q.get('competition'):['schedule','live','standings'].includes(route)?q.get('competition')||data.competitions?.find(c=>!c.archived_ms)?.id:null;
   if(cid){
     const [competition,fixtures,standings]=await Promise.all([api.request('/competitions/'+enc(cid)),api.all('/competitions/'+enc(cid)+'/fixtures'),api.request('/competitions/'+enc(cid)+'/standings')]);Object.assign(data,{competition,fixtures,standings});
+    if(!s.user){const summary=await api.snapshot('fixtures/'+enc(cid)+'.json');data.historyTotal=summary.history_total; if(['arena','replay'].includes(route)&&ids[1]&&!fixtures.some(f=>f.id===ids[1]))fixtures.push((await api.snapshot('fixtures/'+enc(cid)+'/'+enc(ids[1])+'.json')).fixture);}
   }
   if(['arena','replay'].includes(route)&&ids[0]==='practice')data.job=await api.request('/jobs/'+enc(ids[1]));
   data.benchmarkCompetition=route==='benchmark'?q.get('competition'):null;
@@ -88,7 +90,7 @@ async function loadData(route,ids,q){
 async function openRoute(){
   const parsed=parseRoute(),id=++generation;clearView();
   if(parsed.route==='experimental'){history.replaceState(null,'','#/rulesets');openRoute();return;}
-  const supported=['home','login','verify-email','set-password','guest-register','guest-recover','email','register','recover','change-password','guide','team','matching','users','submissions','benchmark','practice','competitions','jobs','admin','operations','graders','rulesets','audit','schedule','live','standings','arena','replay'];
+  const supported=['home','login','verify-email','set-password','guest-register','guest-recover','email','register','recover','change-password','guide','team','matching','users','submissions','benchmark','practice','competitions','jobs','admin','operations','graders','rulesets','audit','schedule','live','standings','queue','arena','replay'];
   if(!supported.includes(parsed.route)){go('home');return;}
   if(!s.user&&!publicRoute(parsed.route,parsed.ids)){returnTo=parsed.raw;go('login');return;}
   if(s.user?.must_change_password&&parsed.route!=='change-password'){go('change-password');return;}
@@ -125,7 +127,7 @@ async function openRoute(){
         board.start();
       };
       if(options.officialLive){
-        competitionFeed=new CompetitionFollow(api,{competitionId:s.competition.id,fixtureId:fixture.id,onExpired:expired,onError:handleError,
+        competitionFeed=new CompetitionFollow(api,{competitionId:s.competition.id,fixtureId:fixture.id,currentFixture:fixture,onExpired:expired,onError:handleError,
           onState:state=>{if(id===generation){s.fixtures=state.fixtures;s.competition.status=state.status;}},
           onSwitch:next=>{
             if(id!==generation)return;
@@ -145,6 +147,7 @@ async function openRoute(){
 let eloPoll;
 function watchElo(id){
   clearTimeout(eloPoll);
+  if(id===generation&&s.route==='queue'){eloPoll=setTimeout(async()=>{try{const queue=await api.snapshot('queue.json');if(id===generation){s.queue=queue;patchPage();watchElo(id);}}catch(e){if(id===generation){handleError(e);watchElo(id);}}},5000);return;}
   if(id!==generation||!['competitions','standings'].includes(s.route)||s.competition?.config.format!=='elo')return;
   eloPoll=setTimeout(async()=>{try{
     const cid=s.competition.id;
@@ -201,7 +204,8 @@ async function runForm(form,task){if(form.dataset.busy)return;form.dataset.busy=
 document.addEventListener('submit',e=>{
   const form=e.target;if(!form.matches('.real-form'))return;e.preventDefault();const data=new FormData(form),v=name=>String(data.get(name)||'').trim();
   runForm(form,async()=>{
-    if(form.id==='ruleset-form'){
+    if(form.id==='standings-lookup'){s.rankingLookup=await api.snapshot('standings/'+enc(s.competition.id)+'/'+enc(v('team_id'))+'.json');patchPage();
+    }else if(form.id==='ruleset-form'){
       const definition=readRuleForm(form),r=s.ruleEditing;
       const result=await api.post(r?'/admin/rulesets/'+r.id+'/edit':'/admin/rulesets',{definition,release_notes:v('release-notes'),...(r?{expected_revision:r.revision}:{})},keyFor(form));
       s.ruleEditing=result;s.ruleDraft=null;s.ruleNotes=null;s.rulePreview=null;s.rulePreviewActions=[];await refreshRules();toast('Đã lưu bản nháp. Chọn Kiểm tra & công bố để các đội sử dụng.');
@@ -246,7 +250,7 @@ document.addEventListener('submit',e=>{
     }else if(form.id==='github-attach-form'){
       s.github=await api.post('/teams/me/github',{url:v('repository')});toast('Đã gắn repo; push lên main để kiểm tra.');render();
     }else if(form.id==='benchmark-form'){
-      const job=await api.post('/benchmarks',{submission_id:v('submission_id'),...(s.benchmarkCompetition?{competition_id:s.benchmarkCompetition}:timeBody(data)),...botRulesetSelection(s,[v('submission_id')],v('ruleset_id'))},keyFor(form));go('jobs/'+job.id);
+      const job=await api.post('/benchmarks',{submission_id:v('submission_id'),...(s.benchmarkCompetition?{competition_id:s.benchmarkCompetition}:{}),...botRulesetSelection(s,[v('submission_id')],v('ruleset_id'))},keyFor(form));go('jobs/'+job.id);
     }else if(form.id==='practice-form'){
       const mine=v('red_submission_id'),opponent=v('blue_submission_id'),teamRed=(v('team_side')||'red')==='red';const sides=opponent.startsWith('sample:')?{red_submission_id:mine,sample_bot_id:opponent.slice(7),sample_side:teamRed?'blue':'red'}:teamRed?{red_submission_id:mine,blue_submission_id:opponent}:{red_submission_id:opponent,blue_submission_id:mine};const job=await api.post('/matches',{...sides,...timeBody(data),delegate_timeout_claims:data.get('delegate')==='on',...botRulesetSelection(s,[mine,opponent],v('ruleset_id'))},keyFor(form));go('arena/practice/'+job.id);
     }else if(form.id==='competition-form'){
@@ -406,6 +410,7 @@ document.addEventListener('click',async e=>{
       b.disabled=true;const j=await api.request('/admin/jobs/'+enc(b.dataset.id));b.disabled=false;
       modal('Tác vụ · '+short(j.id),`${badge(j.status)}<p>${esc(j.kind)} · ${date(j.created_unix_ms)}</p><pre class="report-json">${esc(JSON.stringify(j,null,2))}</pre>${button('Tải JSON','admin-job-download',`data-id="${j.id}"`)}${j.official?note('Mở giải đấu tương ứng để xem lịch sử lần chạy hoặc chạy lại trận lỗi.'):''}`);return;
     }
+    if(action==='retention-run'){b.disabled=true;await api.post('/admin/retention/run');toast('Đã dọn dữ liệu theo chính sách.');await openRoute();return;}
     if(action==='admin-job-download'){saveBlob('job-'+short(b.dataset.id)+'.json',new Blob([JSON.stringify(await api.request('/admin/jobs/'+enc(b.dataset.id)),null,2)],{type:'application/json'}));return;}
     if(action==='submission-manifest'){const item=s.adminSubmissions.find(x=>x.id===b.dataset.id);modal('Source · '+item.version,`<pre class="report-json">${esc(JSON.stringify(item,null,2))}</pre>`);return;}
     if(action==='elo-exclude'){
@@ -442,6 +447,7 @@ document.addEventListener('click',async e=>{
     if(action==='diagnostic'){await diagnostic(b.dataset.fixture);return;}
     if(action==='retry-fixture'){const fid=b.dataset.fixture;confirmAction('Chạy lại trận?','Tạo lần chạy mới cho trận chưa tính điểm. Lịch sử cũ được giữ lại.',()=>api.post(`/admin/competitions/${s.competition.id}/fixtures/${fid}/retry`,{},keyFor(b)));return;}
     if(action==='export-standings'){
+      if(!s.user){const a=document.createElement('a');a.href='/snapshots/standings/'+enc(s.competition.id)+'.csv';a.click();return;}
       const csvCell=value=>'"'+String(value??'').replace(/^[=+@\-\t\r]/,"'$&").replaceAll('"','""')+'"';
       const rows=[['Hạng','Đội','Phiên bản','Trận','Thua','Hòa','Thắng','Điểm'],...s.standings.items.map(x=>[x.rank,x.name,x.version,x.played,x.losses,x.draws||0,x.wins,x.points])];saveBlob('standings.csv',new Blob(['\uFEFF'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));
     }

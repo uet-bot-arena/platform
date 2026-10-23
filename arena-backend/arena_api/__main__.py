@@ -13,6 +13,9 @@ def main():
     parser = argparse.ArgumentParser(description="UET Bot Arena web backend")
     sub = parser.add_subparsers(dest="action", required=True)
     sub.add_parser("migrate", help="Apply SQL migrations while the controller is stopped")
+    sub.add_parser('cleanup', help='Dọn retention khi hub đã dừng; hub đang chạy dùng POST /api/v1/admin/retention/run')
+    publish = sub.add_parser('publish', help='Process riêng, chỉ đọc DB, xuất snapshot công khai')
+    publish.add_argument('--once',action='store_true')
     admin = sub.add_parser("bootstrap-admin", help="Create admin offline; no default account/password")
     admin.add_argument("--username", required=True)
     admin.add_argument("--password-stdin", action="store_true", help="Read one password line from stdin; never from argv")
@@ -32,6 +35,10 @@ def main():
                     access_log=False, proxy_headers=False, limit_concurrency=settings.connection_limit,
                     timeout_keep_alive=5, timeout_graceful_shutdown=400)
         return
+    if args.action == 'publish':
+        from arena_api.publisher import run
+        run(settings, args.once)
+        return
     lease, store = Lease(settings.data), None
     try:
         store = Store(settings.data, recover_jobs=False)
@@ -39,6 +46,17 @@ def main():
             from arena_api.migrations import migrate
             migrate(store)
             print("Database migrations applied")
+        elif args.action == 'cleanup':
+            import json
+            from arena.service import Service
+            from arena_api.retention import Retention
+            from arena_api.migrations import migrate
+            migrate(store)
+            if store.db.execute('PRAGMA auto_vacuum').fetchone()[0] != 2:
+                store.db.execute('PRAGMA auto_vacuum=INCREMENTAL')
+                store.db.execute('VACUUM')
+            service = Service(store, start_worker=False, grader=settings.grader)
+            print(json.dumps(Retention(service, settings.retention).run(), ensure_ascii=False))
         else:
             password = sys.stdin.readline().rstrip("\r\n") if args.password_stdin else getpass.getpass("Admin password (8..128 characters): ")
             if not args.password_stdin and password != getpass.getpass("Confirm password: "):

@@ -59,8 +59,10 @@ class RequestBoundary:
 
         async def safe_send(message):
             if message["type"] == "http.response.start":
+                if not any(k.lower()==b'cache-control' for k,v in message.get('headers', [])):
+                    message.setdefault('headers', []).append((b'cache-control', b'no-store'))
                 message.setdefault("headers", []).extend([
-                    (b"x-request-id", ident.encode()), (b"cache-control", b"no-store"),
+                    (b"x-request-id", ident.encode()),
                     (b"x-content-type-options", b"nosniff"), (b"referrer-policy", b"no-referrer"),
                     (b"content-security-policy", b"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")])
             await send(message)
@@ -125,7 +127,7 @@ def create_app(settings=None, start_worker=True):
 
     @asynccontextmanager
     async def lifespan(app):
-        lease, store, service, competitions, github = Lease(settings.data), None, None, None, None
+        lease, store, service, competitions, github, retention = Lease(settings.data), None, None, None, None, None
         try:
             store = Store(settings.data)
             app.state.store = store
@@ -158,11 +160,19 @@ def create_app(settings=None, start_worker=True):
             app.state.broadcast = Snapshots()
             from arena_api.operations import Operations
             app.state.operations = Operations(store, app.state.accounts, service, competitions)
+            from arena_api.retention import Retention
+            retention = Retention(service, settings.retention)
+            app.state.retention = retention
             if start_worker:
                 competitions.thread.start()
                 github.thread.start()
+                retention.thread.start()
             yield
         finally:
+            if retention:
+                retention.stop.set()
+                if retention.thread.is_alive():
+                    await asyncio.to_thread(retention.thread.join)
             if github:
                 github.stop.set()
                 github.wake.set()
@@ -188,6 +198,8 @@ def create_app(settings=None, start_worker=True):
                   docs_url=None, redoc_url=None)
     app.state.settings = settings
     app.add_middleware(RequestBoundary, settings=settings)
+    from arena_api import snapshot_routes
+    app.include_router(snapshot_routes.router)
     app.include_router(auth_routes.router)
     from arena_api import people_routes
     app.include_router(people_routes.router)

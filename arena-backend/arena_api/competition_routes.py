@@ -7,11 +7,26 @@ from pydantic import Field
 from starlette.responses import StreamingResponse
 from arena.protocol import Fault
 from arena.service import TERMINAL
-from arena_api.dependencies import spectator_admin, admin_principal, team_principal
+from arena_api.dependencies import spectator_admin, admin_principal, team_principal, COOKIE, peer
 from arena_api.schemas import CompetitionCreate, CompetitionEntry
 from arena_api.schemas import CompetitionEdit, Revision, Model
 
 router = APIRouter(prefix="/api/v1", tags=["competitions"])
+
+
+def stream_identity(request):
+    cookie=request.cookies.get(COOKIE,'')
+    try:
+        value=request.app.state.accounts.principal(cookie) if cookie else None
+    except Fault:
+        value=None
+    return (value['user']['id'],True) if value else ('guest:'+peer(request),False)
+
+
+async def stream_admin(request,authenticated):
+    if not authenticated:return False
+    auth=await request.app.state.broadcast.principal(request.app.state.accounts,request.cookies.get(COOKIE,''))
+    return auth['user']['role']=='admin' and not auth['user']['must_change_password']
 
 
 @router.post("/admin/competitions", status_code=201, summary="Tạo giải Elo, vòng tròn hoặc Swiss; ghim engine/runtime/SDK/profile")
@@ -120,6 +135,7 @@ def watch(ident: str, request: Request, admin=Depends(spectator_admin)):
     if 'text/event-stream' not in request.headers.get('Accept', ''):
         return initial
 
+    account,authenticated=stream_identity(request)
     async def stream():
         previous, until = None, time.monotonic() + 60
         def snapshot(is_admin):
@@ -129,8 +145,7 @@ def watch(ident: str, request: Request, admin=Depends(spectator_admin)):
             if await request.is_disconnected():
                 return
             try:
-                from starlette.concurrency import run_in_threadpool
-                is_admin = await run_in_threadpool(spectator_admin, request) if request.cookies else False
+                is_admin = await stream_admin(request,authenticated)
                 payload, finished = await request.app.state.broadcast.get_async(("watch", ident, is_admin),
                     lambda: snapshot(is_admin))
             except Fault:
@@ -144,7 +159,7 @@ def watch(ident: str, request: Request, admin=Depends(spectator_admin)):
             if finished:
                 return
             await asyncio.sleep(1)
-    return StreamingResponse(stream(), media_type='text/event-stream',
+    return StreamingResponse(request.app.state.broadcast.limited(account,stream()), media_type='text/event-stream',
                              headers={'X-Accel-Buffering': 'no', 'Cache-Control': 'no-cache'})
 
 
@@ -164,8 +179,10 @@ def events(ident: str, fixture_id: str, request: Request, after: int = Query(0, 
         after = int(parts[1]) if parts[0] == job_id else 0
     if "text/event-stream" not in request.headers.get("Accept", ""):
         safe, cursor = competitions.safe_events(job_id, after)
-        return {"attempt_id": job_id, "items": safe, "next_after": cursor}
+        pruned=bool(job_id and request.app.state.store.get(job_id,hydrate=False).get('replay_pruned'))
+        return {"attempt_id": job_id, "items": safe, "next_after": cursor, **({'replay_pruned':True} if pruned else {})}
 
+    account,authenticated=stream_identity(request)
     async def stream():
         cursor, until = after, time.monotonic() + 60
         # Always announce attempt, even before the scheduler creates it.
@@ -174,8 +191,7 @@ def events(ident: str, fixture_id: str, request: Request, after: int = Query(0, 
             if await request.is_disconnected():
                 return
             try:
-                from starlette.concurrency import run_in_threadpool
-                is_admin = await run_in_threadpool(spectator_admin, request) if request.cookies else False
+                is_admin = await stream_admin(request,authenticated)
                 current = await request.app.state.broadcast.get_async(("fixture", ident, fixture_id, is_admin),
                     lambda: competitions.live_fixture(ident, fixture_id, is_admin))
             except Fault:
@@ -198,7 +214,7 @@ def events(ident: str, fixture_id: str, request: Request, after: int = Query(0, 
                     return
             yield ": heartbeat\n\n"
             await asyncio.sleep(1)
-    return StreamingResponse(stream(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"})
+    return StreamingResponse(request.app.state.broadcast.limited(account,stream()), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"})
 
 
 @router.get('/competitions/{ident}/elo/export',summary='Kết quả theo mã ván để tính lại Elo và điểm vòng tròn; không chứa source')

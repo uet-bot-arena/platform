@@ -101,7 +101,9 @@ class NewFlows(APIHarness):
         submission=self.store.create('submission',issued['account']['team_id'],{'version':'v1.0.0','runtime':'python3','protocol_version':2})
         job=self.post(team,'/benchmarks',{'submission_id':submission['id'],'competition_id':cid},expected=202)
         self.assertEqual(job['basic_rules'],comp['config']['basic_rules'])
-        self.assertEqual(job['profile'],comp['config']['profile'])
+        self.assertEqual(job['profile']['turn_ms'],500)
+        self.assertIsNone(job['profile'].get('match_ms'))
+        self.assertEqual(job['profile']['board_area'],100)
         guest=self.other_client()
         for endpoint in ('/competitions','/competitions/'+cid):
             response=guest.get('/api/v1'+endpoint)

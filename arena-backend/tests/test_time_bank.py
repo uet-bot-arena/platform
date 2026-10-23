@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 from pydantic import ValidationError
 from arena import engine
 from arena.adjudication import CURRENT
-from arena.config import match_profile, profile, request_profile, stored_profile
+from arena.config import benchmark_profile, match_profile, profile, request_profile, stored_profile
 from arena.protocol import Fault
 from arena.runner import LocalRunner
 from arena.store import Store
@@ -84,3 +84,23 @@ class TimeBank(unittest.TestCase):
         self.assertEqual(budgets,list(range(60000,52800,-100)))
         self.assertEqual(report['clocks']['red'],52800)
         self.assertTrue(report['passed'])
+
+    def test_new_check_resets_half_second_budget_for_every_sample(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store=Store(tmp,recover_jobs=False)
+            try:
+                p=benchmark_profile()
+                self.assertEqual(stored_profile(p.public()),p)
+                service=LocalRunner(store);job=store.create('job','check-test',dict(kind='benchmark',profile=p.public()))
+                observations=[]
+                def turn(message):
+                    observations.append(message)
+                    self.assertNotIn('clocks',message['payload'])
+                    return dict(message=dict(payload=message['payload']['legal_moves'][0]),wall_ms=400)
+                report=dict(samples=[])
+                service.run_benchmark(job,Mock(turn=turn),report,p)
+                self.assertEqual(len(observations),72)
+                self.assertEqual(report['clock_scope'],'per_sample_500_ms')
+                self.assertNotIn('clocks',report)
+                self.assertTrue(report['passed'])
+            finally:store.db.close()

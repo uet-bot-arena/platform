@@ -28,6 +28,8 @@ class GitHub:
         self.stop, self.wake = threading.Event(), threading.Event()
         self.thread = threading.Thread(target=self.loop, name="github-intake", daemon=True)
         self.tick_lock = threading.Lock()
+        self.restore_lock = threading.Lock()
+        service.restore_source = self.restore_source
         # HTTP waits overlap; bounded intake keeps worst-case archive RAM below 4 x 64 MiB.
         self.pollers = ThreadPoolExecutor(max_workers=32, thread_name_prefix="github-poll") if concurrent else None
         self.receivers = ThreadPoolExecutor(max_workers=4, thread_name_prefix="github-source") if concurrent else None
@@ -36,6 +38,40 @@ class GitHub:
         for pool in (self.pollers, self.receivers):
             if pool:
                 pool.shutdown(wait=True, cancel_futures=True)
+
+    def restore_source(self, item):
+        # Fetch pinned content without retaining a fourth cached source version.
+        with self.restore_lock:
+            repo = self.one('SELECT * FROM github_repositories WHERE team_id=?', (item['team_id'],))
+            rows = self.rows('SELECT sha FROM github_commits WHERE submission_id=? ORDER BY received_ms DESC', (item['id'],))
+            if not repo or repo['state'] != 'connected' or not rows:
+                raise Fault('github_unavailable', 'Không tải lại được bot cũ; kiểm tra quyền App của repo')
+            for row in rows:
+                try:
+                    commit = self.client.get(repo['owner'], repo['name'], repo['installation_id'], '/commits/'+row['sha'])[2]
+                    if commit.get('sha') != row['sha']:
+                        raise Fault('provenance_mismatch', 'GitHub trả về commit khác SHA đã ghim')
+                    root = self.client.get(repo['owner'], repo['name'], repo['installation_id'], '/git/trees/'+commit['commit']['tree']['sha'])[2]
+                    bot = next((x for x in root['tree'] if x['path']=='bot' and x.get('type')=='tree' and x.get('mode')=='040000'), None)
+                    if root.get('truncated') or not bot:
+                        raise Fault('provenance_mismatch', 'Cây bot cũ không khớp')
+                    tree = self.client.get(repo['owner'], repo['name'], repo['installation_id'], '/git/trees/'+bot['sha'])[2]
+                    runtime, raw, _ = bot_archive(self.client.tarball(repo['owner'], repo['name'], repo['installation_id'], row['sha']), tree)
+                    if runtime != item['runtime'] or hashlib.sha256(raw).hexdigest() != item['source']['zip_sha256']:
+                        raise Fault('provenance_mismatch', 'Nội dung bot tải lại không khớp nguồn đã ghim')
+                    return raw
+                except GitHubError as exc:
+                    if exc.status in (401,403):
+                        raise Fault('github_unavailable','Không còn quyền đọc repo; kiểm tra quyền App') from None
+                    continue
+            raise Fault('github_unavailable', 'SHA cũ không còn đọc được trên GitHub; đội cần khôi phục commit đó')
+
+    def check_binary_available(self, job_id):
+        job = self.store.get(job_id)
+        report = job.get('report') or job.get('qualification') or {}
+        artifacts = report.get('artifacts') or []
+        platform = (job.get('runtime') or {}).get('platform') or (job.get('requires') or {}).get('platform')
+        return bool(artifacts) and all(self.service.has_artifact(platform, a.get('artifact_sha256')) for a in artifacts)
 
     def rows(self, sql, args=()):
         with self.store.lock:
@@ -214,7 +250,7 @@ class GitHub:
         if job and job["status"] not in TERMINAL:
             return
         if job and job["status"] == "completed":
-            passed = (job.get("report") or {}).get("passed") is True
+            passed = (job.get("report") or job.get('check_summary') or {}).get("passed") is True
             self.execute("UPDATE github_checks SET state=?,finished_ms=? WHERE team_id=? AND sha=? AND purpose=?", ("pass" if passed else "fail", self.clock(), team, sha, purpose))
             self.execute("UPDATE github_commits SET state=? WHERE team_id=? AND sha=?", ("pass" if passed else "fail", team, sha))
             return
@@ -232,7 +268,7 @@ class GitHub:
             old = self.one("SELECT c.job_id FROM github_checks c JOIN github_commits g USING(team_id,sha) "
                            "WHERE g.team_id=? AND g.submission_id=? AND c.purpose=? AND c.state='pass' LIMIT 1",
                            (team, commit["submission_id"], purpose))
-            if old:
+            if old and self.check_binary_available(old['job_id']):
                 self.execute("UPDATE github_checks SET job_id=?,state='pass',finished_ms=? WHERE team_id=? AND sha=? AND purpose=?", (old["job_id"], self.clock(), team, sha, purpose))
                 self.execute("UPDATE github_commits SET state='pass' WHERE team_id=? AND sha=?", (team, sha))
                 return
@@ -397,6 +433,9 @@ class GitHub:
                 return
             if check["state"] == "fail":
                 continue
+            if not self.check_binary_available(check['job_id']):
+                self.execute("UPDATE github_checks SET state='waiting',job_id=NULL WHERE team_id=? AND sha=? AND purpose=?", (team,sha,ident))
+                return
             with self.store.transaction():
                 current = self.competitions.get(ident)
                 self.competitions.require_status(current, "open")
@@ -436,6 +475,7 @@ class GitHub:
                     check["phase"] = job["status"]
                     check["queue_position"] = self.service.pending.position(job["id"])
                     check["queue_total"] = queue_total
+                    check['eta'] = self.service.job_eta(job)
                     report = job.get("report") or {}
                     progress = [e["data"].get("completed", 0) for e in self.store.events(job["id"]) if e["type"] == "progress"]
                     check["samples"] = max([len(report.get("samples", [])), *progress])

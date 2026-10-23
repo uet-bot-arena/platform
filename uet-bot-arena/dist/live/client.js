@@ -1,4 +1,5 @@
 // Same-origin session only. No password, session or CSRF in browser storage.
+import {snapshotPath,publicRequest,PublicFeed} from './public-client.js';
 const responseBody=response=>(response.headers.get('Content-Type')||'').includes('json')?response.json():response.text();
 export class APIError extends Error {
   constructor(response, result) {
@@ -9,7 +10,7 @@ export class APIError extends Error {
       server_busy:'Máy chủ đang bận vì quá nhiều kết nối. Hãy chờ một chút rồi thử lại.',
       server_error:'Máy chủ đang gặp sự cố. Hãy giữ nguyên biểu mẫu và thử lại sau.',
       password_change_required:'Hãy đổi mật khẩu tạm trước khi tiếp tục.', worker_unavailable:'Máy chấm chưa nhận được yêu cầu. Hãy thử lại sau.',
-      qualification_required:'Cần benchmark đạt đủ 72 mẫu với đúng thời gian và cấu hình của giải.',
+      qualification_required:'Cần bản kiểm tra Đạt đủ 72 mẫu với đúng bộ luật và cấu hình máy chấm của giải.',
       competition_conflict:error.detail, registration_conflict:'Tên đội đã đăng ký hoặc hồ sơ đã được xử lý.',
       account_conflict:'Tên đăng nhập đã tồn tại. Hãy chọn tên khác.', quota_exceeded:'Đã đạt giới hạn hoặc hàng đợi đang đầy. Hãy thử lại sau.',
       rate_limited:'Bạn đã gửi quá nhiều yêu cầu. Hãy thử lại sau.', version_conflict:'Phiên bản đã tồn tại. Hãy dùng một phiên bản mới.'};
@@ -22,6 +23,7 @@ export class APIError extends Error {
 export class ArenaAPI {
   csrf = null;
   async request(path, {method='GET', body, headers={}, signal}={}) {
+    if(method==='GET'&&!this.csrf&&(snapshotPath(path)||path.split('?')[0].endsWith('/watch')))return publicRequest(this,path);
     if (method !== 'GET' && this.csrf) headers = {...headers, 'X-CSRF-Token':this.csrf};
     if (body !== undefined && !(body instanceof Blob)) {
       headers = {...headers, 'Content-Type':'application/json'}; body = JSON.stringify(body);
@@ -48,7 +50,20 @@ export class ArenaAPI {
     if(!response.ok) throw new APIError(response, await responseBody(response));
     return response.blob();
   }
-  stream(path) { return new EventSource('/api/v1'+path); }
+  async snapshot(name){
+    const response=await fetch('/snapshots/'+name,{credentials:'omit',signal:AbortSignal.timeout(30000)});
+    const result=await responseBody(response);
+    if(!response.ok)throw new APIError(response,result);
+    return result;
+  }
+  async featured(){
+    if(!this.featuredValue||Date.now()-this.featuredValue.at>=1500){
+      this.featuredValue={at:Date.now(),value:this.snapshot('featured.json')};
+      this.featuredValue.value.catch(()=>{this.featuredValue=null;});
+    }
+    return this.featuredValue.value;
+  }
+  stream(path) { return !this.csrf&&path.startsWith('/competitions/')?new PublicFeed(this,path):new EventSource('/api/v1'+path); }
 }
 
 export function saveBlob(name, blob) {

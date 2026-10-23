@@ -88,7 +88,15 @@ def restore_team(ident: str, body: Revision, request: Request, auth=Depends(admi
 
 @router.get('/metrics', summary='Metrics vận hành thật; lịch sử 7 ngày theo Asia/Bangkok, health cache 10s')
 def metrics(request: Request, auth=Depends(admin_principal)):
-    return request.app.state.operations.metrics()
+    return {**request.app.state.operations.metrics(), 'retention': request.app.state.retention.status()}
+
+
+@router.post('/retention/run', summary='BTC dọn dữ liệu theo retention; giữ mọi kết quả và replay chính thức')
+async def cleanup(request: Request, auth=Depends(admin_principal)):
+    from starlette.concurrency import run_in_threadpool
+    result = await run_in_threadpool(request.app.state.retention.run)
+    request.app.state.accounts.audit(auth['user']['id'], 'retention.run', str(result['completed_ms']))
+    return result
 
 
 @router.get('/jobs', summary='Danh sách job toàn nền tảng, có lọc; không kèm report nặng')

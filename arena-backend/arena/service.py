@@ -19,7 +19,7 @@ from arena import engine, experimental, basic_rules
 from arena.adjudication import CURRENT
 from arena.job_queue import DurableJobQueue
 from arena.archive import unpack
-from arena.config import profile, request_profile, stored_profile, scale_profile
+from arena.config import benchmark_profile, profile, request_profile, stored_profile, scale_profile
 from arena.protocol import Fault
 from arena.runner import TERMINAL, digest, engine_for, fixtures, summary  # noqa: F401 (re-exported)
 from arena.verify import verify
@@ -72,6 +72,8 @@ class Service:
         self.grader = grader or GraderDefaults()
         # Anchor lease timestamps once: wall-clock corrections must not shorten a live lease.
         self.lease_epoch_ms = now_ms() - time.monotonic_ns() // 1_000_000
+        with store.lock, store.db:
+            store.db.execute('INSERT OR REPLACE INTO controller_clock VALUES(1,?)', (self.lease_epoch_ms,))
         self.artifacts = Path(artifacts or store.root / "grader-artifacts")
         with store.lock, store.db:
             store.db.executescript("""
@@ -187,19 +189,24 @@ class Service:
             p = request_profile(body)
             pack = basic_rules.validated_snapshot(body["basic_rules"]) if body.get("basic_rules") else None
             if body.get("competition_id"):
-                config = self.competitions.view(body["competition_id"])["config"]
+                self.competitions.view(body["competition_id"])  # Preserve visibility checks.
+                config = self.competitions.get(body["competition_id"])["config"]
                 platform, runtime_id = config.get("grader_platform", "linux"), config.get("runtime_id") or config.get("image_id")
                 pack = config.get("basic_rules")
                 pinned_ruleset = (config.get('ruleset') or {}).get('id')
                 if ruleset_id and ruleset_id != pinned_ruleset:
                     raise ValueError("Use the competition's pinned ruleset")
                 ruleset_id = pinned_ruleset
-                if (body.get("match_ms") is not None or body.get("turn_ms") is not None) and p.public() != config["profile"]:
+                if kind!="benchmark" and (body.get("match_ms") is not None or body.get("turn_ms") is not None) and p.public() != config["profile"]:
                     raise ValueError("Use the competition's pinned time control")
                 p = stored_profile(config["profile"])
             elif pack:
                 d = pack["definition"]
                 p = scale_profile(p, d["rows"] * d["cols"])
+            if kind=='benchmark':
+                p=benchmark_profile()
+                if pack:
+                    d=pack['definition'];p=scale_profile(p,d['rows']*d['cols'])
             if pack and ruleset_id:
                 raise ValueError("Basic v2 rules cannot combine with SDK v3 add-ons")
         except ValueError as exc:
@@ -414,7 +421,7 @@ class Service:
         build = self.store.db.execute("SELECT artifact_sha256 FROM builds WHERE submission_id=? AND platform=? AND runtime_id=?",
                                       (ident, grader["platform"], grader["runtime_id"])).fetchone()
         required = official["entries"][index]["artifact_sha256"] if official else None
-        artifact = required or (build[0] if build and (self.artifacts / grader["platform"] / build[0]).is_file() else None)
+        artifact = required or (build[0] if build and self.has_artifact(grader['platform'], build[0]) else None)
         return {"id": ident, "team_id": owner, "version": item.get("version"), "runtime": item.get("runtime", "cpp17"),
                 "protocol_version": item.get("protocol_version", 2), "source": item["source"],
                 "source_url": f"/api/v1/grader/sources/{ident}",
@@ -484,26 +491,70 @@ class Service:
             raise Fault("not_found", "Artifact not found")
         path = self.artifacts / platform / sha256
         if not path.is_file():
+            path = path.with_suffix('.gz')
+        if not path.is_file():
             raise Fault("not_found", "Artifact not found")
         return path
 
-    def source_archive(self, grader, submission_id):
-        """Source files of a submission in an active lease of this grader, as a ZIP."""
+    def has_artifact(self, platform, sha256):
+        if platform not in PLATFORMS or not SHA256.fullmatch(sha256 or ''):
+            return False
+        path = self.artifacts / platform / sha256
+        return path.is_file() or path.with_suffix('.gz').is_file()
+
+    def job_eta(self, job):
+        if job['status'] in TERMINAL:
+            return None
+        requires = job.get('runtime') or job.get('requires') or {}
+        groups = {}
+        for grader in self.graders(online_only=True):
+            key = (grader['platform'],grader['runtime_id'])
+            if all(not requires.get(k) or requires[k]==grader[k] for k in ('platform','runtime_id')):
+                groups[key] = groups.get(key,0)+(grader['slots'] or 0)
+        if not groups:
+            return None
+        (platform,runtime_id),slots = max(groups.items(),key=lambda x:x[1])
+        with self.store.lock:
+            queued = self.store.db.execute('SELECT priority,seq FROM job_queue WHERE id=?',(job['id'],)).fetchone()
+            ahead = self.store.db.execute("SELECT json_extract(d.data,'$.kind'),json_extract(d.data,'$.profile.id') FROM job_queue q JOIN documents d ON d.id=q.id WHERE (q.platform IS NULL OR q.platform=?) AND (q.runtime_id IS NULL OR q.runtime_id=?) AND (q.priority<? OR (q.priority=? AND q.seq<=?))", (platform,runtime_id,queued[0],*queued)).fetchall() if queued else []
+            active = self.store.db.execute("SELECT json_extract(d.data,'$.kind'),json_extract(d.data,'$.profile.id') FROM grader_leases l JOIN documents d ON d.id=l.job_id JOIN graders g ON g.id=l.grader_id WHERE l.status='active' AND g.platform=? AND g.runtime_id=?", (platform,runtime_id)).fetchall()
+        # Different controls have different durations. Wait for their own
+        # timing model rather than pretending an official game is a check.
+        if any(row != (job['kind'],job['profile']['id']) for row in ahead+active):
+            return None
+        return self.timing.estimate(job['kind'],job['profile']['id'],platform,runtime_id,
+            max(1,len(ahead)+len(active)),slots,started=True,now_ms=self.lease_now_ms())
+
+    def submission_archive(self, item):
         import io
         import zipfile
+        folder = Path(item['source_path'])
+        compressed = folder.with_suffix('.zip')
+        if compressed.is_file():
+            return compressed.read_bytes()
+        if not folder.is_dir():
+            if getattr(self, 'restore_source', None):
+                raw = self.restore_source(item)
+                if getattr(self, 'cache_restored_source', None):
+                    self.cache_restored_source(item, raw)
+                return raw
+            raise Fault('github_unavailable', 'Bản cũ đã dọn; tải bot/ theo SHA từ GitHub rồi thử lại')
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as bundle:
+            for path in sorted(folder.iterdir()):
+                if path.is_file() and not path.is_symlink():
+                    bundle.write(path, path.name)
+        return buffer.getvalue()
+
+    def source_archive(self, grader, submission_id):
+        """Source files of a submission in an active lease of this grader, as a ZIP."""
         with self.store.lock:
             rows = self.store.db.execute("SELECT job_id FROM grader_leases WHERE grader_id=? AND status='active'", (grader["id"],)).fetchall()
         for (job_id,) in rows:
             job = self.store.get(job_id)
             if submission_id in job["submission_ids"]:
                 item = self.store.get(submission_id, kind="submission")
-                folder = Path(item["source_path"])
-                buffer = io.BytesIO()
-                with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as bundle:
-                    for path in sorted(folder.iterdir()):
-                        if path.is_file() and not path.is_symlink():
-                            bundle.write(path, path.name)
-                return buffer.getvalue()
+                return self.submission_archive(item)
         raise Fault("not_found", "Source not part of an active lease")
 
     def submit_result(self, grader, lease_id, fencing, status, report, error):
@@ -542,6 +593,14 @@ class Service:
                                                   "reason": (report or {}).get("aborted")})
         if self.competitions and job.get("official"):
             self.competitions.reconcile()
+        if job['kind']=='match':
+            from arena.store import REPLAY_REPORT_FIELDS
+            self.store.archive_events(job_id)
+            if report:
+                compact = {k:v for k,v in report.items() if k not in REPLAY_REPORT_FIELDS}
+                if 'final_state' in report:
+                    compact['final_state'] = {'result':report['final_state'].get('result')}
+                self.store.update(job_id, report=compact, report_compacted=True)
         return {"ok": True, "status": status, **({"error": error} if status == "failed" else {})}
 
     def release(self, grader, lease_id, fencing, reason="released"):

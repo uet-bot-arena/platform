@@ -45,6 +45,9 @@ class CompetitionAPI(APIHarness):
             "source": {"zip_sha256": "2" * 64, "files": {"bot.cpp": "3" * 64}}, "artifact": None})
         artifact = {"artifact_sha256": "4" * 64, "source": submission["source"], "runtime_id": config["runtime_id"],
                     "flags": BUILD_FLAGS, "sdk_sha256": config["sdk_sha256"]}
+        folder=self.store.root/'grader-artifacts'/config['grader_platform']
+        folder.mkdir(parents=True,exist_ok=True)
+        (folder/('4'*64)).write_bytes(b'synthetic-only-binary')
         benchmark = self.store.create("job", team, {"kind": "benchmark", "status": "completed", "submission_ids": [submission["id"]],
             "report": {"passed": True, "samples": [{"wall_ms": 1}] * 72, "turn_wall_ms": {"samples": 72},
                 "profile": config["profile"], "runtime_id": config["runtime_id"], "engine_sha256": config["engine_sha256"],
@@ -60,6 +63,23 @@ class CompetitionAPI(APIHarness):
             self.post(client, f"/competitions/{comp['id']}/entry", body)
         locked = self.post(self.client, f"/admin/competitions/{comp['id']}/lock")
         return locked, (a, b), (ca, cb), bodies
+
+    def test_lock_requires_available_binary_and_one_frozen_version_per_team(self):
+        first,clients,credentials,_=self.prepared()
+        second=self.create_comp()
+        for client,credential in zip(clients,credentials):
+            body=self.qualified(credential['account']['team_id'],second['config'])
+            self.post(client,f"/competitions/{second['id']}/entry",body)
+        rejected=self.post(self.client,f"/admin/competitions/{second['id']}/lock",expected=409)
+        self.assertEqual(rejected['error']['code'],'competition_conflict')
+        with self.store.transaction():
+            self.store.db.execute("UPDATE competitions SET status='completed' WHERE id=?",(first['id'],))
+        blob=self.comp.service.artifacts/second['config']['grader_platform']/('4'*64)
+        blob.unlink()
+        rejected=self.post(self.client,f"/admin/competitions/{second['id']}/lock",expected=409)
+        self.assertEqual(rejected['error']['code'],'qualification_required')
+        blob.write_bytes(b'synthetic-only-binary')
+        self.post(self.client,f"/admin/competitions/{second['id']}/lock")
 
     def launch(self, comp):
         self.post(self.client, f"/admin/competitions/{comp['id']}/start")
@@ -200,7 +220,7 @@ class CompetitionAPI(APIHarness):
         path = '/api/v1/competitions/'+comp['id']+'/watch'
         # The initial dependency sees admin, but a later stream iteration has
         # lost admin authority. No draft metadata can be streamed after that.
-        with patch('arena_api.competition_routes.spectator_admin', return_value=False):
+        with patch('arena_api.competition_routes.stream_admin', return_value=False):
             result = self.client.get(path, headers={'Accept':'text/event-stream'})
         self.assertEqual(result.status_code, 200)
         self.assertIn('event: unavailable', result.text)

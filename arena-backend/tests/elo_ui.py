@@ -13,7 +13,9 @@ import zipfile
 import uvicorn
 from playwright.sync_api import expect,sync_playwright
 from grader_browser import ROOT,PASSWORD,text_contrast
+from arena import engine
 from arena_api.elo_rounds import RoundBook
+from arena_api.publisher import Publisher
 import test_competitions as helpers
 from arena.conf import Secrets
 from arena.store import Store
@@ -23,7 +25,7 @@ from arena_api.settings import Settings
 
 
 def main():
-    output=ROOT/'test-results/m1/g7b/ui';output.mkdir(parents=True,exist_ok=True)
+    output=ROOT/'test-results/m1/g8/ui';output.mkdir(parents=True,exist_ok=True)
     result=dict(checks=[],page_errors=[])
     with tempfile.TemporaryDirectory(prefix='elo-ui-') as tmp:
         store=Store(tmp);Accounts(store).bootstrap_admin('organizer',PASSWORD);store.db.close()
@@ -85,10 +87,19 @@ def main():
                     app.state.store.db.execute('INSERT INTO github_checks(team_id,sha,purpose,job_id,state,finished_ms) VALUES(?,?,?,?,?,?)',(team,sha,ladder['id'],entry['benchmark_id'],state,1 if state=='pass' else None))
             ladder_route='competitions/'+ladder['id']
             elo_route='competitions/'+item['id']
+            guest_boards={}
+            for scheme,game in zip(('light','dark'),book.games(rid)[4:6]):
+                job=app.state.store.create('job','competition:'+item['id'],dict(kind='match',status='playing',profile=item['config']['profile'],report=None,submission_ids=[]))
+                with app.state.store.transaction():app.state.store.db.execute("UPDATE elo_games SET status='queued',current_job_id=? WHERE id=?",(job['id'],game['id']))
+                state=engine.initial_state();app.state.store.event(job['id'],'state',dict(state=state,counts=engine.counts(state)))
+                guest_boards[scheme]=(game,job,state)
+            publisher=Publisher(app.state.settings)
+            try:publisher.publish()
+            finally:publisher.close()
             with sync_playwright() as p:
                 browser=p.chromium.launch(headless=True)
                 for scheme in ('light','dark'):
-                    for username,route in (('organizer','operations'),('ui-fixture','practice'),('organizer',elo_route),('organizer',ladder_route),('ui-fixture','team')):
+                    for username,route in (('organizer','operations'),('ui-fixture','practice'),('ui-fixture','benchmark'),('organizer','home'),('organizer',elo_route),('organizer',ladder_route),('ui-fixture','team')):
                         context=browser.new_context(color_scheme=scheme,reduced_motion='reduce',viewport=dict(width=1440,height=1000))
                         page=context.new_page();page.on('pageerror',lambda e:result['page_errors'].append(str(e)))
                         page.goto(origin+'/#/login');page.locator('[name=username]').fill(username)
@@ -120,6 +131,12 @@ def main():
                         elif route==ladder_route:
                             expect(page.locator('#elo-page')).to_contain_text('Đếm ngược')
                             expect(page.locator('#elo-page')).to_contain_text('Tăng tuần này')
+                        elif route=='home':
+                            expect(page.locator('#main')).to_contain_text('Lưu trữ dữ liệu')
+                            expect(page.locator('[data-action=retention-run]')).to_be_visible()
+                        elif route=='benchmark':
+                            expect(page.locator('#main')).to_contain_text('0,5 giây riêng')
+                            expect(page.locator('#benchmark-form [name=match_ms]')).to_have_count(0)
                         elif route=='team':
                             expect(page.locator('#people-page')).to_contain_text('SHA đang dùng')
                             expect(page.locator('#people-page')).to_contain_text('Đang kiểm tra')
@@ -139,6 +156,45 @@ def main():
                             assert not failures,(route,scheme,width,failures)
                             result['checks'].append(dict(route=route,scheme=scheme,width=width,contrast_min=min(x['ratio'] for x in contrast)))
                         context.close()
+                publisher=Publisher(app.state.settings)
+                try:publisher.publish()
+                finally:publisher.close()
+                for scheme in ('light','dark'):
+                    context=browser.new_context(color_scheme=scheme,reduced_motion='reduce',viewport=dict(width=1440,height=1000))
+                    page=context.new_page();requests=[]
+                    page.on('request',lambda request:requests.append(request.url))
+                    page.on('pageerror',lambda e:result['page_errors'].append(str(e)))
+                    for route in ('queue','standings?competition='+item['id']):
+                        page.goto(origin+'/#/'+route)
+                        expect(page.locator('h1')).to_contain_text('Tình trạng chấm' if route=='queue' else 'Xếp hạng')
+                        if route=='queue':expect(page.locator('#main')).to_contain_text('Đang chờ kiểm tra')
+                        else:expect(page.locator('#elo-page')).to_contain_text('vòng tròn')
+                        for width in (1440,390):
+                            page.set_viewport_size(dict(width=width,height=1000 if width==1440 else 844))
+                            page.screenshot(path=str(output/f'guest-{route.split("?")[0]}-{scheme}-{width}.png'),full_page=True)
+                            assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),(scheme,route,width)
+                            contrast=text_contrast(page);assert all(x['ratio']>=4.5 for x in contrast),(scheme,route,width,contrast)
+                            result['checks'].append(dict(route='guest-'+route,scheme=scheme,width=width,contrast_min=min(x['ratio'] for x in contrast)))
+                    game,job,state=guest_boards[scheme]
+                    page.goto(origin+'/#/arena/'+item['id']+'/'+game['id'])
+                    expect(page.locator('#live-board .piece-symbol')).to_have_count(18)
+                    expect(page.locator('#replay-slider')).to_have_attribute('max','0')
+                    next_state=engine.apply(state,engine.legal_moves(state)[0])
+                    app.state.store.event(job['id'],'state',dict(state=next_state,counts=engine.counts(next_state)))
+                    publisher=Publisher(app.state.settings)
+                    try:publisher.publish()
+                    finally:publisher.close()
+                    expect(page.locator('#replay-slider')).to_have_attribute('max','1',timeout=8000)
+                    result['checks'].append(dict(route='guest-featured-live-board',scheme=scheme,passed=True))
+                    for width in (1440,390):
+                        page.set_viewport_size(dict(width=width,height=1000 if width==1440 else 844))
+                        page.screenshot(path=str(output/f'guest-board-{scheme}-{width}.png'),full_page=True)
+                        assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),(scheme,'guest-board',width)
+                    assert any('/snapshots/featured.json' in u for u in requests),requests
+                    assert not [u for u in requests if '/api/v1/competitions' in u],requests
+                    assert any('/snapshots/' in u for u in requests),requests
+                    result['checks'].append(dict(route='guest-static-only',scheme=scheme,passed=True))
+                    context.close()
                 browser.close()
             assert not result['page_errors'],result['page_errors']
             print(json.dumps(result,ensure_ascii=False),flush=True)

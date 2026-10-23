@@ -93,6 +93,7 @@ export class MatchBoard {
     for(let pages=0;pages<20;pages++){
       const requested=this.seq,h=await this.api.request(this.path+'?after='+requested);if(this.disposed)return;
       if(this.official&&h.attempt_id!==this.attempt){this.reset(h.attempt_id);if(requested>0)continue;}
+      if(h.replay_pruned){this.terminal=true;this.$('match-status').innerHTML=badge('completed');this.$('match-result').textContent='Kết quả vẫn được giữ trong lịch đấu.';this.message('Replay đã quá hạn lưu; hub giữ các ván ladder và luyện tập gần nhất của mỗi đội.');return;}
       const before=this.seq;
       for(const event of h.items)this.consume(event);
       this.seq=Math.max(this.seq,h.next_after||0);
