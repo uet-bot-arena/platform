@@ -267,7 +267,8 @@ def load_token(path, interactive):
 
 
 class Grader:
-    def __init__(self, hub, token, backend="docker", slots=1, cpus=None, state_dir=None, backend_options=None, backend_factory=None):
+    def __init__(self, hub, token, backend=None, slots=1, cpus=None, state_dir=None, backend_options=None, backend_factory=None):
+        backend = backend or ("windows" if os.name == "nt" else "bwrap")
         self.client = HubClient(hub, token)
         self.backend_name, self.slots = backend, slots
         cpu_count = os.cpu_count() or 1
@@ -287,6 +288,7 @@ class Grader:
         self.revoked = threading.Event()
         self.locks, self.locks_guard = {}, threading.Lock()
         self.active = {}
+        self.active_lock = threading.Lock()
         self.threads = []
         self.settings = None
         self.done = 0
@@ -338,11 +340,16 @@ class Grader:
         return self.settings
 
     def start(self):
+        if self.stopping.is_set():
+            return
         delay = 1
         while not self.stopping.is_set():
             try:
                 self.hello()
                 break
+            except Revoked:
+                self.revoke()
+                return
             except HubError as exc:
                 log.warning("Chưa kết nối được hub (%s); thử lại sau %s s", exc, delay)
                 if self.stopping.wait(delay):
@@ -378,8 +385,14 @@ class Grader:
 
     def run_lease(self, index, backend, lease):
         job = lease["job"]
-        runner = GraderRunner(self, backend, lease, threading.Event())
-        self.active[lease["lease_id"]] = runner
+        with self.active_lock:
+            stopping = self.stopping.is_set() or self.revoked.is_set()
+            if not stopping:
+                runner = GraderRunner(self, backend, lease, threading.Event())
+                self.active[lease["lease_id"]] = runner
+        if stopping:
+            self.release_lease(lease)
+            return
         beat = threading.Thread(target=self.heartbeat_loop, args=(runner,), daemon=True)
         beat.start()
         log.info("Slot %d: %s %s (lease %s, fencing %d)", index, job["kind"], job["id"][:8], lease["lease_id"][:8], lease["fencing"])
@@ -395,7 +408,8 @@ class Grader:
             self.done += 1
         finally:
             runner.lost.set()  # stops heartbeat and flusher
-            self.active.pop(lease["lease_id"], None)
+            with self.active_lock:
+                self.active.pop(lease["lease_id"], None)
 
     def post_result(self, runner, status):
         body = {"fencing": runner.lease["fencing"], "status": status, "report": runner.report,
@@ -430,22 +444,32 @@ class Grader:
             log.error("Hub đã thu hồi mã máy chấm này; dừng ngay.")
         self.revoked.set()
         self.stopping.set()
-        for runner in list(self.active.values()):
+        with self.active_lock:
+            runners = list(self.active.values())
+        for runner in runners:
             runner.abandon()
 
     def release_all(self):
-        self.stopping.set()
-        self.aborting.set()
-        for runner in list(self.active.values()):
+        with self.active_lock:
+            self.stopping.set()
+            self.aborting.set()
+            runners = list(self.active.values())
+        for runner in runners:
             runner.abandon()
-            try:
-                runner.client.call("POST", runner.path("release"), {"fencing": runner.lease["fencing"], "reason": "grader_stopping"}, timeout=5)
-            except Exception:
-                pass
+            self.release_lease(runner.lease)
 
-    def wait(self):
+    def release_lease(self, lease):
+        try:
+            self.client.call("POST", f"/api/v1/grader/leases/{lease['lease_id']}/release",
+                             {"fencing": lease["fencing"], "reason": "grader_stopping"}, timeout=5)
+        except (HubError, LeaseLost, Revoked, Fault):
+            pass  # If the hub is unreachable, the lease expires instead.
+
+    def wait(self, stop_file=None):
         for thread in self.threads:
             while thread.is_alive():
+                if stop_file and stop_file.is_file() and not self.aborting.is_set():
+                    self.release_all()
                 thread.join(0.5)
 
 
@@ -456,8 +480,9 @@ def sandbox_base():
 
 
 def main(argv=None):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None:
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="Máy chấm UET Bot Arena")
     parser.add_argument("--hub", required=True, help="Địa chỉ hub, ví dụ http://127.0.0.1:4181")
     parser.add_argument("--slots", type=int, default=1, help="Số trận chạy song song (mỗi slot một CPU)")
@@ -469,6 +494,7 @@ def main(argv=None):
     parser.add_argument("--check", action="store_true", help="Kiểm mã, sandbox và kết nối hub rồi thoát (dùng khi cài)")
     parser.add_argument("--log-file", help="Ghi nhật ký vào file (khi chạy nền không có cửa sổ)")
     parser.add_argument("--pid-file", help="Ghi PID của tiến trình (cho script quản lý)")
+    parser.add_argument("--stop-file", type=Path, help="Trả lease và dừng khi file này xuất hiện (script Windows)")
     args = parser.parse_args(argv)
     handlers = [logging.FileHandler(args.log_file, encoding="utf-8")] if args.log_file else None
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", handlers=handlers)
@@ -487,7 +513,8 @@ def main(argv=None):
     try:
         grader.hello()
     except Revoked:
-        raise SystemExit("Hub từ chối mã máy chấm (sai hoặc đã thu hồi).")
+        log.error("Hub từ chối mã máy chấm (sai hoặc đã thu hồi).")
+        raise SystemExit(3)
     except HubError as exc:
         if args.check:
             raise SystemExit(f"Chưa kết nối được hub: {exc}")
@@ -514,8 +541,12 @@ def main(argv=None):
     signal.signal(signal.SIGINT, on_signal)
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, on_signal)
-    grader.start()
-    grader.wait()
+    try:
+        grader.start()
+        grader.wait(args.stop_file)
+    finally:
+        if args.pid_file:
+            Path(args.pid_file).unlink(missing_ok=True)
     if grader.revoked.is_set():
         sys.exit(3)
 

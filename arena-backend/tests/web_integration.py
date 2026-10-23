@@ -1,4 +1,4 @@
-"""Real Uvicorn HTTP + persistent auth + Docker worker, no execution mocks."""
+"""Real Uvicorn HTTP + persistent auth + bubblewrap grader, no execution mocks."""
 import json
 from pathlib import Path
 import socket
@@ -22,10 +22,10 @@ from arena_api.settings import Settings
 
 
 def main():
-    image = sandbox.image_id('uet-arena-worker:clock-v2')  # Intentionally fails if Docker/image is absent.
+    runtime = sandbox.get_backend("bwrap").identity()["runtime_id"]
     output = ROOT / "test-results"
     output.mkdir(exist_ok=True)
-    report = {"image_id": image, "started_ms": time.time_ns() // 1_000_000, "checks": []}
+    report = {"backend": "bwrap", "runtime_id": runtime, "started_ms": time.time_ns() // 1_000_000, "checks": []}
 
     def checked(name, **data):
         report["checks"].append({"name": name, "passed": True, **data})
@@ -50,8 +50,8 @@ def main():
             while not server.started and thread.is_alive() and time.monotonic() < until:
                 time.sleep(0.05)
             assert server.started, "Uvicorn did not start"
-            # The hub never runs bots: a Docker grader connects to it like a remote machine.
-            grader = start_grader(app, settings.origin, "docker", 2, backend_options={"image": "uet-arena-worker:clock-v2"})
+            # The hub never runs bots: a bubblewrap grader connects like a remote machine.
+            grader = start_grader(app, settings.origin, "bwrap", 2)
 
             def request(client, method, path, expected=200, **kwargs):
                 response = client.request(method, "/api/v1" + path, **kwargs)
@@ -108,7 +108,7 @@ def main():
             benchmark = request(team, "POST", "/benchmarks", expected=202, json={"submission_id": source["id"]}, headers={"Idempotency-Key": uuid.uuid4().hex}).json()
             benchmark = wait(benchmark)["report"]
             assert benchmark["passed"] and benchmark["turn_wall_ms"]["samples"] == 72
-            assert benchmark["runtime_id"] == image and benchmark["platform"] == "linux"
+            assert benchmark["runtime_id"] == runtime and benchmark["platform"] == "linux"
             report["benchmark"] = benchmark["turn_wall_ms"]
             checked("authenticated_native_cpp_benchmark_72_samples", summary=report["benchmark"])
 

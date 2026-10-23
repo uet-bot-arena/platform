@@ -1,5 +1,6 @@
 * text=auto eol=lf
 *.ps1 text eol=crlf
+scripts/install-grader.ps1 text eol=lf
 *.png binary
 *.jpg binary
 *.jpeg binary

@@ -67,6 +67,8 @@ class Service:
         self.rulesets = None
         self.competitions = None
         self.grader = grader or GraderDefaults()
+        # Anchor lease timestamps once: wall-clock corrections must not shorten a live lease.
+        self.lease_epoch_ms = now_ms() - time.monotonic_ns() // 1_000_000
         self.artifacts = Path(artifacts or store.root / "grader-artifacts")
         with store.lock, store.db:
             store.db.executescript("""
@@ -356,6 +358,9 @@ class Service:
                 "hub_time_ms": now_ms()}
 
     # ---- leases -------------------------------------------------------------------------
+    def lease_now_ms(self):
+        return self.lease_epoch_ms + time.monotonic_ns() // 1_000_000
+
     def try_lease(self, grader):
         """Claim the best eligible queued job for this grader, or None."""
         if self.before_next:
@@ -369,9 +374,10 @@ class Service:
             job = self.store.get(ident)
             fencing = self.store.db.execute("SELECT COALESCE(MAX(fencing),0)+1 FROM grader_leases").fetchone()[0]
             lease_id = uuid.uuid4().hex
-            expires = now_ms() + self.grader.lease_seconds * 1000
+            created = self.lease_now_ms()
+            expires = created + self.grader.lease_seconds * 1000
             self.store.db.execute("INSERT INTO grader_leases(id,job_id,grader_id,fencing,created_ms,expires_ms,status) VALUES(?,?,?,?,?,?,'active')",
-                                  (lease_id, ident, grader["id"], fencing, now_ms(), expires))
+                                  (lease_id, ident, grader["id"], fencing, created, expires))
             job = self.store.update(ident, status="starting", lease_id=lease_id, fencing=fencing, lease_until_ms=expires,
                                     worker=grader["name"], grader_id=grader["id"],
                                     runtime={"platform": grader["platform"], "runtime_id": grader["runtime_id"], "backend": grader["backend"]},
@@ -405,16 +411,16 @@ class Service:
             row = self.store.db.execute("SELECT job_id,grader_id,fencing,status,expires_ms FROM grader_leases WHERE id=?", (lease_id,)).fetchone()
         if not row or row[1] != grader["id"]:
             raise Fault("not_found", "Lease not found")
-        if row[3] != "active" or row[2] != fencing or row[4] < now_ms():
+        if row[3] != "active" or row[2] != fencing or row[4] < self.lease_now_ms():
             raise Fault("stale_lease", "Lease is no longer held by this grader; stop the job")
         return row[0]
 
     def heartbeat(self, grader, lease_id, fencing):
-        job_id = self.active_lease(grader, lease_id, fencing)
-        expires = now_ms() + self.grader.lease_seconds * 1000
         with self.store.lock, self.store.db:
+            job_id = self.active_lease(grader, lease_id, fencing)
+            expires = self.lease_now_ms() + self.grader.lease_seconds * 1000
             self.store.db.execute("UPDATE grader_leases SET expires_ms=? WHERE id=?", (expires, lease_id))
-            self.store.update(job_id, lease_until_ms=expires, heartbeat_ms=now_ms())
+            self.store.update(job_id, lease_until_ms=expires, heartbeat_ms=self.lease_now_ms())
         return {"ok": True, "expires_ms": expires}
 
     def post_events(self, grader, lease_id, fencing, events):
@@ -497,7 +503,7 @@ class Service:
         except Fault as exc:
             status, error = "failed", {"code": exc.code, "detail": exc.detail[:500], "stage": "verify"}
         with self.store.lock, self.store.db:
-            self.store.db.execute("UPDATE grader_leases SET status='completed',ended_ms=? WHERE id=?", (now_ms(), lease_id))
+            self.store.db.execute("UPDATE grader_leases SET status='completed',ended_ms=? WHERE id=?", (self.lease_now_ms(), lease_id))
             self.store.db.execute("UPDATE graders SET jobs_done=jobs_done+1 WHERE id=?", (grader["id"],))
             fields = {"status": status, "report": report}
             if status == "failed":
@@ -520,10 +526,12 @@ class Service:
     def end_lease(self, lease_id, status, reason):
         """Lease lost (expired, released, revoked): the job never keeps a half result."""
         with self.store.lock, self.store.db:
-            row = self.store.db.execute("SELECT job_id,status FROM grader_leases WHERE id=?", (lease_id,)).fetchone()
+            row = self.store.db.execute("SELECT job_id,status,expires_ms FROM grader_leases WHERE id=?", (lease_id,)).fetchone()
             if not row or row[1] != "active":
                 return
-            self.store.db.execute("UPDATE grader_leases SET status=?,ended_ms=?,reason=? WHERE id=?", (status, now_ms(), reason, lease_id))
+            if status == "expired" and row[2] >= self.lease_now_ms():
+                return  # A heartbeat may have renewed it after the reaper's snapshot.
+            self.store.db.execute("UPDATE grader_leases SET status=?,ended_ms=?,reason=? WHERE id=?", (status, self.lease_now_ms(), reason, lease_id))
             job = self.store.get(row[0])
             if job["status"] in TERMINAL or job.get("lease_id") != lease_id:
                 return
@@ -543,7 +551,7 @@ class Service:
 
     def reap(self):
         with self.store.lock:
-            expired = [r[0] for r in self.store.db.execute("SELECT id FROM grader_leases WHERE status='active' AND expires_ms<?", (now_ms(),))]
+            expired = [r[0] for r in self.store.db.execute("SELECT id FROM grader_leases WHERE status='active' AND expires_ms<?", (self.lease_now_ms(),))]
         for lease_id in expired:
             self.end_lease(lease_id, "expired", "lease_expired")
         return len(expired)

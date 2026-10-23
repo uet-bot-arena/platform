@@ -1,4 +1,4 @@
-"""Real two-team, two-leg competition through HTTP + Docker; no worker mocks."""
+"""Real two-team, two-leg competition through HTTP + bubblewrap; no worker mocks."""
 import json
 import io
 from pathlib import Path
@@ -24,10 +24,10 @@ from arena_api.settings import Settings
 
 
 def main():
-    image = sandbox.image_id('uet-arena-worker:clock-v2')
+    runtime = sandbox.get_backend("bwrap").identity()["runtime_id"]
     output = ROOT / "test-results"
     output.mkdir(exist_ok=True)
-    report = {"image_id": image, "started_ms": time.time_ns() // 1_000_000, "checks": []}
+    report = {"backend": "bwrap", "runtime_id": runtime, "started_ms": time.time_ns() // 1_000_000, "checks": []}
 
     def checked(name, **data):
         report["checks"].append({"name": name, "passed": True, **data})
@@ -51,7 +51,7 @@ def main():
             while not server.started and thread.is_alive() and time.monotonic() < end:
                 time.sleep(0.05)
             assert server.started, "Uvicorn did not start"
-            grader = start_grader(app, settings.origin, "docker", 2, backend_options={"image": "uet-arena-worker:clock-v2"})
+            grader = start_grader(app, settings.origin, "bwrap", 2)
 
             def request(client, method, path, expected=200, **kwargs):
                 if method == "POST":

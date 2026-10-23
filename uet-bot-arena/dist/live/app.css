@@ -14,6 +14,14 @@
   --radius: 14px;
   --space: 8px;
 }
+@media (prefers-color-scheme: dark) {
+  :root:has(#grader-form) {
+    color-scheme: dark;
+    --ink: #e2eae4; --muted: #b0c0b5; --green: #9ad7b6; --green-soft: #263d32;
+    --navy: #9ad7b6; --line: #3e5146; --paper: #1d2c24; --bg: #142019;
+    --red: #f0a79b; --blue: #9bccec;
+  }
+}
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.6 var(--font); -webkit-font-smoothing: antialiased; }
@@ -40,7 +48,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .brand-mark i { background: #fff; border-radius: 1px; }
 .brand-mark i:first-child, .brand-mark i:last-child { opacity: .5; }
 .season { display: flex; align-items: center; gap: 8px; margin: 22px 10px 18px; font-size: 12px; color: var(--muted); }
-.season>span { color: #99a59d; }
+.season>span { color: var(--muted); }
 .nav-item { min-height: 42px; padding: 9px 12px; display: flex; align-items: center; gap: 11px; border-radius: 6px; color: #55645b; margin: 3px 0; font-size: 13px; font-weight: 500; }
 .nav-item:hover { background: #f4f6f3; color: var(--ink); }
 .nav-item.active { background: var(--green-soft); color: var(--green); font-weight: 600; }
@@ -464,3 +472,24 @@ details>summary { cursor: pointer; color: var(--green); }.empty-state { padding:
 .rule-resources>span { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:400; }
 .rule-resources .icon { width:15px; height:15px; }
 .rule-map-cell .icon { width:18px; height:18px; }
+
+/* Shared controls used by the grader page; the full theme switch is planned in M1 package 9. */
+@media (prefers-color-scheme: dark) {
+  :root:has(#grader-form) .workspace { background: var(--bg); }
+  :root:has(#grader-form) :is(.sidebar, .topbar, .page-heading, .person-avatar,
+  .panel, .stat, .admin-kpis .stat, .real-card, .modal, .input, .select, .btn) {
+    background: var(--paper); color: var(--ink); border-color: var(--line);
+  }
+  :root:has(#grader-form) .nav-item { color: var(--muted); }
+  :root:has(#grader-form) :is(.nav-item:hover, .icon-btn:hover, th, .report-json, .credential-value) { background: #26382d; }
+  :root:has(#grader-form) .nav-item.active { color: var(--green); background: var(--green-soft); }
+  :root:has(#grader-form) .btn:hover { background: #304837; border-color: #759981; }
+  :root:has(#grader-form) .btn.primary { background: #9ad7b6; border-color: #9ad7b6; color: #142019; }
+  :root:has(#grader-form) .btn.primary:hover { background: #b5e6cb; }
+  :root:has(#grader-form) :is(.btn.danger, .btn.danger-button) { color: #f0b2a8; border-color: #96675e; background: var(--paper); }
+  :root:has(#grader-form) .skip-link { color: #142019; }
+  :root:has(#grader-form) .badge { color: #c4d4c9; background: #34483b; }
+  :root:has(#grader-form) :is(.badge.success, .badge.live) { color: #b0e6c3; background: #264a34; }
+  :root:has(#grader-form) .badge.danger { color: #f3b9ae; background: #512f29; }
+  :root:has(#grader-form) .badge.warning { color: #eed29c; background: #4e4028; }
+}

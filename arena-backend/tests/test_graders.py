@@ -10,7 +10,7 @@ import unittest
 import uuid
 import zipfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from arena import engine
 from arena.adjudication import CURRENT
@@ -227,6 +227,59 @@ class GraderAPI(APIHarness):
         self.assertEqual(wrong.status_code, 409)
         self.assertEqual(new.post(f"/api/v1/grader/leases/{second['lease_id']}/heartbeat", json={"fencing": second["fencing"]}).status_code, 200)
 
+    def test_lease_only_expires_at_its_deadline_and_heartbeat_extends_it(self):
+        team, issued = self.create_team()
+        self.practice(team, issued["account"]["team_id"])
+        client, item = self.machine()
+        machine = self.service.grader_row(item["id"])
+        with patch.object(self.service, "lease_now_ms", return_value=1_000_000):
+            leased = self.lease(client)
+        deadline = leased["expires_ms"]
+        self.assertEqual(deadline, 1_030_000)
+        with patch.object(self.service, "lease_now_ms", return_value=1_005_000):
+            beat = self.service.heartbeat(machine, leased["lease_id"], leased["fencing"])
+        self.assertEqual(beat["expires_ms"], 1_035_000)
+        for tick in range(1_006_000, 1_035_000, 1000):
+            with patch.object(self.service, "lease_now_ms", return_value=tick):
+                self.assertEqual(self.service.reap(), 0)
+        with patch.object(self.service, "lease_now_ms", return_value=1_035_001):
+            self.assertEqual(self.service.reap(), 1)
+        row = self.store.db.execute("SELECT status,reason,ended_ms FROM grader_leases WHERE id=?", (leased["lease_id"],)).fetchone()
+        self.assertEqual(row, ("expired", "lease_expired", 1_035_001))
+
+    def test_wall_clock_corrections_do_not_shorten_or_extend_a_live_lease(self):
+        team, issued = self.create_team()
+        self.practice(team, issued["account"]["team_id"])
+        client, item = self.machine()
+        machine = self.service.grader_row(item["id"])
+        mono = time.monotonic_ns()
+        with patch("arena.service.time.monotonic_ns", return_value=mono):
+            leased = self.lease(client)
+        for jump in (-3_600_000, 3_600_000):
+            with self.subTest(wall_jump_ms=jump), patch("arena.service.now_ms", return_value=leased["expires_ms"] + jump), \
+                    patch("arena.service.time.monotonic_ns", return_value=mono + 20_000_000_000):
+                self.assertEqual(self.service.reap(), 0)
+                self.assertEqual(self.service.active_lease(machine, leased["lease_id"], leased["fencing"]), leased["job"]["id"])
+        with patch("arena.service.now_ms", return_value=0), patch("arena.service.time.monotonic_ns", return_value=mono + 31_000_000_000):
+            self.assertEqual(self.service.reap(), 1)
+
+    def test_reaper_rechecks_a_lease_renewed_after_its_snapshot(self):
+        team, issued = self.create_team()
+        self.practice(team, issued["account"]["team_id"])
+        client, _ = self.machine()
+        leased = self.lease(client)
+        end_lease = self.service.end_lease
+        def renewed(lease_id, status, reason):
+            with self.store.lock, self.store.db:
+                self.store.db.execute("UPDATE grader_leases SET expires_ms=? WHERE id=?", (self.service.lease_now_ms() + 30_000, lease_id))
+            end_lease(lease_id, status, reason)
+        with self.store.lock, self.store.db:
+            self.store.db.execute("UPDATE grader_leases SET expires_ms=0 WHERE id=?", (leased["lease_id"],))
+        with patch.object(self.service, "end_lease", side_effect=renewed):
+            self.service.reap()
+        self.assertEqual(self.store.db.execute("SELECT status FROM grader_leases WHERE id=?", (leased["lease_id"],)).fetchone()[0], "active")
+        self.assertEqual(self.store.get(leased["job"]["id"])["status"], "starting")
+
     def test_events_update_status_and_terminal_events_only_come_with_the_result(self):
         team, issued = self.create_team()
         self.practice(team, issued["account"]["team_id"])
@@ -376,6 +429,83 @@ class FakeBackend:
 
     def worker(self, artifact, p):
         return FakeWorker()
+
+
+class GraderLifecycle(unittest.TestCase):
+    def setUp(self):
+        from arena.grader import Grader
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.grader = Grader("http://localhost", "test", state_dir=self.tmp.name, backend_factory=FakeBackend)
+        self.grader.client = Mock()
+        self.lease = {"lease_id": "lease-test", "fencing": 7, "job": {"id": "job-test", "kind": "match"}}
+
+    def test_release_all_stops_bots_and_returns_fenced_leases(self):
+        runner = Mock(lease=self.lease)
+        self.grader.active["lease-test"] = runner
+        self.grader.release_all()
+        runner.abandon.assert_called_once()
+        self.grader.client.call.assert_called_once_with("POST", "/api/v1/grader/leases/lease-test/release",
+                                                       {"fencing": 7, "reason": "grader_stopping"}, timeout=5)
+        self.assertTrue(self.grader.stopping.is_set())
+
+    def test_lease_arriving_after_stop_is_returned_without_starting_bots(self):
+        self.grader.release_all()
+        with patch("arena.grader.GraderRunner") as runner:
+            self.grader.run_lease(0, FakeBackend(), self.lease)
+        runner.assert_not_called()
+        self.assertEqual(self.grader.client.call.call_args.args[1], "/api/v1/grader/leases/lease-test/release")
+        self.assertFalse(self.grader.active)
+
+    def test_first_stop_finishes_the_running_match_and_posts_its_result(self):
+        runner = Mock()
+        runner.lost = threading.Event()
+        runner.lease, runner.report, runner.error = self.lease, {"result": "test"}, None
+        runner.client = self.grader.client
+        runner.run.side_effect = lambda *_args, **_kw: (self.grader.stopping.set() or "completed")
+        with patch("arena.grader.GraderRunner", return_value=runner):
+            self.grader.run_lease(0, FakeBackend(), self.lease)
+        runner.abandon.assert_not_called()
+        self.assertEqual(self.grader.client.call.call_args.args[2]["status"], "completed")
+        self.assertEqual(self.grader.done, 1)
+
+    def test_stop_file_returns_leases(self):
+        stop = Path(self.tmp.name) / "stop"
+        stop.touch()
+        thread = Mock()
+        thread.is_alive.side_effect = [True, False]
+        self.grader.threads = [thread]
+        runner = Mock(lease=self.lease)
+        self.grader.active["lease-test"] = runner
+        self.grader.wait(stop)
+        runner.abandon.assert_called_once()
+
+    def test_pythonw_check_handles_missing_console_streams(self):
+        from arena.grader import main
+        token = Path(self.tmp.name) / "grader-token"
+        token.write_text("synthetic-test-token")
+        with patch("arena.grader.Grader", return_value=self.grader), patch("arena.grader.logging.basicConfig"), \
+                patch("sys.stdout", None), patch("sys.stderr", None):
+            self.grader.client.call.return_value = {"name": "test"}
+            main(["--hub", "http://localhost", "--check", "--token-file", str(token)])
+        self.grader.client.call.assert_called_once()
+
+    def test_revocation_during_start_prevents_service_retries(self):
+        from arena.grader import Revoked
+        self.grader.client.call.side_effect = Revoked("revoked")
+        self.grader.start()
+        self.assertTrue(self.grader.revoked.is_set())
+        self.assertFalse(self.grader.threads)
+
+    def test_revoked_check_exits_with_the_service_stop_code(self):
+        from arena.grader import Revoked, main
+        token = Path(self.tmp.name) / "grader-token"
+        token.write_text("synthetic-test-token")
+        self.grader.client.call.side_effect = Revoked("revoked")
+        with patch("arena.grader.Grader", return_value=self.grader), patch("arena.grader.logging.basicConfig"), \
+                self.assertRaises(SystemExit) as caught:
+            main(["--hub", "http://localhost", "--check", "--token-file", str(token)])
+        self.assertEqual(caught.exception.code, 3)
 
 
 class GraderClientEndToEnd(unittest.TestCase):

@@ -6,7 +6,7 @@ import time
 from arena.grader import Grader
 
 
-def start_grader(app, origin, backend="docker", slots=2, name="integration grader", backend_options=None, cpus=None):
+def start_grader(app, origin, backend=None, slots=2, name="integration grader", backend_options=None, cpus=None):
     """Create a grader token on the hub, connect a grader to it and wait until it is online."""
     token = app.state.service.create_grader(name, "integration")["token"]
     grader = Grader(origin, token, backend, slots, cpus=cpus, state_dir=Path(tempfile.mkdtemp(prefix="grader-")),

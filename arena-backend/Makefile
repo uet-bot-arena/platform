@@ -20,9 +20,8 @@ test:
 	cd "$(CURDIR)" && ARENA_CONFIG=none ARENA_SECRETS=none $(PYTHON) -m unittest discover -s tests -v
 
 integration:
-	cd "$(CURDIR)" && docker build -t uet-arena-worker:v1 -t uet-arena-worker:clock-v2 -t uet-arena-worker:experimental-v1 -t uet-arena-worker:experimental-clock-v2 .
-	cd "$(CURDIR)" && $(PYTHON) tests/web_integration.py
-	cd "$(CURDIR)" && $(PYTHON) tests/competition_integration.py
+	cd "$(CURDIR)" && ARENA_CONFIG=none ARENA_SECRETS=none $(PYTHON) tests/web_integration.py
+	cd "$(CURDIR)" && ARENA_CONFIG=none ARENA_SECRETS=none $(PYTHON) tests/competition_integration.py
 
 load-test:
 	cd "$(CURDIR)" && $(PYTHON) tests/load_resilience.py
