@@ -4,10 +4,11 @@ Nền tảng cho các đội nộp bot **Python, C hoặc C++** và cho bot đ�
 
 Tài liệu: [Cài đặt chi tiết](INSTALL.md) · [Hướng dẫn viết bot](uet-bot-arena/dist/live/bot-guide.md) · [Thể thức giải](arena-backend/docs/COMPETITIONS.md) · [Giao thức bot](arena-backend/docs/PROTOCOL.md) · [Bảo mật](arena-backend/docs/SECURITY.md)
 
-Vận hành Mốc 1: [triển khai](docs/DEPLOY.md), [máy chấm](docs/MAY-CHAM.md), [email](docs/EMAIL.md), [tài khoản và đội](docs/TAI-KHOAN-VA-DOI.md), [nộp bài GitHub](docs/NOP-BAI.md), [GitHub App](docs/GITHUB-APP.md), [thay đổi](CHANGELOG.md).
+Vận hành Mốc 1: [triển khai](docs/DEPLOY.md), [máy chấm](docs/MAY-CHAM.md), [email](docs/EMAIL.md), [tài khoản và đội](docs/TAI-KHOAN-VA-DOI.md), [nộp bài GitHub](docs/NOP-BAI.md), [GitHub App](docs/GITHUB-APP.md), [13 tình huống chống phá](docs/BAO-MAT.md), [thay đổi](CHANGELOG.md).
 
 ## Tính năng
 
+- **Thông báo và hiển thị:** BTC đăng/ẩn thông báo; banner công khai tự cập nhật trong một phút. Giao diện theo hệ điều hành, có nút Sáng/tối lưu lựa chọn. Trang Giới hạn & báo lỗi công khai.
 - **Tài khoản cá nhân:** sinh viên/cán bộ tự xác minh email trường, lập đội bốn người bằng mã mời. Đội trưởng quản lý roster và gắn repo private; thành viên cùng push bot, benchmark, luyện tập. BTC nâng cán bộ lên Giám khảo để tạo đội khách không xếp hạng. Người xem không cần đăng nhập.
 - **Nộp bot:** GitHub App đọc bot/ tại SHA đã ghim của repo private, tự kiểm 72 mẫu, ghi status cuối và chốt theo lịch sử push GitHub. ZIP chỉ còn để BTC nạp dữ liệu nội bộ.
 - **Hàng đợi bền trong SQLite, nhiều worker chạy song song**, ưu tiên trận chính thức → benchmark → luyện tập; mỗi trận chạy trên một CPU riêng.

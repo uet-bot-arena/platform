@@ -32,7 +32,7 @@ def text_contrast(page):
                       const out=[];
                       for(const e of root.querySelectorAll('*')){
                         if(!e.getClientRects().length||!Array.from(e.childNodes).some(n=>n.nodeType===3&&n.textContent.trim()))continue;
-                        const fg=rgb(getComputedStyle(e).color); let parent=e,bg;
+                        const style=getComputedStyle(e),fg=rgb(e.localName==='text'?style.fill:style.color); let parent=e,bg;
                         while(parent){bg=rgb(getComputedStyle(parent).backgroundColor);if(bg.length===3||bg[3]>=.99)break;parent=parent.parentElement;}
                         if(!parent)continue;
                         const a=luminance(fg),b=luminance(bg),ratio=(Math.max(a,b)+.05)/(Math.min(a,b)+.05);

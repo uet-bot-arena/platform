@@ -268,6 +268,26 @@ class GitHubAPI(APIHarness):
         comp.transition("unit-test", row["id"], "open", "github-open-competition")
         return row["id"]
 
+    def test_cross_team_duplicate_warns_admin_without_penalty_or_student_disclosure(self):
+        self.attach();sha=self.push()
+        other,issued=self.create_team('Other','other')
+        other_id=issued['account']['team_id']
+        self.fake.repo_id=18
+        self.g.attach('test-admin',other_id,'https://github.com/captain/other',admin=True)
+        self.g.execute('UPDATE github_repositories SET next_poll_ms=0')
+        self.g.tick()
+        response=self.client.get('/api/v1/admin/github/duplicates')
+        self.assertEqual(response.status_code,200,response.text)
+        items=response.json()['items'];self.assertEqual(len(items),1)
+        self.assertEqual({t['id'] for t in items[0]['teams']},{self.team_id,other_id})
+        self.assertEqual(items[0]['team_count'],2)
+        self.assertEqual(other.get('/api/v1/admin/github/duplicates').status_code,403)
+        audit=self.g.rows("SELECT * FROM audit WHERE action='github.duplicate_bot'")
+        self.assertEqual(len(audit),1)
+        self.g.tick()
+        self.assertEqual(len(self.g.rows("SELECT * FROM audit WHERE action='github.duplicate_bot'")),1)
+        self.assertNotEqual(self.g.one('SELECT state FROM github_commits WHERE team_id=? AND sha=?',(other_id,sha))['state'],'fail')
+
     def test_attach_name_code_private_installation_once_manual_and_code_immutable(self):
         for url in ("http://127.0.0.1/x", "https://github.com/captain/ott2026-other"):
             self.assertEqual(self.team.post("/api/v1/teams/me/github", json={"url": url}).status_code, 400)

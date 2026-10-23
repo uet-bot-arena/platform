@@ -5,7 +5,7 @@ export function jobErrorExplanation(job){
  if(job.error.code==='timeout'&&job.profile?.match_ms&&job.error.stage!=='startup')return 'Bot đã dùng hết quỹ thời gian. '+(job.kind==='benchmark'?'Cả 72 mẫu dùng chung một quỹ, không cấp lại ở mỗi mẫu. ':'Quỹ được chia cho cả trận, không cấp lại khi đổi lượt. ')+'Giảm thời gian tìm kiếm và đọc timing.budget_ms mới ở mỗi observation để phân bổ cho các nước tiếp theo.';
  if(job.error.code==='superseded')return 'Đội đã gửi một yêu cầu mới hơn cùng loại trước khi yêu cầu này được chạy, nên hệ thống bỏ yêu cầu cũ để không chiếm hàng đợi.';
  const logs=(job.report?.sandbox_metrics||[]).map(x=>x.stderr||'').join('\n');
- if(!job.ruleset&&job.error.code==='crash'&&job.error.stage==='startup'&&logs.includes('This bot requires SDK v3 / Experimental.'))return 'Bot yêu cầu SDK v3 / Experimental, nhưng tác vụ này chạy luật classic (protocol v2). Chạy benchmark mới và chọn ruleset experimental đã công bố. Nếu chưa có lựa chọn, BTC cần tạo → kiểm tra → công bố ruleset; bật Experimental thôi chưa đủ. Không cần nộp lại ZIP.';
+ if(!job.ruleset&&job.error.code==='crash'&&job.error.stage==='startup'&&logs.includes('This bot requires SDK v3 / Experimental.'))return 'Bot yêu cầu SDK v3 / Experimental, nhưng tác vụ này chạy luật classic (protocol v2). Kiểm tra lại và chọn ruleset experimental đã công bố. Nếu chưa có lựa chọn, BTC cần tạo → kiểm tra → công bố ruleset; bật Experimental thôi chưa đủ. Không cần nộp lại ZIP.';
  return '';
 }
 export function resultLabel(result,name=sideName){

@@ -1,3 +1,4 @@
+import {startAnnouncements} from './announcements.js';
 import {readTournamentOptions} from './tournament-options.js';
 import {timeField,timeBody} from './time-control.js';
 import {ArenaAPI,saveBlob} from './client.js';
@@ -13,10 +14,11 @@ import {publicRoute} from './access.js';
 import {readRuleForm,ruleEditor,rulePreviewMarkup,botRulesetField,botRulesetSelection,ruleFingerprint} from './experimental-ui.js';
 
 const api=new ArenaAPI(),app=document.getElementById('app'),modalRoot=document.getElementById('modal-root');
-const defaults=()=>({queue:null,rankingLookup:null,historyTotal:null,teamElo:null,github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
+const defaults=()=>({announcements:[],adminAnnouncements:[],duplicates:[],queue:null,rankingLookup:null,historyTotal:null,teamElo:null,github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
 const s={...defaults(),user:null,emailRequest:null,emailAddress:'',route:'home',ids:[],loading:false,adminTab:'accounts',registrationStatus:'pending',adminVisibility:'active',adminSearch:'',adminPage:1,opsTab:'jobs',opsPage:1,opsSearch:'',opsStatus:'',opsKind:'',opsTeam:''};
 let emailPoll,githubPoll;
 let generation=0,board,competitionFeed,jobFeed,toastTimer,modalFocus,returnTo='home',issued=null,issuedGrader=null,refreshingGeneration=null;
+const refreshNotices=startAnnouncements(api);
 const authChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('uet-arena-session'):null;
 authChannel?.addEventListener('message',async()=>{try{const session=await api.request('/auth/me');Object.assign(s,defaults(),{user:session.user});openRoute();}catch(e){if(e.status===401){clearAccount();go('login');}else handleError(e);}});
 const authChanged=()=>authChannel?.postMessage({type:'changed'});
@@ -53,6 +55,7 @@ async function loadData(route,ids,q){
   const admin=s.user?.role==='admin';
   const needsTeams=s.user?.team_id&&['home','team','submissions','benchmark','practice','competitions','jobs','arena','replay'].includes(route)&&!admin;
   const work=[];
+  if(route==='announcements'){work.push(api.snapshot('announcements.json').then(x=>data.announcements=x.items));if(admin)work.push(api.request('/admin/announcements').then(x=>data.adminAnnouncements=x.items));}
   if(route==='queue')work.push(api.snapshot('queue.json').then(x=>data.queue=x));
   if(s.user&&['rulesets','benchmark','practice','competitions','submissions'].includes(route))work.push(api.request(admin?'/admin/rulesets':'/rulesets').then(x=>data.rulesetCatalog=x));
   if(route==='rulesets'&&ids[0])work.push(api.request('/rulesets/'+enc(ids[0])).then(x=>data.ruleDetail=x));
@@ -68,6 +71,7 @@ async function loadData(route,ids,q){
     work.push(api.all('/admin/recoveries').then(x=>data.recoveries=x));
   }
   if(route==='operations'){
+    work.push(api.request('/admin/github/duplicates').then(x=>data.duplicates=x.items));
     work.push(api.all('/admin/jobs').then(x=>data.adminJobs=x));
     work.push(api.all('/admin/submissions').then(x=>data.adminSubmissions=x));
     work.push(api.all('/admin/accounts').then(x=>data.accounts=x));
@@ -90,7 +94,7 @@ async function loadData(route,ids,q){
 async function openRoute(){
   const parsed=parseRoute(),id=++generation;clearView();
   if(parsed.route==='experimental'){history.replaceState(null,'','#/rulesets');openRoute();return;}
-  const supported=['home','login','verify-email','set-password','guest-register','guest-recover','email','register','recover','change-password','guide','team','matching','users','submissions','benchmark','practice','competitions','jobs','admin','operations','graders','rulesets','audit','schedule','live','standings','queue','arena','replay'];
+  const supported=['home','login','verify-email','set-password','guest-register','guest-recover','email','register','recover','change-password','guide','team','matching','users','submissions','benchmark','practice','competitions','jobs','admin','operations','graders','rulesets','audit','schedule','live','standings','queue','announcements','limits','arena','replay'];
   if(!supported.includes(parsed.route)){go('home');return;}
   if(!s.user&&!publicRoute(parsed.route,parsed.ids)){returnTo=parsed.raw;go('login');return;}
   if(s.user?.must_change_password&&parsed.route!=='change-password'){go('change-password');return;}
@@ -204,7 +208,8 @@ async function runForm(form,task){if(form.dataset.busy)return;form.dataset.busy=
 document.addEventListener('submit',e=>{
   const form=e.target;if(!form.matches('.real-form'))return;e.preventDefault();const data=new FormData(form),v=name=>String(data.get(name)||'').trim();
   runForm(form,async()=>{
-    if(form.id==='standings-lookup'){s.rankingLookup=await api.snapshot('standings/'+enc(s.competition.id)+'/'+enc(v('team_id'))+'.json');patchPage();
+    if(form.id==='announcement-form'){await api.post('/admin/announcements',{title:v('title'),body:v('body')},keyFor(form));await refreshNotices();await refreshData();
+    }else if(form.id==='standings-lookup'){s.rankingLookup=await api.snapshot('standings/'+enc(s.competition.id)+'/'+enc(v('team_id'))+'.json');patchPage();
     }else if(form.id==='ruleset-form'){
       const definition=readRuleForm(form),r=s.ruleEditing;
       const result=await api.post(r?'/admin/rulesets/'+r.id+'/edit':'/admin/rulesets',{definition,release_notes:v('release-notes'),...(r?{expected_revision:r.revision}:{})},keyFor(form));
@@ -410,6 +415,7 @@ document.addEventListener('click',async e=>{
       b.disabled=true;const j=await api.request('/admin/jobs/'+enc(b.dataset.id));b.disabled=false;
       modal('Tác vụ · '+short(j.id),`${badge(j.status)}<p>${esc(j.kind)} · ${date(j.created_unix_ms)}</p><pre class="report-json">${esc(JSON.stringify(j,null,2))}</pre>${button('Tải JSON','admin-job-download',`data-id="${j.id}"`)}${j.official?note('Mở giải đấu tương ứng để xem lịch sử lần chạy hoặc chạy lại trận lỗi.'):''}`);return;
     }
+    if(action==='notice-visibility'){b.disabled=true;await api.post('/admin/announcements/'+enc(b.dataset.id)+'/visibility',{expected_revision:Number(b.dataset.revision),archived:b.dataset.archived!=='true'});await refreshNotices();await refreshData();return;}
     if(action==='retention-run'){b.disabled=true;await api.post('/admin/retention/run');toast('Đã dọn dữ liệu theo chính sách.');await openRoute();return;}
     if(action==='admin-job-download'){saveBlob('job-'+short(b.dataset.id)+'.json',new Blob([JSON.stringify(await api.request('/admin/jobs/'+enc(b.dataset.id)),null,2)],{type:'application/json'}));return;}
     if(action==='submission-manifest'){const item=s.adminSubmissions.find(x=>x.id===b.dataset.id);modal('Source · '+item.version,`<pre class="report-json">${esc(JSON.stringify(item,null,2))}</pre>`);return;}

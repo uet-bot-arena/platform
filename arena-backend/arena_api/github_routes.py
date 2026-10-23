@@ -6,6 +6,11 @@ from arena_api.dependencies import admin_principal, team_principal
 router = APIRouter(prefix="/api/v1", tags=["github"])
 
 
+@router.get('/admin/github/duplicates',summary='BTC rà bot trùng hash; không tự kết luận hay trừ điểm')
+def duplicates(request: Request,auth=Depends(admin_principal)):
+    return request.app.state.github.duplicates()
+
+
 class Repository(BaseModel):
     model_config = ConfigDict(extra="forbid")
     url: str = Field(max_length=180)

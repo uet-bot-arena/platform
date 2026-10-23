@@ -175,6 +175,25 @@ class QueueSlots(unittest.TestCase):
         with patch.object(self.service,'graders',return_value=[]):
             self.assertIsNone(self.service.job_eta(second))
 
+    def test_eta_counts_the_private_team_cap_even_when_twenty_slots_are_online(self):
+        source=self.submission();jobs=[]
+        for i in range(8):
+            job=self.benchmark(source,competition_id=f'{i+1:032x}');jobs.append(job)
+            if i<4:
+                self.service.pending.remove(job['id']);self.store.update(job['id'],status='starting')
+        runtime=dict(platform='windows',runtime_id='sha256:'+'9'*64)
+        now=self.service.lease_now_ms();self.service.timing.record(jobs[0],runtime,now-10000,now)
+        # Active leases, rather than document status alone, are the ETA work list.
+        with patch.object(self.service,'graders',return_value=[dict(**runtime,slots=20)]):
+            eta=self.service.job_eta(jobs[-1]);self.assertEqual((eta['lower_seconds'],eta['upper_seconds']),(7,13))
+        # Four active leases plus four waiting jobs require two team-cap waves.
+        grader=self.service.create_grader('ETA test','test');principal=self.service.authenticate(grader['token'])
+        self.service.hello(principal,dict(**runtime,backend='windows',slots=20,version='test'))
+        for fencing,job in enumerate(jobs[:4],1):
+            self.store.db.execute("INSERT INTO grader_leases(id,job_id,grader_id,fencing,created_ms,expires_ms,status) VALUES(?,?,?,?,?,?,'active')",(job['id'],job['id'],grader['id'],fencing,now,now+30000))
+        self.store.db.commit()
+        eta=self.service.job_eta(jobs[-1]);self.assertEqual((eta['lower_seconds'],eta['upper_seconds']),(15,25))
+
     def test_in_place_retry_stops_once_the_board_is_public(self):
         job = self.benchmark(self.submission())
         runner = LocalRunner(self.store)

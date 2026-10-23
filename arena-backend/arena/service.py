@@ -17,7 +17,7 @@ import uuid
 
 from arena import engine, experimental, basic_rules
 from arena.adjudication import CURRENT
-from arena.job_queue import DurableJobQueue
+from arena.job_queue import DurableJobQueue, MAX_RUNNING_PER_TEAM
 from arena.archive import unpack
 from arena.config import benchmark_profile, profile, request_profile, stored_profile, scale_profile
 from arena.protocol import Fault
@@ -244,9 +244,6 @@ class Service:
 
         def check(replaced=0):
             jobs = self.store.list("job", team)
-            active = [j for j in jobs if j["status"] not in (*TERMINAL, "queued")]
-            if len(active) >= 4:
-                raise Fault("quota_exceeded", "At most four running jobs per team")
             if sum(j["status"] == "queued" for j in jobs) - replaced >= MAX_QUEUED_PER_TEAM:
                 raise Fault("quota_exceeded", f"At most {MAX_QUEUED_PER_TEAM} waiting jobs per team; wait for one to start")
 
@@ -516,14 +513,19 @@ class Service:
         (platform,runtime_id),slots = max(groups.items(),key=lambda x:x[1])
         with self.store.lock:
             queued = self.store.db.execute('SELECT priority,seq FROM job_queue WHERE id=?',(job['id'],)).fetchone()
-            ahead = self.store.db.execute("SELECT json_extract(d.data,'$.kind'),json_extract(d.data,'$.profile.id') FROM job_queue q JOIN documents d ON d.id=q.id WHERE (q.platform IS NULL OR q.platform=?) AND (q.runtime_id IS NULL OR q.runtime_id=?) AND (q.priority<? OR (q.priority=? AND q.seq<=?))", (platform,runtime_id,queued[0],*queued)).fetchall() if queued else []
-            active = self.store.db.execute("SELECT json_extract(d.data,'$.kind'),json_extract(d.data,'$.profile.id') FROM grader_leases l JOIN documents d ON d.id=l.job_id JOIN graders g ON g.id=l.grader_id WHERE l.status='active' AND g.platform=? AND g.runtime_id=?", (platform,runtime_id)).fetchall()
+            ahead = self.store.db.execute("SELECT json_extract(d.data,'$.kind'),json_extract(d.data,'$.profile.id'),d.team FROM job_queue q JOIN documents d ON d.id=q.id WHERE (q.platform IS NULL OR q.platform=?) AND (q.runtime_id IS NULL OR q.runtime_id=?) AND (q.priority<? OR (q.priority=? AND q.seq<=?))", (platform,runtime_id,queued[0],*queued)).fetchall() if queued else []
+            active = self.store.db.execute("SELECT json_extract(d.data,'$.kind'),json_extract(d.data,'$.profile.id'),d.team FROM grader_leases l JOIN documents d ON d.id=l.job_id JOIN graders g ON g.id=l.grader_id WHERE l.status='active' AND g.platform=? AND g.runtime_id=?", (platform,runtime_id)).fetchall()
         # Different controls have different durations. Wait for their own
         # timing model rather than pretending an official game is a check.
-        if any(row != (job['kind'],job['profile']['id']) for row in ahead+active):
+        if any(row[:2] != (job['kind'],job['profile']['id']) for row in ahead+active):
             return None
+        work = max(1,len(ahead)+len(active))
+        if not job['team_id'].startswith('competition:'):
+            import math
+            own = sum(row[2]==job['team_id'] for row in ahead+active)
+            work = max(work, (math.ceil(own/MAX_RUNNING_PER_TEAM)-1)*slots+1)
         return self.timing.estimate(job['kind'],job['profile']['id'],platform,runtime_id,
-            max(1,len(ahead)+len(active)),slots,started=True,now_ms=self.lease_now_ms())
+            work,slots,started=True,now_ms=self.lease_now_ms())
 
     def submission_archive(self, item):
         import io

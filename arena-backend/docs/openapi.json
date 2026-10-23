@@ -1987,6 +1987,31 @@
         ]
       }
     },
+    "/api/v1/admin/retention/run": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "BTC dọn dữ liệu theo retention; giữ mọi kết quả và replay chính thức",
+        "operationId": "cleanup_api_v1_admin_retention_run_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/jobs": {
       "get": {
         "tags": [
@@ -2210,6 +2235,140 @@
         "security": [
           {
             "cookieAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/announcements": {
+      "get": {
+        "tags": [
+          "announcements"
+        ],
+        "summary": "Listing",
+        "operationId": "listing_api_v1_admin_announcements_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "announcements"
+        ],
+        "summary": "Create",
+        "operationId": "create_api_v1_admin_announcements_post",
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Notice"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/announcements/{ident}/visibility": {
+      "post": {
+        "tags": [
+          "announcements"
+        ],
+        "summary": "Visibility",
+        "operationId": "visibility_api_v1_admin_announcements__ident__visibility_post",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Visibility"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
           }
         ]
       }
@@ -5884,6 +6043,30 @@
         ]
       }
     },
+    "/api/v1/admin/github/duplicates": {
+      "get": {
+        "tags": [
+          "github"
+        ],
+        "summary": "BTC rà bot trùng hash; không tự kết luận hay trừ điểm",
+        "operationId": "duplicates_api_v1_admin_github_duplicates_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/teams/me/github": {
       "get": {
         "tags": [
@@ -7403,6 +7586,29 @@
         ],
         "title": "Merge"
       },
+      "Notice": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Title"
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 3000,
+            "minLength": 1,
+            "title": "Body"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "body"
+        ],
+        "title": "Notice"
+      },
       "OfficialOptions": {
         "properties": {
           "general_rounds": {
@@ -8105,6 +8311,26 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "Visibility": {
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Revision"
+          },
+          "archived": {
+            "type": "boolean",
+            "title": "Archived"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "archived"
+        ],
+        "title": "Visibility"
       }
     },
     "securitySchemes": {

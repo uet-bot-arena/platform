@@ -43,7 +43,7 @@ export function moveDescription(move,state,names={}) {
 export function moveMarkup(move,state,names={}) {
   if(!['move','ability'].includes(move.type))return `<span class="move-step">${move.type==='start'?'○':move.type==='end'?'■':'#'+esc(move.ply)}</span><span class="move-content"><strong class="move-event-title">${move.type==='start'?'Thế cờ ban đầu':move.type==='end'?'Kết thúc trận':'Trạng thái bàn cờ'}</strong><span class="move-event-detail">${esc(moveDescription(move,state,names))}</span></span>`;
   const capture=move.captured;
-  return `<span class="move-step">#${esc(move.ply)}</span><span class="move-content"><span class="move-team"><i class="side-dot ${move.side}" aria-hidden="true"></i><strong title="${esc(names[move.side]||sideName(move.side))}">${esc(names[move.side]||sideName(move.side))}</strong><small>${sideName(move.side)}</small></span><span class="move-action"><span class="log-piece ${move.side}">${pieceIcon(move.kind)}</span><strong>${labels[move.kind]}</strong><span class="move-squares">${move.type==='ability'?'Khiên · '+esc(move.square):esc(move.from)+' <span aria-hidden="true">→</span> '+esc(move.to)}</span>${move.ability?`<span class="ability-tag">${esc(move.ability)}</span>`:''}${move.blocked?'<span class="ability-tag">Khiên chặn</span>':''}</span>${capture?`<span class="move-capture" title="${esc(labels[move.kind]+' ăn '+labels[capture.kind]+' tại '+move.to)}"><span class="capture-symbol" aria-hidden="true">×</span><span class="log-piece ${capture.side}">${pieceIcon(capture.kind)}</span><span>Ăn ${labels[capture.kind]} <small>· ${sideName(capture.side)}</small></span></span>`:''}${move.effects?.length?`<span class="move-effects">${move.effects.map(e=>esc((e.side==='red'?'Đỏ':'Xanh')+' '+(e.type==='energy_gained'?'Năng lượng':'Kiểm soát')+' +'+e.amount+' tại '+e.square)).join(' · ')}</span>`:''}${state.result?`<span class="move-outcome">${esc(resultLabel(state.result,side=>names[side]||sideName(side)))}</span>`:''}</span>`;
+  return `<span class="move-step">#${esc(move.ply)}</span><span class="move-content"><span class="move-team"><i class="side-dot ${esc(move.side)}" aria-hidden="true"></i><strong title="${esc(names[move.side]||sideName(move.side))}">${esc(names[move.side]||sideName(move.side))}</strong><small>${sideName(move.side)}</small></span><span class="move-action"><span class="log-piece ${esc(move.side)}">${pieceIcon(move.kind)}</span><strong>${labels[move.kind]}</strong><span class="move-squares">${move.type==='ability'?'Khiên · '+esc(move.square):esc(move.from)+' <span aria-hidden="true">→</span> '+esc(move.to)}</span>${move.ability?`<span class="ability-tag">${esc(move.ability)}</span>`:''}${move.blocked?'<span class="ability-tag">Khiên chặn</span>':''}</span>${capture?`<span class="move-capture" title="${esc(labels[move.kind]+' ăn '+labels[capture.kind]+' tại '+move.to)}"><span class="capture-symbol" aria-hidden="true">×</span><span class="log-piece ${esc(capture.side)}">${pieceIcon(capture.kind)}</span><span>Ăn ${labels[capture.kind]} <small>· ${sideName(capture.side)}</small></span></span>`:''}${move.effects?.length?`<span class="move-effects">${move.effects.map(e=>esc((e.side==='red'?'Đỏ':'Xanh')+' '+(e.type==='energy_gained'?'Năng lượng':'Kiểm soát')+' +'+e.amount+' tại '+e.square)).join(' · ')}</span>`:''}${state.result?`<span class="move-outcome">${esc(resultLabel(state.result,side=>names[side]||sideName(side)))}</span>`:''}</span>`;
 }
 export function inventoryMarkup(side) {
   return Object.entries(labels).map(([kind,label])=>`<span class="inventory-item" data-kind="${kind}" role="img" aria-label="${label}: chờ trạng thái" title="${label}: chờ trạng thái"><span class="inventory-piece ${side}">${pieceIcon(kind)}<strong class="inventory-count" data-count="${kind}">—</strong></span><span class="inventory-label" aria-hidden="true">${label}</span></span>`).join('');
@@ -114,7 +114,11 @@ export class MatchBoard {
   }
   markPlaying(){
     // Public feeds hide worker phase events; the first board/turn event means the match is on.
-    const label=this.$('match-result');if(!this.result&&label&&label.textContent==='Đang chờ máy chạy bot…')label.textContent='Đang đấu';
+    const label=this.$('match-result');
+    if(!this.result&&!this.terminal){
+      if(label?.textContent==='Đang chờ máy chạy bot…')label.textContent='Đang đấu';
+      this.$('match-status').innerHTML=badge('playing');
+    }
   }
   consume(event){
     if(this.disposed||event.seq<=this.seq)return;this.seq=event.seq;
@@ -155,7 +159,7 @@ export class MatchBoard {
     });
     for(const side of ['red','blue']){
       const cnt=snapshot?.counts?.[side],group=this.$('counts-'+side),resources=this.$('resources-'+side);
-      if(resources){resources.hidden=!pack;resources.querySelector('[data-resource=energy]').innerHTML=pack?icon('bolt')+'<span>Năng lượng <strong>'+state.energy[side]+'/'+pack.definition.energy.cap+'</strong></span>':'';resources.querySelector('[data-resource=control]').innerHTML=pack?icon('target')+'<span>Kiểm soát <strong>'+state.control[side]+(pack.definition.victory.control_target?'/'+pack.definition.victory.control_target:'')+'</strong></span>':'';}
+      if(resources){resources.hidden=!pack;resources.querySelector('[data-resource=energy]').innerHTML=pack?icon('bolt')+'<span>Năng lượng <strong>'+esc(state.energy[side])+'/'+esc(pack.definition.energy.cap)+'</strong></span>':'';resources.querySelector('[data-resource=control]').innerHTML=pack?icon('target')+'<span>Kiểm soát <strong>'+esc(state.control[side])+(pack.definition.victory.control_target?'/'+esc(pack.definition.victory.control_target):'')+'</strong></span>':'';}
 
       for(const [kind,label] of Object.entries(labels)){
         const item=group.querySelector('[data-kind="'+kind+'"]'),number=item.querySelector('[data-count]'),value=cnt?.[kind];

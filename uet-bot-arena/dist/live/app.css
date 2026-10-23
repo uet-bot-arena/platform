@@ -1,5 +1,6 @@
 /* Shared UI: layout, typography and controls. Live pages do not load demo CSS. */
 :root {
+  color-scheme: light;
   --font: 'Segoe UI', system-ui, sans-serif;
   --ink: #25352e;
   --muted: #606e66;
@@ -14,14 +15,14 @@
   --radius: 14px;
   --space: 8px;
 }
-@media (prefers-color-scheme: dark) {
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, #benchmark-form, #queue-page, [data-action="retention-run"], .real-auth) {
+
+  :root[data-theme="dark"] {
     color-scheme: dark;
     --ink: #e2eae4; --muted: #b0c0b5; --green: #9ad7b6; --green-soft: #263d32;
     --navy: #9ad7b6; --line: #3e5146; --paper: #1d2c24; --bg: #142019;
     --red: #f0a79b; --blue: #9bccec;
   }
-}
+
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.6 var(--font); -webkit-font-smoothing: antialiased; }
@@ -255,7 +256,7 @@ details>summary { cursor: pointer; color: var(--green); }.empty-state { padding:
 .rule-map{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));max-width:430px;border:2px solid #69816c;border-radius:6px;overflow:hidden;margin:15px 0}
 .rule-map-cell{position:relative;aspect-ratio:1;min-width:0;min-height:0;border:0;border-right:1px solid #cdd8c2;border-bottom:1px solid #cdd8c2;background:#f1f4ed;display:flex;align-items:center;justify-content:center;color:var(--ink);padding:0}
 .rule-map-cell:nth-child(even){background:#dce5d7}
-.rule-map-cell small{position:absolute;top:1px;left:3px;font-size:10px;color:#5d6c59}
+.rule-map-cell small{position:absolute;top:1px;left:3px;font-size:10px;color:#465643}
 .rule-map-cell.zone-energy,.board-square.zone-energy{background:#eee5c5}
 .rule-map-cell.zone-control,.board-square.zone-control{background:#ceded8}
 .rule-map-cell:focus-visible{z-index:1;outline:3px solid #327397;outline-offset:-3px}
@@ -474,31 +475,31 @@ details>summary { cursor: pointer; color: var(--green); }.empty-state { padding:
 .rule-map-cell .icon { width:18px; height:18px; }
 
 /* Native grader and email pages; the complete theme switch follows in package 9. */
-@media (prefers-color-scheme: dark) {
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, #benchmark-form, #queue-page, [data-action="retention-run"], .real-auth) .workspace { background: var(--bg); }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, #benchmark-form, #queue-page, [data-action="retention-run"], .real-auth) :is(.sidebar, .topbar, .page-heading, .person-avatar,
+
+  :root[data-theme="dark"] .workspace { background: var(--bg); }
+  :root[data-theme="dark"] :is(.sidebar, .topbar, .page-heading, .person-avatar,
   .panel, .stat, .admin-kpis .stat, .real-card, .modal, .input, .select, .btn) {
     background: var(--paper); color: var(--ink); border-color: var(--line);
   }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, #benchmark-form, #queue-page, [data-action="retention-run"], .real-auth) .nav-item { color: var(--muted); }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, #benchmark-form, #queue-page, [data-action="retention-run"], .real-auth) :is(.nav-item:hover, .icon-btn:hover, th, .report-json, .credential-value) { background: #26382d; }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, #benchmark-form, #queue-page, [data-action="retention-run"], .real-auth) .nav-item.active { color: var(--green); background: var(--green-soft); }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, #benchmark-form, #queue-page, [data-action="retention-run"], .real-auth) .btn:hover { background: #304837; border-color: #759981; }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, #benchmark-form, #queue-page, [data-action="retention-run"], .real-auth) .btn.primary { background: #9ad7b6; border-color: #9ad7b6; color: #142019; }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, #benchmark-form, #queue-page, [data-action="retention-run"], .real-auth) .btn.primary:hover { background: #b5e6cb; }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, #benchmark-form, #queue-page, [data-action="retention-run"], .real-auth) :is(.btn.danger, .btn.danger-button) { color: #f0b2a8; border-color: #96675e; background: var(--paper); }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, #benchmark-form, #queue-page, [data-action="retention-run"], .real-auth) .skip-link { color: #142019; }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, #benchmark-form, #queue-page, [data-action="retention-run"], .real-auth) .badge { color: #c4d4c9; background: #34483b; }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, #benchmark-form, #queue-page, [data-action="retention-run"], .real-auth) :is(.badge.success, .badge.live) { color: #b0e6c3; background: #264a34; }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, #benchmark-form, #queue-page, [data-action="retention-run"], .real-auth) .badge.danger { color: #f3b9ae; background: #512f29; }
-  :root:has(#grader-form, #email-state, #email-admin, #people-page, #people-admin, #github-page, #sample-bot-catalog, #sample-practice, #elo-page, #benchmark-form, #queue-page, [data-action="retention-run"], .real-auth) .badge.warning { color: #eed29c; background: #4e4028; }
-}
+  :root[data-theme="dark"] .nav-item { color: var(--muted); }
+  :root[data-theme="dark"] :is(.nav-item:hover, .icon-btn:hover, th, .report-json, .credential-value) { background: #26382d; }
+  :root[data-theme="dark"] .nav-item.active { color: var(--green); background: var(--green-soft); }
+  :root[data-theme="dark"] .btn:hover { background: #304837; border-color: #759981; }
+  :root[data-theme="dark"] .btn.primary { background: #9ad7b6; border-color: #9ad7b6; color: #142019; }
+  :root[data-theme="dark"] .btn.primary:hover { background: #b5e6cb; }
+  :root[data-theme="dark"] :is(.btn.danger, .btn.danger-button) { color: #f0b2a8; border-color: #96675e; background: var(--paper); }
+  :root[data-theme="dark"] .skip-link { color: #142019; }
+  :root[data-theme="dark"] .badge { color: #c4d4c9; background: #34483b; }
+  :root[data-theme="dark"] :is(.badge.success, .badge.live) { color: #b0e6c3; background: #264a34; }
+  :root[data-theme="dark"] .badge.danger { color: #f3b9ae; background: #512f29; }
+  :root[data-theme="dark"] .badge.warning { color: #eed29c; background: #4e4028; }
 
-@media (prefers-color-scheme: dark) {
-  :root:has(.real-auth) .real-auth { background: var(--bg); }
-  :root:has(.real-auth) .real-auth-content { background: var(--paper); border-color: var(--line); }
-  :root:has(.real-auth) .password-wrap button { background: var(--paper); color: var(--ink); }
-}
+
+
+  :root[data-theme="dark"] .real-auth { background: var(--bg); }
+  :root[data-theme="dark"] .real-auth-content { background: var(--paper); border-color: var(--line); }
+  :root[data-theme="dark"] .password-wrap button { background: var(--paper); color: var(--ink); }
+
 /* The gradients are opaque; declare their lightest stop for text contrast checks. */
 .auth-brand-panel { background-color: #326951; }
 
@@ -507,6 +508,49 @@ details>summary { cursor: pointer; color: var(--green); }.empty-state { padding:
 .elo-matrix-scroll td { white-space: nowrap; }
 .elo-matrix summary { cursor: pointer; padding: 1rem 0; }
 
-@media (prefers-color-scheme: dark) {
-  :root:has([data-action="retention-run"]) .admin-status-strip { background: var(--paper); border-color: var(--line); }
-}
+
+  :root[data-theme="dark"] .admin-status-strip { background: var(--paper); border-color: var(--line); }
+
+
+.site-announcement { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; padding: .8rem 1.5rem; background: var(--green-soft); color: var(--ink); border-bottom: 1px solid var(--line); }
+.site-announcement[hidden] { display: none; }
+.site-announcement strong { width: 100%; }
+.site-announcement a { color: var(--green); text-decoration: underline; font-weight: 600; }
+body:has(.app-shell) .site-announcement { margin-left: 224px; }
+.notice-body { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 1rem; }
+@media (max-width: 760px) { body:has(.app-shell) .site-announcement { margin-left: 0; } }
+
+.topbar, .top-actions { flex-wrap: wrap; }
+.auth-theme { display: flex; justify-content: flex-end; margin-bottom: 1rem; }
+.move-squares>span { color: var(--muted); }
+:root[data-theme="dark"] :is(.guest-intro,.onboarding li,.match-player,.inventory-item,.move-list .move-entry,.move-capture,.addon-modules article,.score-rule,.score-overview,.bot-guide-section,.rules-table tbody tr:nth-child(even)) { background: var(--paper); color: var(--ink); border-color: var(--line); }
+:root[data-theme="dark"] :is(.match-player.active,.move-list .move-entry.current,.move-list .move-entry.red.current,.move-list .move-entry.blue.current,.score-own td,.rules-document pre,.rules-document code,.ability-tag) { background: var(--green-soft); color: var(--ink); border-color: var(--line); }
+:root[data-theme="dark"] :is(.inventory-count,.rule-banner) { background: var(--paper); color: var(--ink); border-color: var(--line); }
+:root[data-theme="dark"] :is(.board-square,.rule-map-cell) { background: #304638; border-color: #55735c; }
+:root[data-theme="dark"] :is(.board-square.dark,.rule-map-cell:nth-child(even)) { background: #22362b; }
+:root[data-theme="dark"] :is(.board-square.changed,.rule-map-cell.zone-energy,.board-square.zone-energy) { background: #65552c; }
+:root[data-theme="dark"] :is(.rule-map-cell.zone-control,.board-square.zone-control) { background: #294e49; }
+:root[data-theme="dark"] :is(.move-effects,.rule-preview-resources .red,.rule-preview-resources .blue) { color: var(--muted); }
+:root[data-theme="dark"] :is(.board-piece,.inventory-piece,.log-piece) { background: #b34f43; color: #fff8ed; }
+:root[data-theme="dark"] :is(.board-piece.blue,.inventory-piece.blue,.log-piece.blue) { background: #326f98; }
+:root[data-theme="dark"] .score-own-bg { fill: var(--green-soft); fill-opacity: 1; }
+:root[data-theme="dark"] .score-grid line, :root[data-theme="dark"] .score-row-line { stroke: var(--line); }
+:root[data-theme="dark"] .score-loss { fill: #d58c7a; background: #d58c7a; }
+:root[data-theme="dark"] .score-draw { fill: #89aebc; background: #89aebc; }
+:root[data-theme="dark"] .score-win { fill: #77bb94; background: #77bb94; }
+:root[data-theme="dark"] .score-bye { fill: #cbaa60; background: #cbaa60; }
+:root[data-theme] button:disabled { opacity: 1; }
+
+.site-announcement>* { min-width: 0; overflow-wrap: anywhere; }
+.site-announcement>span { flex: 1 1 280px; }
+
+:root[data-theme="dark"] .rule-map-cell small { color: #e9f1eb; }
+.rule-map-cell:disabled { opacity: 1; }
+
+body:has(.real-auth) #announcements-banner { margin-left: 0; }
+
+.base-marker,.zone-marker { opacity: 1; }
+:root[data-theme="dark"] .base-red .base-marker { color: #ffc1a8; }
+:root[data-theme="dark"] .base-blue .base-marker { color: #b6dcee; }
+:root[data-theme="dark"] .board-square.zone-energy .zone-marker { color: #f3df99; }
+:root[data-theme="dark"] .board-square.zone-control .zone-marker { color: #b9e4d4; }

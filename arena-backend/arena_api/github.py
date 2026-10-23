@@ -223,6 +223,11 @@ class GitHub:
                     channel="github", channel_ref=row["sha"], pushed_ms=row["pushed_ms"], message=commit["commit"]["message"].splitlines()[0][:200])
             self.execute("UPDATE github_commits SET message=?,bot_hash=?,submission_id=?,state='checking',error=NULL WHERE team_id=? AND sha=?",
                          (commit["commit"]["message"].splitlines()[0][:200], bot_hash, submission["id"], row["team_id"], row["sha"]))
+            if not previous:
+                with self.store.transaction():
+                    duplicate=self.one('SELECT 1 FROM github_commits g JOIN teams t ON t.id=g.team_id WHERE g.bot_hash=? AND g.team_id<>? AND g.submission_id IS NOT NULL AND t.archived_ms IS NULL AND t.season_id=? LIMIT 1',
+                        (bot_hash,row['team_id'],getattr(self.a,'season_id','default')))
+                    if duplicate:self.a.audit('system','github.duplicate_bot',row['team_id']+':'+bot_hash)
             for purpose in self.purposes(row["team_id"], row["sha"]):
                 self.ensure_check(row["team_id"], row["sha"], purpose)
         except GitHubError as exc:
@@ -240,6 +245,13 @@ class GitHub:
 
     def ensure_check(self, team, sha, purpose):
         self.execute("INSERT OR IGNORE INTO github_checks(team_id,sha,purpose) VALUES(?,?,?)", (team, sha, purpose))
+
+    def duplicates(self):
+        season=getattr(self.a,'season_id','default')
+        rows=self.rows('SELECT g.bot_hash,COUNT(DISTINCT g.team_id) AS team_count FROM github_commits g JOIN teams t ON t.id=g.team_id WHERE g.bot_hash IS NOT NULL AND g.submission_id IS NOT NULL AND t.archived_ms IS NULL AND t.season_id=? GROUP BY g.bot_hash HAVING COUNT(DISTINCT g.team_id)>1 ORDER BY g.bot_hash',(season,))
+        for row in rows:
+            row['teams']=self.rows('SELECT DISTINCT t.id,t.name FROM github_commits g JOIN teams t ON t.id=g.team_id WHERE g.bot_hash=? AND t.archived_ms IS NULL AND t.season_id=? ORDER BY t.name,t.id',(row['bot_hash'],season))
+        return dict(items=rows)
 
     def run_check(self, check):
         team, sha, purpose = check["team_id"], check["sha"], check["purpose"]

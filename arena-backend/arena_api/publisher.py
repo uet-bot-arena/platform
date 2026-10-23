@@ -229,7 +229,9 @@ class Publisher:
                 running=self.comp.one("SELECT COUNT(*) AS n FROM grader_leases WHERE status='active'")['n'],
                 slots=sum(g['slots'] or 0 for g in graders), generated_ms=time.time_ns()//1_000_000))
             self.write('featured.json',dict(boards=boards,generated_ms=time.time_ns()//1_000_000))
-            self.write('announcements.json',dict(items=[]))
+            from arena_api.announcements import public as public_notice
+            notices=[public_notice(json.loads(r[0])) for r in self.db.execute("SELECT data FROM documents WHERE kind='announcement' AND json_extract(data,'$.archived_ms') IS NULL ORDER BY rowid DESC")]
+            self.write('announcements.json',dict(items=notices))
             self.db.commit()
             partial = self.cursor_file.with_suffix('.tmp')
             partial.write_text(str(version),encoding='ascii');partial.replace(self.cursor_file)

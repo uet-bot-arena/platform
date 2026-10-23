@@ -9,6 +9,8 @@ import time
 from arena.protocol import Fault
 
 
+MAX_RUNNING_PER_TEAM = 4
+
 def official_priority(job):
     official=job.get('official')
     return bool(official) and (not isinstance(official,dict) or official.get('phase')!='ladder')
@@ -66,8 +68,12 @@ class DurableJobQueue:
     def claim(self, platform, runtime_id):
         """Remove and return the best job this grader may run, or None. Caller holds store.lock."""
         row = self.store.db.execute(
-            "SELECT id FROM job_queue WHERE (platform IS NULL OR platform=?) AND (runtime_id IS NULL OR runtime_id=?) "
-            "ORDER BY priority,seq LIMIT 1", (platform, runtime_id)).fetchone()
+            "SELECT q.id FROM job_queue q LEFT JOIN documents d ON d.id=q.id "
+            "WHERE (q.platform IS NULL OR q.platform=?) AND (q.runtime_id IS NULL OR q.runtime_id=?) "
+            "AND (d.id IS NULL OR d.team LIKE 'competition:%' OR (SELECT COUNT(*) FROM documents r "
+            "WHERE r.team=d.team AND r.kind='job' AND json_extract(r.data,'$.status') NOT IN ('completed','failed','aborted') "
+            "AND json_extract(r.data,'$.status')<>'queued')<?) ORDER BY q.priority,q.seq LIMIT 1",
+            (platform, runtime_id, MAX_RUNNING_PER_TEAM)).fetchone()
         if not row:
             return None
         self.store.db.execute("DELETE FROM job_queue WHERE id=?", (row[0],))
