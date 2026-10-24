@@ -21,6 +21,7 @@ def main():
     admin.add_argument("--password-stdin", action="store_true", help="Read one password line from stdin; never from argv")
     serve = sub.add_parser("serve")
     serve.add_argument("--port", type=int, help="Ghi đè hub.port trong file cấu hình")
+    serve.add_argument('--access-log', action='store_true', help='Ghi request/status vào journald để đếm tải; không ghi body/header')
     args = parser.parse_args()
     if getattr(args, "port", None):
         # The app factory builds its own Settings; pass the override through the environment.
@@ -32,7 +33,7 @@ def main():
     if args.action == "serve":
         import uvicorn
         uvicorn.run("arena_api.app:create_app", factory=True, host=settings.bind, port=settings.port, workers=1,
-                    access_log=False, proxy_headers=False, limit_concurrency=settings.connection_limit,
+                    access_log=args.access_log, proxy_headers=False, limit_concurrency=settings.connection_limit,
                     timeout_keep_alive=5, timeout_graceful_shutdown=400)
         return
     if args.action == 'publish':

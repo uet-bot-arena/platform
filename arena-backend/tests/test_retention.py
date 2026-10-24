@@ -4,6 +4,7 @@ import gzip
 import io
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 import zipfile
 
@@ -35,6 +36,13 @@ class RetentionTests(APIHarness):
         folder.mkdir(parents=True)
         (folder/'bot.cpp').write_bytes(b'int main(){}')
         return self.store.update(item['id'], source_path=str(folder))
+
+    def test_disk_pressure_includes_backups_and_other_files_on_the_volume(self):
+        with patch('arena_api.retention.shutil.disk_usage', return_value=SimpleNamespace(total=100*1024**3,used=80*1024**3,free=20*1024**3)):
+            status=self.retention.disk()
+        self.assertEqual(status['percent'],80)
+        self.assertTrue(status['warning'])
+        self.assertLess(status['data_bytes'],1024**3)
 
     def test_timing_job_events_and_lease_state_rollback_together_on_interruption(self):
         job=self.store.create('job',self.team,dict(kind='benchmark',status='starting',profile=benchmark_profile().public()))

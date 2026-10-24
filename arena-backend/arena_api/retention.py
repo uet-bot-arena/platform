@@ -105,15 +105,17 @@ class Retention:
         return bool(frozen) or bool(latest and latest[0]==job['id'])
 
     def disk(self):
-        total = shutil.disk_usage(self.store.root).total
+        volume = shutil.disk_usage(self.store.root)
+        total = volume.total
         size = sum(p.stat().st_size for p in self.store.root.rglob('*') if p.is_file() and not p.is_symlink())
         with self.store.lock:
             reusable = self.store.db.execute('PRAGMA freelist_count').fetchone()[0]*self.store.db.execute('PRAGMA page_size').fetchone()[0]
             incremental = self.store.db.execute('PRAGMA auto_vacuum').fetchone()[0]==2
-        percent = 100 * max(0,size-reusable) / total if total else 100
+        # Backups, OS and other files consume the same volume as the DB.
+        percent = 100 * volume.used / total if total else 100
         return dict(data_bytes=size, disk_bytes=total, percent=round(percent, 3),
                     reusable_bytes=reusable, offline_compaction_required=not incremental and reusable>0,
-                    warning=100*size/total >= self.settings.disk_warning_percent if total else True)
+                    warning=percent >= self.settings.disk_warning_percent)
 
     def reclaim_pages(self):
         # Small incremental steps release disk space without a long writer lock.
