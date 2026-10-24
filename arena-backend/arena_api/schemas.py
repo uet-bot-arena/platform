@@ -190,6 +190,7 @@ class LadderOptions(Model):
 
 
 class OfficialOptions(Model):
+    match_ms: Literal[10000, 60000, 300000] = 10000
     general_rounds: int = Field(default=20,ge=1,le=64)
     group_size: int = Field(default=64,ge=2,le=128)
     finalists: int = Field(default=16,ge=1,le=128)

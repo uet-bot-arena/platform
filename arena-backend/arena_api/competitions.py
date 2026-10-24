@@ -122,7 +122,7 @@ class Competitions:
             if config["format"] == "swiss":
                 config["ranking"] = "points_buchholz"
             if config['format']=='elo':
-                config.update(ladder=body.get('ladder',dict(round_hours=2)),official=body.get('official',dict(general_rounds=20,group_size=64,finalists=16,k=[[20,32],[None,16]])),ranking='round_robin_points',scoring=dict(win=1,draw=.5,loss=0))
+                config.update(ladder=body.get('ladder',dict(round_hours=2)),official=dict({'match_ms':10000},**body.get('official',dict(general_rounds=20,group_size=64,finalists=16,k=[[20,32],[None,16]]))),ranking='round_robin_points',scoring=dict(win=1,draw=.5,loss=0))
             return config
         def action(config):
             if self.db.execute("SELECT COUNT(*) FROM competitions").fetchone()[0] >= 100:
@@ -556,13 +556,11 @@ class Competitions:
 
     def view(self, ident, admin=False):
         with self.store.lock:
-            item = self.get(ident)
-            if (item["status"] == "draft" or item["archived_ms"] is not None) and not admin:
-                raise Fault("not_found", "Competition not found")
-            entries = self.rows("SELECT e.*,t.name FROM competition_entries e JOIN teams t ON t.id=e.team_id WHERE e.competition_id=? ORDER BY e.team_id", (ident,))
+            item = self.visible(ident, admin)
+            entries = self.rows("SELECT e.team_id,t.name,e.accepted_ms,json_extract(e.snapshot,'$.version') AS version FROM competition_entries e JOIN teams t ON t.id=e.team_id WHERE e.competition_id=? ORDER BY e.team_id", (ident,))
             # Deliberate whitelist: no contact info, binary/build log, benchmark
             # report or private worker job ID in the shared competition view.
-            item["entries"] = [{"team_id": e["team_id"], "name": e["name"], "version": json.loads(e["snapshot"])["version"], "accepted_ms": e["accepted_ms"]} for e in entries]
+            item["entries"] = entries
             if item['config']['format']=='elo':
                 item['elo']=self.elo.public(ident)
                 known={r['id']:r['name'] for r in self.rows("SELECT t.id,t.name FROM teams t JOIN elo_ratings r ON r.team_id=t.id WHERE r.competition_id=?",(ident,))}
@@ -660,15 +658,21 @@ class Competitions:
                 raise Fault("not_found", "Attempt not found")
             return self.store.get(row["job_id"], "competition:" + ident, "job")
 
+    def visible(self, ident, admin=False):
+        item = self.get(ident)
+        if (item['status'] == 'draft' or item['archived_ms'] is not None) and not admin:
+            raise Fault('not_found', 'Competition not found')
+        return item
+
     def live_fixture(self, ident, fixture_id, admin=False):
-        self.view(ident, admin)
         with self.store.lock:
+            self.visible(ident, admin)
             return self.fixture(ident, fixture_id)
 
     def watch_state(self, ident, admin=False):
         """Public fixture progress only; never expose attempt IDs or bot reports."""
         with self.store.lock:
-            item = self.view(ident, admin)
+            item = self.visible(ident, admin)
             if item['config']['format']=='elo':
                 rows=self.rows('SELECT g.*,r.competition_id FROM elo_games g JOIN elo_rounds r ON r.id=g.round_id WHERE r.competition_id=? ORDER BY r.started_ms,g.ordinal',(ident,))
             else:

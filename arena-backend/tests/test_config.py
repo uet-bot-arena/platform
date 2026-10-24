@@ -253,7 +253,7 @@ class NoHardcodedDeploymentValues(unittest.TestCase):
                 host = re.match(r"https?://([^/:]+)", url).group(1)
                 if host in ("127.0.0.1", "localhost") or url.rstrip("/") in self.ALLOWED_URLS or "{" in url:
                     continue
-                if path.parent.name == "scripts" and path.name in ("install-dev-tools.sh", "build-rootfs.sh", "install-grader.sh", "install-grader.ps1", "fetch-toolchain.py"):
+                if path.parent.name == "scripts" and path.name in ("install-dev-tools.sh", "build-rootfs.sh", "install-grader.sh", "install-grader.ps1", "install-hub.sh", "fetch-toolchain.py"):
                     continue  # pinned download sources with SHA-256 checks
                 problems.append(f"{path.relative_to(REPO)}: URL {url}")
             for email in re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}", text):
