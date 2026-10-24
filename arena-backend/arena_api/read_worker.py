@@ -6,6 +6,8 @@ import threading
 import time
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 from arena.eta import Timing
 from arena.job_queue import DurableJobQueue
@@ -55,9 +57,19 @@ def create_app(settings=None):
     app.add_middleware(RequestBoundary,settings=settings)
     for router in (arena_routes.router,auth_routes.router,competition_routes.router):
         app.router.routes.extend(route for route in router.routes if route.path in PATHS and route.methods=={'GET'})
+    def error(request,code,detail):
+        return {'error':{'code':code,'detail':detail},'request_id':getattr(request.state,'request_id',None)}
     @app.exception_handler(Fault)
     async def fault(request,exc):
-        return JSONResponse({'error':{'code':exc.code,'detail':exc.detail}},status_code=ERROR_STATUS.get(exc.code,400))
+        headers={'Retry-After':str(getattr(exc,'retry_after',900))} if exc.code=='rate_limited' else None
+        return JSONResponse(error(request,exc.code,exc.detail),status_code=ERROR_STATUS.get(exc.code,400),headers=headers)
+    @app.exception_handler(RequestValidationError)
+    async def validation(request,exc):
+        detail=[{'loc':e['loc'],'type':e['type'],'message':e['msg']} for e in exc.errors()]
+        return JSONResponse(error(request,'invalid_request',detail),status_code=422)
+    @app.exception_handler(HTTPException)
+    async def http_error(request,exc):
+        return JSONResponse(error(request,'not_found' if exc.status_code==404 else 'http_error',exc.detail),status_code=exc.status_code)
     return app
 
 

@@ -266,4 +266,25 @@ done
 for arena_component in hub publisher mailer nginx; do
   systemctl is-active --quiet "uet-arena-$arena_component" || { echo "$arena_component failed to start; inspect its journal." >&2; exit 1; }
 done
+(cd /opt/uet-arena/app/arena-backend && ARENA_CONFIG=/etc/uet-arena/config.toml ARENA_SECRETS=/etc/uet-arena/secrets.toml /opt/uet-arena/venv/bin/python - "$arena_read_workers" <<'PY'
+import sys,time
+from urllib.error import HTTPError,URLError
+from urllib.parse import urlsplit
+from urllib.request import Request,urlopen
+from arena_api.settings import Settings
+host=urlsplit(Settings().origin).netloc
+targets=[(4181,'health/ready',200)]+[(4183+i,'auth/me',401) for i in range(int(sys.argv[1]))]
+for port,path,status in targets:
+    deadline=time.monotonic()+60
+    while True:
+        try:
+            with urlopen(Request(f'http://127.0.0.1:{port}/api/v1/{path}',headers={'Host':host}),timeout=2) as response:
+                if response.status==status:break
+        except HTTPError as exc:
+            if exc.code==status:break
+        except (URLError,TimeoutError):pass
+        assert time.monotonic()<deadline,f'API on port {port} did not become ready; inspect its journal'
+        time.sleep(.2)
+PY
+)
 echo 'Installed. Existing config/secrets were preserved. Bootstrap an admin (docs/DEPLOY.md); SMTP and named tunnel need configuration.'

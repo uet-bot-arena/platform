@@ -265,7 +265,8 @@ def main(output=None,extended=False,english=False):
                     publisher=Publisher(app.state.settings)
                     try:publisher.publish()
                     finally:publisher.close()
-                    expect(page.locator('#replay-slider')).to_have_attribute('max','1',timeout=8000)
+                    # Public snapshots poll every 10s; allow one publisher tick as well.
+                    expect(page.locator('#replay-slider')).to_have_attribute('max','1',timeout=12000)
                     result['checks'].append(dict(route='guest-featured-live-board',scheme=scheme,passed=True))
                     for width in (1440,390):
                         page.set_viewport_size(dict(width=width,height=1000 if width==1440 else 844))
@@ -276,9 +277,9 @@ def main(output=None,extended=False,english=False):
                             if failures:result['contrast_failures'].append(dict(route='guest-board',scheme=scheme,width=width,failures=failures))
                             result['checks'].append(dict(route='guest-board',scheme=scheme,width=width,contrast_min=min(x['ratio'] for x in contrast)))
                     assert any('/snapshots/featured.json' in u for u in requests),requests
-                    assert not [u for u in requests if '/api/v1/competitions' in u],requests
+                    assert not [u for u in requests if '/api/v1/competitions' in u and not u.endswith('/live-interest')],requests
                     assert any('/snapshots/' in u for u in requests),requests
-                    result['checks'].append(dict(route='guest-static-only',scheme=scheme,passed=True))
+                    result['checks'].append(dict(route='guest-snapshot-data-only',scheme=scheme,passed=True))
                     context.close()
                 browser.close()
             assert not result['page_errors'],result['page_errors']

@@ -31,10 +31,15 @@ class ReadWorker(APIHarness):
             self.assertEqual(reader.get('/api/v1/submissions').json()['items'][0]['id'],own['id'])
             self.assertEqual(team.post('/api/v1/auth/logout',json={}).status_code,200)
             self.assertEqual(reader.get('/api/v1/auth/me').status_code,401)
-            reader.cookies.clear();self.assertEqual(reader.get('/api/v1/ui/read').status_code,401)
+            reader.cookies.clear();unauthorized=reader.get('/api/v1/ui/read')
+            self.assertEqual(unauthorized.status_code,401)
+            self.assertEqual(unauthorized.json()['request_id'],unauthorized.headers['X-Request-ID'])
             reader.cookies.update(self.client.cookies);self.assertEqual(reader.get('/api/v1/ui/read').status_code,403)
             reader.cookies.clear();reader.cookies.update(other.cookies)
             self.assertEqual(reader.get('/api/v1/ui/read').json()['submissions'],[])
+            invalid=reader.get('/api/v1/ui/read?view=invalid')
+            self.assertEqual(invalid.status_code,422)
+            self.assertEqual(invalid.json()['error']['code'],'invalid_request')
 
     def test_nginx_routes_exactly_the_read_allowlist_and_zero_falls_back_to_main(self):
         with tempfile.TemporaryDirectory() as tmp:

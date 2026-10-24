@@ -246,9 +246,15 @@ class PeopleAPI(APIHarness):
         self.teams.eligible(team["id"])
         # Results remain readable, but the guest never receives an official rank.
         comp = self.app.state.competitions
-        fake = {"id": "test", "status": "completed", "entries": [{"team_id": team["id"], "name": "Đội thầy"}], "config": {"format": "double_round_robin"}}
-        with patch.object(comp, "view", return_value=fake):
-            scores = comp.standings("test")
+        store=self.app.state.store
+        source=store.create('submission',team['id'],dict(version='guest',runtime='cpp17'))
+        check=store.create('job',team['id'],dict(kind='benchmark',status='completed'))
+        with store.transaction():
+            store.db.execute("INSERT INTO competitions(id,title,status,config,created_ms) VALUES('test','Guest test','completed',?,1)",
+                             (json.dumps(dict(format='double_round_robin')),))
+            store.db.execute('INSERT INTO competition_entries VALUES(?,?,?,?,?,1)',
+                             ('test',team['id'],source['id'],check['id'],json.dumps(dict(version='guest'))))
+        scores = comp.standings("test")
         self.assertIsNone(scores["items"][0]["rank"])
         self.assertTrue(scores["items"][0]["is_guest"])
 
