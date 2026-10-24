@@ -67,12 +67,14 @@ def user_worker(number,people,origin,cid,contract,start,stop,end,ready,output):
             async def read(path,person,measured):
                 began=time.monotonic()
                 try:
-                    headers={'Cookie':person['cookie'],'X-Forwarded-For':person['ip']}
+                    headers={'Cookie':person['cookie'],'X-Forwarded-For':person['ip'],'Accept-Encoding':'gzip'}
                     etags=person.setdefault('etags',{})
                     if path.startswith('/snapshots/') and path in etags:headers['If-None-Match']=etags[path]
-                    async with clients[person['index']%256].stream('GET',origin+path,headers=headers) as response:
+                    response=await clients[person['index']%256].send(httpx.Request('GET',origin+path,headers=headers),stream=True)
+                    try:
                         # Measure through the complete wire body; browser gzip decoding is outside hub latency.
                         async for _ in response.aiter_raw():pass
+                    finally:await response.aclose()
                     if path.startswith('/snapshots/') and 'etag' in response.headers:etags[path]=response.headers['etag']
                     if not measured:assert response.status_code in (200,304),(path,response.status_code)
                     if measured:

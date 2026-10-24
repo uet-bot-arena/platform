@@ -110,7 +110,10 @@ def slice_processes(group):
         for pid in file.read_text().split():
             try:
                 args=Path('/proc',pid,'cmdline').read_bytes().replace(b'\0',b' ').decode()
-                name='hub' if 'uvicorn' in args else 'publisher' if 'publish' in args else 'mailer' if 'mailer' in args else 'nginx' if 'nginx' in args else args[:60]
+                if '--read-only' in args:
+                    name='read-'+args.split('--port ',1)[1].split()[0]
+                else:
+                    name='hub' if 'uvicorn' in args else 'publisher' if 'publish' in args else 'mailer' if 'mailer' in args else 'nginx' if 'nginx' in args else args[:60]
                 result[pid]=(name,proc_cpu(pid))
             except FileNotFoundError:pass
     return result
