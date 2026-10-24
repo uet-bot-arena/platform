@@ -1,6 +1,6 @@
 """Scheduler tests use synthetic qualified records/results, not hardware timings."""
 import json
-from unittest.mock import patch
+from unittest.mock import patch,PropertyMock
 from arena.elo import round_robin_rank
 from arena.ladder_clock import boundary
 from test_elo_rounds import EloFixture
@@ -8,6 +8,18 @@ import test_competitions as competition_helpers
 
 
 class EloScheduling(EloFixture):
+    def test_one_tick_fills_free_slots_and_reconcile_skips_active_reports(self):
+        self.configure()
+        rid=self.book.start(self.ident,'ladder',1,1000,self.entries)
+        with patch('arena.service.Service.worker_count',new_callable=PropertyMock,return_value=4), patch.object(self.comp.elo,'advance'):
+            self.comp.elo.tick()
+            self.assertEqual(self.comp.one("SELECT COUNT(*) AS n FROM elo_games WHERE round_id=? AND status='queued'",(rid,))['n'],4)
+            self.assertEqual(self.app.state.service.pending.qsize(),4)
+            with patch.object(self.store,'get',side_effect=AssertionError('hydrated unfinished report')):
+                self.comp.elo.reconcile()
+            self.comp.elo.tick()
+            self.assertEqual(self.app.state.service.pending.qsize(),4,'Repeated tick exceeded the slot budget')
+
     def test_live_fixture_checks_visibility_without_building_all_standings(self):
         self.configure()
         self.book.start(self.ident,'ladder',1,1000,self.entries)

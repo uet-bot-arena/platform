@@ -188,10 +188,10 @@ def main():
             assert native_report['profile']==leases[0]['job']['profile'],'Use the 10-second native season report, not a legacy clock'
             from arena.verify import verify
             verify(leases[0]['job'],'completed',native_report)
-            completed_gzip={};grader_clients=[]
+            completed_gzip={};grader_clients=[];lease_waits=Counter();games_by_slot=Counter()
             def emit(number):
                 nonlocal fixture
-                lease=leases[number];runner=beat=None
+                lease=leases[number];runner=beat=None;beats=[]
                 # Only the transport/Runner hooks run here; no bot/backend is invoked.
                 identity=dict(platform='windows',backend='windows',runtime_id=template['report']['runtime_id'])
                 grader=Grader(origin,slot_headers[number]['Authorization'][7:],backend='windows',
@@ -203,7 +203,7 @@ def main():
                     first_game=True
                     while True:
                         runner=GraderRunner(grader,None,lease,threading.Event())
-                        beat=threading.Thread(target=grader.heartbeat_loop,args=(runner,));beat.start()
+                        beat=threading.Thread(target=grader.heartbeat_loop,args=(runner,));beat.start();beats.append(beat)
                         if first_game:
                             while not emission_start.wait(.1):
                                 if stop.is_set():return
@@ -223,16 +223,19 @@ def main():
                         assert len(runner.replay)==len(trace)
                         sent[job]=dict(count=len(runner.replay),sha256=event_digest(runner.replay))
                         completed_gzip[job]=grader.client.payloads[runner.path('result-replay')]
-                        runner.lost.set();runner.heartbeat_wake.set();beat.join(12)
+                        runner.lost.set();runner.heartbeat_wake.set();games_by_slot[number]+=1
                         if time.monotonic()>=cutoff[0] or stop.is_set():break
-                        lease=grader.client.call('POST','/api/v1/grader/lease',dict(wait_seconds=1))['lease']
-                        assert lease is not None,'Expected enough queued official games'
+                        waited=time.monotonic();lease=None
+                        while lease is None and time.monotonic()<cutoff[0] and not stop.is_set():
+                            lease=grader.client.call('POST','/api/v1/grader/lease',dict(wait_seconds=min(25,max(0,int(cutoff[0]-time.monotonic())))))['lease']
+                        lease_waits[number]+=time.monotonic()-waited
+                        if lease is None:break
                 except Exception as exc:event_errors.append(repr(exc))
                 finally:
                     if runner:
                         runner.lost.set();runner.heartbeat_wake.set();runner.flush_wake.set()
                         runner.flusher.join(10)
-                    if beat:beat.join(12)
+                    for thread in beats:thread.join(12)
             for number in range(32):
                 thread=threading.Thread(target=emit,args=(number,));thread.start();emitters.append(thread)
             def viewer(number):
@@ -355,12 +358,14 @@ def main():
                     assert len(stored)==expected['count'] and event_digest(stored)==expected['sha256'],job
             report['events_verified']=sum(item['count'] for item in sent.values())
             report['grader_http_calls']=dict(sum((client.calls for client in grader_clients),Counter()))
+            report['games_by_slot']=dict(games_by_slot)
+            report['lease_wait_seconds_by_slot']={str(k):round(v,3) for k,v in lease_waits.items()}
             report['event_jobs_verified']=len(sent)
             report['negotiated_flush_ms_counts']=dict(flush_modes)
             report['sse_viewers_with_data']=len(chunks)
             report['sse_viewers_with_state']=len(states)
             report['sse_min_states']=min(states.values(),default=0)
-            assert report['events_verified']>0 and len(sent)>=32 and len(states)==100 and not event_errors
+            assert report['events_verified']>=150000 and len(sent)>=32 and len(states)==100 and not event_errors
             baseline=report['levels'][0]
             assert baseline['all_requests_ok'] and not stream_errors and not github.errors and baseline['github_repo_reads_per_minute']>=1000,baseline
             assert baseline['page_p95_ms']<=300 and baseline['login_p95_ms']<=1000 and baseline['cpu_pct_of_2vcpu']<=50,baseline

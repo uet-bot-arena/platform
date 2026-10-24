@@ -38,7 +38,8 @@ class EloScheduler:
                             config=self.comp.get(item['id'])['config'];config['elo_error']=exc.detail
                             self.db.execute("UPDATE competitions SET config=?,status=CASE WHEN status='running' THEN 'paused' ELSE status END,revision=revision+1 WHERE id=?",(json.dumps(config),item['id']))
                             self.comp.accounts.audit('system','elo.attention',item['id'])
-        self.dispatch()
+        while self.dispatch():
+            pass
 
     def advance(self,item,now):
         ident=item['id'];config=item['config']
@@ -94,7 +95,7 @@ class EloScheduler:
     def reconcile(self):
         from arena_api.competitions import INFRASTRUCTURE
         with self.store.transaction():
-            rows=self.comp.rows("SELECT g.*,r.competition_id,r.config FROM elo_games g JOIN elo_rounds r ON r.id=g.round_id JOIN competitions c ON c.id=r.competition_id WHERE json_extract(c.config,'$.format')='elo' AND g.status='queued'")
+            rows=self.comp.rows("SELECT g.*,r.competition_id,r.config FROM elo_games g JOIN elo_rounds r ON r.id=g.round_id JOIN competitions c ON c.id=r.competition_id JOIN documents d ON d.id=g.current_job_id WHERE json_extract(c.config,'$.format')='elo' AND g.status='queued' AND json_extract(d.data,'$.status') IN ('completed','failed','aborted')")
             for row in rows:
                 job=self.store.get(row['current_job_id'])
                 if job['status'] not in TERMINAL:continue
@@ -130,6 +131,7 @@ class EloScheduler:
             self.db.execute("INSERT INTO elo_attempts VALUES(?,?,?,'queued',NULL,?)",(row['id'],number,job['id'],time.time_ns()//1_000_000))
             self.db.execute('INSERT INTO events VALUES(?,?,?)',(job['id'],1,json.dumps(dict(seq=1,type='queued',server_unix_ms=time.time_ns()//1_000_000,data=dict(kind='match')))))
             self.comp.service.pending.put(job['id'],official=row['phase']!='ladder',kind='match',platform=cfg['grader_platform'],runtime_id=cfg['runtime_id'])
+            return True
     def public(self,ident):
         """Shared public progress only; private entries and worker reports stay in SQL."""
         item=self.comp.get(ident);config=item['config']
