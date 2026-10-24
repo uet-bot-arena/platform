@@ -1226,5 +1226,20 @@ export default {
   "Xem": "View",
   "Trang": "Page",
   "Hash bot": "Bot hash",
-  "Link repo private": "Private repository link"
+  "Link repo private": "Private repository link",
+  "Gói cài máy chấm Windows": "Windows grader package",
+  "Ai có link đều tải được: gói chỉ có code máy chấm, không có mã hay mật khẩu. Máy chỉ nhận việc khi có mã do BTC tạo ở trên, gửi riêng cho từng người.": "Anyone with the link can download it: the package holds grader code only, no token or password. A machine only receives work with a token the organisers create above and send privately to each person.",
+  "Tải về:": "Download:",
+  "Phiên bản máy chấm:": "Grader version:",
+  "Khối lệnh cài trên Windows (PowerShell):": "Windows install commands (PowerShell):",
+  "Tin nhắn gửi người cài (gồm link, lệnh và mã)": "Message for the installer (link, commands and token)",
+  "Sao chép tin nhắn": "Copy message",
+  "Đã sao chép tin nhắn cài máy chấm.": "Grader install message copied.",
+  "Cài máy chấm UET Bot Arena, tên máy: ": "Install a UET Bot Arena grader, machine name: ",
+  "1. Cần Windows 10/11 và Python 3.11+ (python.org, tick \"Add python.exe to PATH\"). Cắm sạc, tắt Sleep khi đang chấm.": "1. Needs Windows 10/11 and Python 3.11+ (python.org, tick \"Add python.exe to PATH\"). Keep it plugged in and turn off Sleep while grading.",
+  "2. Mở PowerShell, dán cả khối lệnh dưới đây rồi Enter (máy 2 nhân trở xuống thì đổi -Slots 2 thành -Slots 1):": "2. Open PowerShell, paste the whole block below and press Enter (on 2 cores or fewer change -Slots 2 to -Slots 1):",
+  "3. Khi được hỏi mã máy chấm, dán mã này rồi Enter (mã không hiện khi dán):": "3. When asked for the grader token, paste this token and press Enter (it stays hidden while pasting):",
+  "4. Thấy dòng \"OK: hub nhận máy chấm ": "4. When you see \"OK: hub nhận máy chấm ",
+  "\" là xong; máy chấm chạy ẩn và tự bật khi đăng nhập Windows.": "\" you are done; the grader runs hidden and starts at every Windows sign-in.",
+  "Dừng máy chấm (gỡ hẳn thì thay -Stop bằng -Uninstall):": "Stop the grader (use -Uninstall instead of -Stop to remove it):"
 };

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {gradersPage,graderRows,graderTokenModal} from '../dist/live/graders-ui.js';
+import {gradersPage,graderRows,graderTokenModal,graderMessage,installCommand,validPackage} from '../dist/live/graders-ui.js';
 import {readTournamentOptions} from '../dist/live/tournament-options.js';
 
 const g=(extra)=>({id:'g1',name:'PC 301',platform:'windows',backend:'windows',slots:2,running:1,jobs_done:5,
@@ -28,6 +28,38 @@ test('grader names are escaped everywhere',()=>{
 test('token modal shows the one-time token and a copy action',()=>{
   const html=graderTokenModal({name:'PC 301',token:'uag_abc'});
   assert.match(html,/uag_abc/);assert.match(html,/copy-grader-token/);assert.match(html,/lần duy nhất/);
+});
+
+const pkg={file:'uet-arena-grader-0123456789ab.zip',sha256:'0123456789ab'+'c'.repeat(52),bytes:254540,grader_version:'0.8.0-m1'};
+
+test('package panel links the hub ZIP with its SHA-256 and a one-paste install block',()=>{
+  const html=gradersPage({graders:{items:[],queue:{}},graderPackage:pkg,origin:'https://hub.example'});
+  assert.match(html,/href="https:\/\/hub\.example\/downloads\/uet-arena-grader-0123456789ab\.zip" download/);
+  assert.match(html,new RegExp(pkg.sha256));assert.match(html,/0\.8\.0-m1/);
+  assert.match(html,/Get-FileHash/);assert.match(html,new RegExp(pkg.sha256.toUpperCase()));
+  assert.match(html,/install-grader\.ps1 -HubUrl https:\/\/hub\.example -Slots 2/);
+  assert.doesNotMatch(gradersPage({graders:{items:[],queue:{}},origin:'https://hub.example'}),/Gói cài máy chấm/,'no manifest, no panel');
+});
+
+test('only well-formed package manifests are used',()=>{
+  assert.equal(validPackage(pkg),pkg);
+  for(const bad of [null,{},{...pkg,file:'../etc/passwd'},{...pkg,file:'uet-arena-grader-0123456789ab.zip"onerror=x'},{...pkg,sha256:'zz'}])
+    assert.equal(validPackage(bad),null);
+});
+
+test('install message carries link, checked SHA, command and token for one machine',()=>{
+  const text=graderMessage({name:'laptop-2',token:'uag_abc'},pkg,'https://hub.example');
+  assert.match(text,/laptop-2/);assert.match(text,/uag_abc/);
+  assert.match(text,/Invoke-WebRequest -UseBasicParsing "https:\/\/hub\.example\/downloads\/uet-arena-grader-0123456789ab\.zip"/);
+  assert.match(text,/-ne "0123456789AB/);assert.match(text,/install-grader\.ps1 -Stop/);
+  assert.equal(installCommand(pkg,'https://hub.example').split('\n').length,6);
+});
+
+test('token modal adds the copyable install message only when a package exists',()=>{
+  const html=graderTokenModal({name:'PC <b>',token:'uag_abc'},pkg,'https://hub.example');
+  assert.match(html,/copy-grader-message/);assert.match(html,/id="grader-message"/);assert.match(html,/uag_abc/);
+  assert.doesNotMatch(html,/<b>/);
+  assert.doesNotMatch(graderTokenModal({name:'PC',token:'uag_abc'}),/copy-grader-message/);
 });
 
 test('competition form sends the grader platform, default windows',()=>{

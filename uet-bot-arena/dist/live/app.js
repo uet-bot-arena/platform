@@ -11,7 +11,7 @@ import {MatchBoard,boardPage} from './board.js';
 import {CompetitionFollow} from './follow.js';
 import {patchChildren} from './patch.js';
 import {adminTeamsBody,operationsBody} from './admin-ui.js';
-import {graderTokenModal} from './graders-ui.js';
+import {graderTokenModal,graderMessage,validPackage} from './graders-ui.js';
 import {loadBotGuide} from './bot-guide.js';
 import {publicRoute} from './access.js';
 import {readRuleForm,ruleEditor,rulePreviewMarkup,botRulesetField,botRulesetSelection,ruleFingerprint} from './experimental-ui.js';
@@ -83,7 +83,9 @@ async function loadData(route,ids,q){
   }
   if(route==='audit')work.push(api.all('/admin/audit').then(x=>data.audit=x));
   if(route==='email')work.push(api.request('/admin/email').then(x=>data.mail=x));
-  if(route==='graders')work.push(api.request('/admin/graders').then(x=>data.graders=x));
+  if(route==='graders'){work.push(api.request('/admin/graders').then(x=>data.graders=x));
+    // Package manifest is a static file from install-hub.sh; missing (dev hub) just hides the panel.
+    work.push(fetch('/downloads/grader-latest.json',{cache:'no-cache'}).then(r=>r.ok?r.json():null).catch(()=>null).then(x=>data.graderPackage=validPackage(x)));}
   const settled=await Promise.allSettled(work);for(const item of settled)if(item.status==='rejected')throw item.reason;
   const cid=route==='competitions'?ids[0]:['arena','replay'].includes(route)?ids[0]==='practice'?null:ids[0]:route==='benchmark'?q.get('competition'):['schedule','live','standings'].includes(route)?q.get('competition')||data.competitions?.find(c=>!c.archived_ms)?.id:null;
   if(cid){
@@ -293,7 +295,7 @@ document.addEventListener('submit',e=>{
       else{const body={profile,username:v('username')};if(data.get('temporary-password'))body.temporary_password=data.get('temporary-password');credentialModal(await api.post('/admin/teams',body));}
       await refreshAdmin();
     }else if(form.id==='grader-form'){
-      const item=await api.post('/admin/graders',{name:v('name')});form.reset();issuedGrader=item;modal(tr('Mã máy chấm'),graderTokenModal(item));
+      const item=await api.post('/admin/graders',{name:v('name')});form.reset();issuedGrader=item;modal(tr('Mã máy chấm'),graderTokenModal(item,s.graderPackage,location.origin));
     }else if(form.id==='entry-form'){
       const [submission_id,benchmark_id]=v('qualified').split(':');await api.post('/competitions/'+s.competition.id+'/entry',{submission_id,benchmark_id,delegate_timeout_claims:data.get('delegate')==='on'},keyFor(form));toast(tr('Đã chọn bot dự giải.'));openRoute();
     }else if(form.id==='approve-form'){
@@ -462,6 +464,7 @@ document.addEventListener('click',async e=>{
     }
     if(action==='account-lock'){const locked=b.dataset.locked!=='true';confirmAction(locked?tr('Khóa tài khoản?'):tr('Mở khóa tài khoản?'),locked?tr('Đội sẽ bị đăng xuất và không thể đăng nhập cho tới khi mở khóa.'):tr('Đội có thể đăng nhập lại với mật khẩu hiện tại.'),()=>api.post('/admin/accounts/'+b.dataset.id+'/lock',{locked}));return;}
     if(action==='delivered'){b.disabled=true;await api.post('/admin/accounts/'+b.dataset.id+'/delivered');await refreshAdmin();return;}
+    if(action==='copy-grader-message'){if(issuedGrader&&s.graderPackage){await navigator.clipboard.writeText(graderMessage(issuedGrader,s.graderPackage,location.origin));toast(tr('Đã sao chép tin nhắn cài máy chấm.'));}return;}
     if(action==='copy-grader-token'){if(issuedGrader){await navigator.clipboard.writeText(issuedGrader.token);toast(tr('Đã sao chép mã máy chấm.'));}return;}
     if(action==='revoke-grader'){if(!confirm(tr('Thu hồi mã của máy chấm "')+b.dataset.name+tr('"? Máy này sẽ mất kết nối, trận đang chạy được giao lại máy khác.')))return;b.disabled=true;await api.post('/admin/graders/'+b.dataset.id+'/revoke');toast(tr('Đã thu hồi mã máy chấm.'));openRoute();return;}
     if(action==='copy-credential'){if(issued){await navigator.clipboard.writeText(tr('Tài khoản: ')+issued.account.username+tr('\nMật khẩu tạm: ')+issued.temporary_password);toast(tr('Đã sao chép. Hãy phát qua kênh của ban tổ chức.'));}return;}

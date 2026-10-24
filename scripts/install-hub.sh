@@ -72,9 +72,15 @@ if [[ "$arena_source" != /opt/uet-arena/app ]]; then
   install -m 755 "$arena_source/scripts/hub-status.py" /opt/uet-arena/app/scripts/
   install -m 755 "$arena_source/scripts/install-hub.sh" /opt/uet-arena/app/scripts/
   install -m 644 "$arena_source/scripts/hub-nginx.conf" "$arena_source/scripts/hub-nginx-security.conf" /opt/uet-arena/app/scripts/
+  # Grader package sources, served as a ZIP at /downloads/ (code only, no secrets).
+  install -m 755 "$arena_source/scripts/build-grader-zip.py" /opt/uet-arena/app/scripts/
+  install -m 644 "$arena_source"/scripts/install-grader.{ps1,sh}{,.sha256} /opt/uet-arena/app/scripts/
+  if [[ -f "$arena_source/.gitattributes" ]]; then install -m 644 "$arena_source/.gitattributes" /opt/uet-arena/app/; fi
 fi
 chown -R root:root /opt/uet-arena/app
 chmod -R go-w,a+rX /opt/uet-arena/app
+install -d -m 755 /opt/uet-arena/downloads
+python3 /opt/uet-arena/app/scripts/build-grader-zip.py --source /opt/uet-arena/app --out /opt/uet-arena/downloads >/dev/null
 python3 -m venv /opt/uet-arena/venv
 /opt/uet-arena/venv/bin/python -m pip install --disable-pip-version-check -r /opt/uet-arena/app/arena-backend/requirements.txt
 chmod -R go-w,a+rX /opt/uet-arena/venv
