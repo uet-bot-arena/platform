@@ -555,24 +555,23 @@ class Competitions:
         return value
 
     def view(self, ident, admin=False):
-        with self.store.lock:
-            item = self.visible(ident, admin)
-            entries = self.rows("SELECT e.team_id,t.name,e.accepted_ms,json_extract(e.snapshot,'$.version') AS version FROM competition_entries e JOIN teams t ON t.id=e.team_id WHERE e.competition_id=? ORDER BY e.team_id", (ident,))
-            # Deliberate whitelist: no contact info, binary/build log, benchmark
-            # report or private worker job ID in the shared competition view.
-            item["entries"] = entries
-            if item['config']['format']=='elo':
-                item['elo']=self.elo.public(ident)
-                known={r['id']:r['name'] for r in self.rows("SELECT t.id,t.name FROM teams t JOIN elo_ratings r ON r.team_id=t.id WHERE r.competition_id=?",(ident,))}
-                existing={e['team_id'] for e in item['entries']}
-                item['entries'].extend(dict(team_id=t,name=name,version='',accepted_ms=None) for t,name in known.items() if t not in existing)
-                counts={r['status']:r['n'] for r in self.rows('SELECT g.status,COUNT(*) AS n FROM elo_games g JOIN elo_rounds r ON r.id=g.round_id WHERE r.competition_id=? GROUP BY g.status',(ident,))}
-            else:
-                counts = {r["status"]: r["n"] for r in self.rows("SELECT status,COUNT(*) n FROM competition_fixtures WHERE competition_id=? GROUP BY status", (ident,))}
-            item["fixture_counts"] = {s: counts.get(s, 0) for s in ("pending", "queued", "completed", "attention")}
-            if not admin:
-                item["config"] = self.public_config(item["config"])
-            return item
+        item = self.visible(ident, admin)
+        entries = self.rows("SELECT e.team_id,t.name,e.accepted_ms,json_extract(e.snapshot,'$.version') AS version FROM competition_entries e JOIN teams t ON t.id=e.team_id WHERE e.competition_id=? ORDER BY e.team_id", (ident,))
+        # Deliberate whitelist: no contact info, binary/build log, benchmark
+        # report or private worker job ID in the shared competition view.
+        item["entries"] = entries
+        if item['config']['format']=='elo':
+            item['elo']=self.elo.public(ident)
+            known={r['id']:r['name'] for r in self.rows("SELECT t.id,t.name FROM teams t JOIN elo_ratings r ON r.team_id=t.id WHERE r.competition_id=?",(ident,))}
+            existing={e['team_id'] for e in item['entries']}
+            item['entries'].extend(dict(team_id=t,name=name,version='',accepted_ms=None) for t,name in known.items() if t not in existing)
+            counts={r['status']:r['n'] for r in self.rows('SELECT g.status,COUNT(*) AS n FROM elo_games g JOIN elo_rounds r ON r.id=g.round_id WHERE r.competition_id=? GROUP BY g.status',(ident,))}
+        else:
+            counts = {r["status"]: r["n"] for r in self.rows("SELECT status,COUNT(*) n FROM competition_fixtures WHERE competition_id=? GROUP BY status", (ident,))}
+        item["fixture_counts"] = {s: counts.get(s, 0) for s in ("pending", "queued", "completed", "attention")}
+        if not admin:
+            item["config"] = self.public_config(item["config"])
+        return item
 
     @staticmethod
     def fixture_view(row):
@@ -593,54 +592,54 @@ class Competitions:
             return {"items": [self.fixture_view(r) for r in rows], "total": total, "limit": limit, "offset": offset}
 
     def standings(self, ident, admin=False):
-        with self.store.lock:
-            item = self.view(ident, admin)
-            if item['config']['format']=='elo':return self.elo.standings(ident)
-            scores = {e["team_id"]: {**e, "played": 0, "wins": 0, "draws": 0, "losses": 0} for e in item["entries"]}
-            for row in self.rows("SELECT * FROM competition_fixtures WHERE competition_id=? AND status='completed'", (ident,)):
-                result = json.loads(row["result"])
-                winner = result["winner"]
-                for side in engine.SIDES:
-                    team = scores[row[side + "_team_id"]]
-                    team["played"] += 1
-                    outcome = "wins" if side == winner else "draws" if winner is None and result["reason"] != "double_startup_failure" else "losses"
-                    team[outcome] += 1
-            for team in scores.values():
-                team['point_breakdown'] = {'wins': team['wins'] * SCORING['win'],
-                                           'draws': team['draws'] * SCORING['draw'],
-                                           'losses': team['losses'] * SCORING['loss']}
-                team['points'] = sum(team['point_breakdown'].values())
-            swiss = item["config"].get("format") == "swiss"
-            if swiss:
-                for bye in self.rows("SELECT team_id,round_number FROM competition_byes WHERE competition_id=?", (ident,)):
-                    team = scores[bye["team_id"]]
-                    # A bye is scored as winning the whole round: two games x 3 points.
-                    # It is listed separately and is not counted as played games.
-                    team["bye_round"] = bye["round_number"]
-                    team["bye_points"] = 2 * SCORING["win"]
-                    team["points"] += team["bye_points"]
-                    team["point_breakdown"]["bye"] = team["bye_points"]
-                opponents = {t:set() for t in scores}
-                for fixture in self.rows("SELECT red_team_id,blue_team_id FROM competition_fixtures WHERE competition_id=? AND status='completed'", (ident,)):
-                    opponents[fixture["red_team_id"]].add(fixture["blue_team_id"])
-                for t, team in scores.items():
-                    team["buchholz"] = sum(scores[o]["points"] for o in opponents[t])
-            rows = sorted(scores.values(), key=lambda s: (-s["points"], -s.get("buchholz",0), s["team_id"]))
-            previous, rank = None, 0
-            index = 0
-            for row in rows:
-                guest = self.one("SELECT is_guest FROM teams WHERE id=?", (row["team_id"],))["is_guest"]
-                row["is_guest"] = bool(guest)
-                if guest:
-                    row["rank"] = None
-                    continue
-                index += 1
-                key = (row["points"], row.get("buchholz",0))
-                if key != previous:
-                    rank = index
-                row["rank"], previous = rank, key
-            return {"competition_id": ident, "ranking": "points_buchholz" if swiss else "points_shared_rank", "scoring": dict(SCORING),
-                    "provisional": item["status"] != "completed", "items": rows}
+        item = self.visible(ident, admin)
+        if item['config']['format']=='elo':return self.elo.standings(ident)
+        item['entries']=self.rows("SELECT e.team_id,t.name,e.accepted_ms,json_extract(e.snapshot,'$.version') AS version FROM competition_entries e JOIN teams t ON t.id=e.team_id WHERE e.competition_id=? ORDER BY e.team_id",(ident,))
+        scores = {e["team_id"]: {**e, "played": 0, "wins": 0, "draws": 0, "losses": 0} for e in item["entries"]}
+        for row in self.rows("SELECT * FROM competition_fixtures WHERE competition_id=? AND status='completed'", (ident,)):
+            result = json.loads(row["result"])
+            winner = result["winner"]
+            for side in engine.SIDES:
+                team = scores[row[side + "_team_id"]]
+                team["played"] += 1
+                outcome = "wins" if side == winner else "draws" if winner is None and result["reason"] != "double_startup_failure" else "losses"
+                team[outcome] += 1
+        for team in scores.values():
+            team['point_breakdown'] = {'wins': team['wins'] * SCORING['win'],
+                                       'draws': team['draws'] * SCORING['draw'],
+                                       'losses': team['losses'] * SCORING['loss']}
+            team['points'] = sum(team['point_breakdown'].values())
+        swiss = item["config"].get("format") == "swiss"
+        if swiss:
+            for bye in self.rows("SELECT team_id,round_number FROM competition_byes WHERE competition_id=?", (ident,)):
+                team = scores[bye["team_id"]]
+                # A bye is scored as winning the whole round: two games x 3 points.
+                # It is listed separately and is not counted as played games.
+                team["bye_round"] = bye["round_number"]
+                team["bye_points"] = 2 * SCORING["win"]
+                team["points"] += team["bye_points"]
+                team["point_breakdown"]["bye"] = team["bye_points"]
+            opponents = {t:set() for t in scores}
+            for fixture in self.rows("SELECT red_team_id,blue_team_id FROM competition_fixtures WHERE competition_id=? AND status='completed'", (ident,)):
+                opponents[fixture["red_team_id"]].add(fixture["blue_team_id"])
+            for t, team in scores.items():
+                team["buchholz"] = sum(scores[o]["points"] for o in opponents[t])
+        rows = sorted(scores.values(), key=lambda s: (-s["points"], -s.get("buchholz",0), s["team_id"]))
+        previous, rank = None, 0
+        index = 0
+        for row in rows:
+            guest = self.one("SELECT is_guest FROM teams WHERE id=?", (row["team_id"],))["is_guest"]
+            row["is_guest"] = bool(guest)
+            if guest:
+                row["rank"] = None
+                continue
+            index += 1
+            key = (row["points"], row.get("buchholz",0))
+            if key != previous:
+                rank = index
+            row["rank"], previous = rank, key
+        return {"competition_id": ident, "ranking": "points_buchholz" if swiss else "points_shared_rank", "scoring": dict(SCORING),
+                "provisional": item["status"] != "completed", "items": rows}
 
     def attempts(self, ident, fixture_id):
         self.reconcile()

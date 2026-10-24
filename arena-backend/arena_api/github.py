@@ -1,4 +1,5 @@
 """Durable GitHub intake. Poll/API owns truth; webhooks only wake the poller."""
+from functools import partial
 import hashlib
 from concurrent.futures import ThreadPoolExecutor
 import hmac
@@ -160,7 +161,10 @@ class GitHub:
     def observations(self, team, deadline):
         return self.rows("SELECT sha,pushed_ms FROM (SELECT sha,pushed_ms,id,ROW_NUMBER() OVER(PARTITION BY sha ORDER BY id DESC) AS latest FROM github_observations WHERE team_id=? AND observed_ms<=?) WHERE latest=1 ORDER BY id DESC LIMIT 6", (team, deadline))
 
-    def poll(self, repo):
+    def poll(self, repo, defer=False):
+        operations = []
+        def write(sql, args):
+            operations.append(partial(self.execute, sql, args))
         team, owner, name = repo["team_id"], repo["owner"], repo["name"]
         next_poll = self.clock() + self.settings.github.poll_seconds * 1000
         try:
@@ -175,9 +179,9 @@ class GitHub:
                 installation = self.client.installation(owner, name)
                 metadata = self.client.get(owner, name, installation)[2]
             if metadata.get("private") is not True or metadata.get("id") != repo["repo_id"]:
-                self.execute("UPDATE github_repositories SET state='public',error=?,next_poll_ms=? WHERE team_id=?",
+                write("UPDATE github_repositories SET state='public',error=?,next_poll_ms=? WHERE team_id=?",
                              ("Repo cần Private và đúng repo đã gắn; chưa thể nhận bài", next_poll, team))
-                return
+                return operations if defer else self.apply_poll([operations])
             code, headers, commit = self.client.get(owner, name, installation, "/commits/main",
                                                      {"If-None-Match": repo["etag"]} if repo["etag"] else {})
             if code != 304:
@@ -188,14 +192,24 @@ class GitHub:
                     pushed = next((unix_ms(r["pushed_at"]) for r in activities if r["after"] == sha), None)
                 except GitHubError:
                     pass  # Deadline resolution independently requires authoritative activity.
-                self.detect(repo, sha, pushed, commit["commit"]["message"])
-            self.execute("UPDATE github_repositories SET installation_id=?,etag=COALESCE(?,etag),last_poll_ms=?,next_poll_ms=?,state='connected',error=NULL WHERE team_id=?",
+                operations.append(partial(self.detect, repo, sha, pushed, commit["commit"]["message"]))
+            write("UPDATE github_repositories SET installation_id=?,etag=COALESCE(?,etag),last_poll_ms=?,next_poll_ms=?,state='connected',error=NULL WHERE team_id=?",
                          (installation, headers.get("etag"), self.clock(), next_poll, team))
         except GitHubError as exc:
             revoked = exc.status in (401, 403, 404)
-            self.execute("UPDATE github_repositories SET state=?,error=?,next_poll_ms=? WHERE team_id=?",
+            write("UPDATE github_repositories SET state=?,error=?,next_poll_ms=? WHERE team_id=?",
                          ("revoked" if revoked else "retry", "Không đọc được repo; kiểm tra Private và quyền App" if revoked else "GitHub đang bận; hub sẽ đọc lại",
                           next_poll, team))
+
+        return operations if defer else self.apply_poll([operations])
+
+    def apply_poll(self, batches):
+        if not any(batches):
+            return
+        with self.store.transaction():
+            for operations in batches:
+                for operation in operations:
+                    operation()
 
     def purposes(self, team, sha):
         opened = [r["id"] for r in self.rows("SELECT id FROM competitions WHERE status='open' AND archived_ms IS NULL AND (submission_deadline IS NULL OR submission_deadline>?)", (self.clock(),))]
@@ -299,11 +313,6 @@ class GitHub:
         checks = self.rows("SELECT * FROM github_checks WHERE team_id=? AND sha=?", (row["team_id"], row["sha"]))
         if row["state"] not in ("pass", "fail") or any(c["state"] in ("waiting", "checking") for c in checks):
             return
-        # An invalid archive has no benchmark. A durable status marker handles both paths.
-        if not checks:
-            self.ensure_check(row["team_id"], row["sha"], "archive")
-            self.execute("UPDATE github_checks SET state='fail' WHERE team_id=? AND sha=? AND purpose='archive'", (row["team_id"], row["sha"]))
-            checks = self.rows("SELECT * FROM github_checks WHERE team_id=? AND sha=?", (row["team_id"], row["sha"]))
         if all(c["status_sent"] for c in checks):
             return
         passed = row["state"] == "pass" and all(c["state"] == "pass" for c in checks)
@@ -322,10 +331,9 @@ class GitHub:
         try:
             due = self.rows("SELECT r.* FROM github_repositories r JOIN teams t ON t.id=r.team_id WHERE r.next_poll_ms<=? AND t.archived_ms IS NULL ORDER BY r.next_poll_ms LIMIT 32", (self.clock(),))
             if self.pollers:
-                list(self.pollers.map(self.poll, due))
+                self.apply_poll(list(self.pollers.map(partial(self.poll, defer=True), due)))
             else:
-                for repo in due:
-                    self.poll(repo)
+                self.apply_poll([self.poll(repo, defer=True) for repo in due])
             # One source per team in a batch preserves push order when downloads overlap.
             pending = self.rows("SELECT * FROM (SELECT g.*,ROW_NUMBER() OVER(PARTITION BY team_id ORDER BY received_ms,rowid) AS position FROM github_commits g WHERE state='detected' AND retry_ms<=?) WHERE position=1 ORDER BY received_ms LIMIT 4", (self.clock(),))
             if self.receivers:
@@ -348,17 +356,18 @@ class GitHub:
                 if state != row["state"]:
                     self.execute("UPDATE github_commits SET state=? WHERE team_id=? AND sha=?", (state, row["team_id"], row["sha"]))
             self.deadlines()
-            for row in self.rows("SELECT g.* FROM github_commits g WHERE g.state IN ('pass','fail') AND "
-                "(NOT EXISTS(SELECT 1 FROM github_checks c WHERE c.team_id=g.team_id AND c.sha=g.sha) "
-                "OR EXISTS(SELECT 1 FROM github_checks c WHERE c.team_id=g.team_id AND c.sha=g.sha AND c.status_sent=0))"):
+            for row in self.rows("SELECT DISTINCT g.* FROM github_checks c INDEXED BY github_checks_unsent CROSS JOIN github_commits g "
+                "ON g.team_id=c.team_id AND g.sha=c.sha WHERE c.status_sent=0 AND g.state IN ('pass','fail')"):
                 self.send_status(row)
+            return len(due) == 32
         finally:
             self.tick_lock.release()
 
     def loop(self):
         while not self.stop.is_set():
             try:
-                self.tick()
+                if self.tick():
+                    continue
             except Exception as exc:
                 # Do not log GitHub response bodies, signed URLs or credential-bearing requests.
                 trace = exc.__traceback__
@@ -373,7 +382,7 @@ class GitHub:
             ident, deadline = competition["id"], competition["submission_deadline"]
             if self.clock() < deadline:
                 # Opening a competition also checks already received bots on its pinned runtime.
-                for row in self.rows("SELECT g.team_id,g.sha FROM github_observations o JOIN github_commits g USING(team_id,sha) WHERE o.id=(SELECT MAX(x.id) FROM github_observations x WHERE x.team_id=o.team_id) AND g.submission_id IS NOT NULL"):
+                for row in self.rows("SELECT g.team_id,g.sha FROM github_repositories r JOIN github_observations o ON o.id=(SELECT MAX(x.id) FROM github_observations x WHERE x.team_id=r.team_id) JOIN github_commits g ON g.team_id=o.team_id AND g.sha=o.sha WHERE g.submission_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM github_checks c WHERE c.team_id=g.team_id AND c.sha=g.sha AND c.purpose=?)", (ident,)):
                     self.ensure_check(row["team_id"], row["sha"], ident)
                 continue
             for repo in self.rows("SELECT r.* FROM github_repositories r JOIN teams t ON t.id=r.team_id WHERE t.archived_ms IS NULL AND t.season_id=?", (self.teams.season,)):

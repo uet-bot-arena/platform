@@ -34,10 +34,11 @@ class RoundBook:
         return entries
 
     def ladder_at(self,ident,cutoff):
-        values={}
-        for row in self.comp.rows("SELECT after_state FROM elo_rounds WHERE competition_id=? AND phase='ladder' AND status='completed' AND completed_ms<=? ORDER BY number",(ident,cutoff)):
-            values.update(json.loads(row['after_state'])['ratings'])
-        return values
+        rows=self.comp.rows("""SELECT r.team_id,(SELECT h.rating FROM elo_rating_history h
+          WHERE h.competition_id=r.competition_id AND h.team_id=r.team_id AND h.phase='ladder'
+          AND h.completed_ms<=? ORDER BY h.completed_ms DESC,h.number DESC LIMIT 1) AS rating
+          FROM elo_ratings r WHERE r.competition_id=? AND r.stage='ladder'""",(cutoff,ident))
+        return {r['team_id']:r['rating'] for r in rows if r['rating'] is not None}
 
     def seed_official(self,ident,teams,cutoff):
         values=self.ladder_at(ident,cutoff)
@@ -168,6 +169,8 @@ class RoundBook:
                     (row['competition_id'],team,stage,rating,played[team],changes[team],before['entries'][team].get('bot_hash')))
             after=dict(ratings=ratings,played=played,changes=changes)
             if standings is not None:after['standings']=standings
+            self.db.executemany('INSERT INTO elo_rating_history VALUES(?,?,?,?,?,?,?)',
+                ((row['competition_id'],rid,row['phase'],row['number'],team,rating,completed_ms) for team,rating in ratings.items()))
             self.db.execute("UPDATE elo_rounds SET status='completed',completed_ms=?,after_state=? WHERE id=?",(completed_ms,json.dumps(after),rid))
             self.comp.accounts.audit('system','elo.round_completed',rid)
             return after

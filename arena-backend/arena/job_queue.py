@@ -4,7 +4,10 @@ Each waiting job may require a grader platform (linux/windows) and runtime_id; g
 only jobs they are allowed to run (Service.try_lease).
 """
 import queue
+import asyncio
+from contextlib import contextmanager
 import sqlite3
+import threading
 import time
 from arena.protocol import Fault
 
@@ -22,6 +25,8 @@ class DurableJobQueue:
 
     def __init__(self, store):
         self.store = store
+        self.waiters = set()
+        self.waiters_lock = threading.Lock()
         self.unfinished_tasks = 0
         with store.lock, store.db:
             store.db.execute("CREATE TABLE IF NOT EXISTS job_queue(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE, priority INTEGER)")
@@ -58,6 +63,21 @@ class DurableJobQueue:
             else:
                 self.store.db.execute("INSERT OR IGNORE INTO job_queue(id,priority,platform,runtime_id) VALUES(?,?,?,?)",
                                       (ident, priority, platform, runtime_id))
+        with self.waiters_lock:
+            for loop, event in self.waiters:
+                loop.call_soon_threadsafe(event.set)
+
+    @contextmanager
+    def wake_on_put(self):
+        # Subscribe before trying the queue so a concurrent put cannot be missed.
+        pair = (asyncio.get_running_loop(), asyncio.Event())
+        with self.waiters_lock:
+            self.waiters.add(pair)
+        try:
+            yield pair[1]
+        finally:
+            with self.waiters_lock:
+                self.waiters.discard(pair)
 
     def put_nowait(self, ident):
         self.put(ident, False)

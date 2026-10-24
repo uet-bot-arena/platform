@@ -67,13 +67,22 @@ def hello(body: Hello, request: Request, who=Depends(grader)):
 async def lease(body: LeaseRequest, request: Request, who=Depends(grader)):
     service = request.app.state.service
     deadline = time.monotonic() + min(body.wait_seconds, service.grader.long_poll_seconds)
-    while True:
-        result = await run_in_threadpool(service.try_lease, who)
-        if result or time.monotonic() >= deadline or service.stop.is_set() or await request.is_disconnected():
-            return {"lease": result}
-        await asyncio.sleep(0.25)
-        # Revocation ends a waiting grader within one poll interval, not after 25 s.
-        who = await run_in_threadpool(grader, request)
+    first = True
+    with service.pending.wake_on_put() as wake:
+        while True:
+            wake.clear()
+            result = await run_in_threadpool(service.try_lease, who, first)
+            first = False
+            if result or time.monotonic() >= deadline or service.stop.is_set() or await request.is_disconnected():
+                return {"lease": result}
+            try:
+                await asyncio.wait_for(wake.wait(), timeout=min(1, max(0, deadline-time.monotonic())))
+            except asyncio.TimeoutError:
+                pass
+            # Keep revocation and liveness checks even without a queue notification.
+            who = await run_in_threadpool(grader, request)
+            if time.monotonic() >= deadline:
+                return {'lease': None}
 
 
 @router.post("/grader/leases/{lease_id}/heartbeat", summary="Gia hạn lease (gọi mỗi 5 s)")

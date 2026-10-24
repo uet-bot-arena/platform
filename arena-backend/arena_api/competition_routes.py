@@ -1,4 +1,4 @@
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 import asyncio
 import json
 import time
@@ -97,7 +97,7 @@ def listing(request: Request, limit: int = Query(50, ge=1, le=100), offset: int 
 
 @router.get("/competitions/{ident}", summary="Cấu hình, đội dự giải, trạng thái lịch đấu; không trả thông tin liên hệ/source")
 def detail(ident: str, request: Request, admin=Depends(spectator_admin)):
-    return request.app.state.competitions.view(ident, admin)
+    return JSONResponse(request.app.state.competitions.view(ident, admin))
 
 
 @router.post("/competitions/{ident}/entry", summary="Đội chọn version và benchmark đạt chuẩn; chỉ được thay trước khi chốt")
@@ -126,7 +126,10 @@ def fixtures(ident: str, request: Request, limit: int = Query(50, ge=1, le=100),
 
 @router.get("/competitions/{ident}/standings", summary="Bảng Elo hoặc điểm theo thể thức; chỉ tính kết quả hoàn tất hợp lệ")
 def standings(ident: str, request: Request, admin=Depends(spectator_admin)):
-    return request.app.state.competitions.standings(ident, admin)
+    comp=request.app.state.competitions
+    if comp.visible(ident,admin)['config']['format']=='elo':
+        return Response(comp.elo.standings_json(ident),media_type='application/json')
+    return JSONResponse(comp.standings(ident, admin))
 
 
 @router.get('/competitions/{ident}/watch', summary='Tiến độ lịch đấu cho viewer tự chuyển trận; JSON hoặc SSE, không chứa dữ liệu bot riêng')
@@ -234,8 +237,7 @@ def elo_export(ident: str,request: Request,stage: str=Query('official',pattern='
 
 @router.get('/team/elo',summary='SHA đang đấu, bản dự kiến đợt sau và ván/Elo của chính đội')
 def team_elo(request: Request,auth=Depends(team_principal)):
-    with request.app.state.store.lock:
-        return JSONResponse(request.app.state.competitions.elo.team_view(auth['user']['team_id']))
+    return JSONResponse(request.app.state.competitions.elo.team_view(auth['user']['team_id']))
 
 
 

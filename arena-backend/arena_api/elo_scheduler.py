@@ -1,6 +1,7 @@
 """Elo calendar and dispatch; SQL snapshots survive hub/grader restarts."""
 import json
 import time
+import threading
 from datetime import datetime,timedelta
 
 from arena.config import match_profile
@@ -17,6 +18,8 @@ class EloScheduler:
         self.book=RoundBook(comp)
         self.store,self.db=comp.store,comp.db
         self.calendar_second=None
+        self.standings_cache={}
+        self.standings_lock=threading.Lock()
 
     def entries(self,ident):
         return {r['team_id']:dict(json.loads(r['snapshot']),bot_hash=json.loads(r['snapshot'])['source']['zip_sha256'])
@@ -138,8 +141,11 @@ class EloScheduler:
         rounds=self.comp.rows('SELECT id,phase,number,started_ms,completed_ms,status,config FROM elo_rounds WHERE competition_id=? ORDER BY started_ms,phase,number',(ident,))
         current=rounds[-1] if rounds else None
         result=dict(rounds=[],current=None,next_round_ms=None,server_ms=time.time_ns()//1_000_000)
+        all_counts={}
+        for count in self.comp.rows('SELECT g.round_id,g.status,COUNT(*) AS n FROM elo_games g JOIN elo_rounds r ON r.id=g.round_id WHERE r.competition_id=? GROUP BY g.round_id,g.status',(ident,)):
+            all_counts.setdefault(count['round_id'],{})[count['status']]=count['n']
         for row in rounds:
-            counts={r['status']:r['n'] for r in self.comp.rows('SELECT status,COUNT(*) AS n FROM elo_games WHERE round_id=? GROUP BY status',(row['id'],))}
+            counts=all_counts.get(row['id'],{})
             result['rounds'].append({k:row[k] for k in ('id','phase','number','started_ms','completed_ms','status')}|dict(completed=counts.get('completed',0),total=sum(counts.values())))
         if current:
             summary=dict(result['rounds'][-1]);cfg=json.loads(current['config'])
@@ -165,6 +171,30 @@ class EloScheduler:
         return result
 
     def standings(self,ident):
+        key=self.comp.one("SELECT COUNT(*) AS rounds,(SELECT MAX(id) FROM elo_exclusions WHERE competition_id=?) AS exclusion FROM elo_rounds WHERE competition_id=? AND status='completed'",(ident,ident))
+        # Round-robin points are public after each game, before the whole round ends.
+        rr_done=self.comp.one("SELECT COUNT(*) AS n FROM elo_games g JOIN elo_rounds r ON r.id=g.round_id WHERE r.competition_id=? AND r.phase='round_robin' AND g.status='completed'",(ident,))['n']
+        item=self.comp.get(ident)
+        version=(key['rounds'],key['exclusion'],rr_done,item['status'])
+        with self.standings_lock:
+            cached=self.standings_cache.get(ident)
+            if cached is None or cached[0]!=version:
+                value=self._standings(ident)
+                value.pop('progress')
+                encoded=json.dumps(value,ensure_ascii=False,allow_nan=False,separators=(',',':')).encode()[:-1]
+                self.standings_cache[ident]=(version,value,encoded)
+            else:value=cached[1]
+        return dict(value,progress=self.public(ident))
+
+    def standings_json(self,ident):
+        value=self.standings(ident)
+        with self.standings_lock:
+            cached=self.standings_cache.get(ident)
+            # A concurrent round finish may have replaced the cache entry.
+            prefix=cached[2] if cached and cached[1]['items'] is value['items'] else json.dumps({k:v for k,v in value.items() if k!='progress'},ensure_ascii=False,allow_nan=False,separators=(',',':')).encode()[:-1]
+        return prefix+b',"progress":'+json.dumps(value['progress'],ensure_ascii=False,allow_nan=False,separators=(',',':')).encode()+b'}'
+
+    def _standings(self,ident):
         item=self.comp.get(ident)
         rr=self.comp.one("SELECT id,snapshot,status FROM elo_rounds WHERE competition_id=? AND phase='round_robin'",(ident,))
         matrix=[]
@@ -205,15 +235,27 @@ class EloScheduler:
 
     def team_view(self,team):
         result=[];now=time.time_ns()//1_000_000
-        rating_path='$.ratings.'+json.dumps(team)
-        sha_path='$.entries.'+json.dumps(team)+'.github_sha'
         for item in self.comp.rows("SELECT id,title,status,submission_deadline FROM competitions WHERE archived_ms IS NULL AND status<>'draft' AND json_extract(config,'$.format')='elo' ORDER BY created_ms DESC LIMIT 20"):
             ident=item['id'];current=None
-            rows=self.comp.rows('SELECT id,phase,number,status,json_extract(snapshot,?) AS sha,json_extract(snapshot,?) AS before_rating,json_extract(after_state,?) AS after_rating FROM elo_rounds r WHERE competition_id=? AND (EXISTS(SELECT 1 FROM elo_games g WHERE g.round_id=r.id AND g.red_team_id=?) OR EXISTS(SELECT 1 FROM elo_games g WHERE g.round_id=r.id AND g.blue_team_id=?)) ORDER BY started_ms DESC LIMIT 1',(sha_path,rating_path,rating_path,ident,team,team))
+            rows=self.comp.rows('''SELECT r.id,r.phase,r.number,r.status,r.started_ms,r.completed_ms,
+              (SELECT red_sha FROM elo_games WHERE round_id=r.id AND red_team_id=? LIMIT 1) AS red_sha,
+              (SELECT blue_sha FROM elo_games WHERE round_id=r.id AND blue_team_id=? LIMIT 1) AS blue_sha
+              FROM elo_rounds r WHERE competition_id=? AND
+              (EXISTS(SELECT 1 FROM elo_games g WHERE g.round_id=r.id AND g.red_team_id=?) OR
+               EXISTS(SELECT 1 FROM elo_games g WHERE g.round_id=r.id AND g.blue_team_id=?))
+              ORDER BY started_ms DESC LIMIT 1''',(team,team,ident,team,team))
             if rows:
                 row=rows[0]
-                current=dict(id=row['id'],phase=row['phase'],number=row['number'],status=row['status'],sha=row['sha'],
-                    elo_before=row['before_rating'],elo_after=row['after_rating'],games=[])
+                stage='ladder' if row['phase']=='ladder' else 'official'
+                after=self.comp.one('SELECT rating FROM elo_rating_history WHERE round_id=? AND team_id=?',(row['id'],team))
+                if row['status']=='completed':
+                    before=self.comp.one("SELECT rating FROM elo_rating_history WHERE competition_id=? AND team_id=? AND round_id<>? AND completed_ms<=? AND (phase='ladder')=? ORDER BY completed_ms DESC,number DESC LIMIT 1",(ident,team,row['id'],row['completed_ms'],stage=='ladder'))
+                    if before is None and stage=='official':
+                        before=self.comp.one("SELECT rating FROM elo_rating_history WHERE competition_id=? AND team_id=? AND phase='ladder' AND completed_ms<=? ORDER BY completed_ms DESC,number DESC LIMIT 1",(ident,team,row['started_ms']))
+                else:
+                    before=self.comp.one('SELECT rating FROM elo_ratings WHERE competition_id=? AND team_id=? AND stage=?',(ident,team,stage))
+                current=dict(id=row['id'],phase=row['phase'],number=row['number'],status=row['status'],sha=row['red_sha'] or row['blue_sha'],
+                    elo_before=before['rating'] if before else INITIAL,elo_after=after['rating'] if after else None,games=[])
                 for game in self.comp.rows('SELECT id,status,red_team_id,blue_team_id,result,ordinal FROM elo_games WHERE round_id=? AND red_team_id=? UNION ALL SELECT id,status,red_team_id,blue_team_id,result,ordinal FROM elo_games WHERE round_id=? AND blue_team_id=? ORDER BY ordinal',(row['id'],team,row['id'],team)):
                     opponent=game['blue_team_id'] if game['red_team_id']==team else game['red_team_id']
                     current['games'].append(dict(id=game['id'],competition_id=ident,status=game['status'],opponent=opponent,
@@ -223,7 +265,7 @@ class EloScheduler:
             passed=self.book.latest_passes(ident,now,team).get(team) if ladder_open else None
             newest=self.comp.one('SELECT o.sha,c.state FROM github_observations o LEFT JOIN github_checks c ON c.team_id=o.team_id AND c.sha=o.sha AND c.purpose=? WHERE o.team_id=? ORDER BY o.id DESC LIMIT 1',(ident,team))
             history=[]
-            for row in self.comp.rows("SELECT number,completed_ms,json_extract(after_state,?) AS rating FROM elo_rounds WHERE competition_id=? AND phase='ladder' AND status='completed' ORDER BY number",(rating_path,ident)):
+            for row in self.comp.rows("SELECT number,completed_ms,rating FROM elo_rating_history WHERE competition_id=? AND team_id=? AND phase='ladder' ORDER BY number",(ident,team)):
                 value=row['rating']
                 if value is not None:history.append(dict(round=row['number'],at_ms=row['completed_ms'],rating=value))
             result.append(dict(ladder_open=ladder_open,history=history,competition_id=ident,title=item['title'],current=current,next_sha=passed['github_sha'] if passed else None,

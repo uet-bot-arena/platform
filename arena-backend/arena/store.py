@@ -21,7 +21,7 @@ class Store:
         self.db = sqlite3.connect(self.root / "arena.sqlite", check_same_thread=False)
         self.db.execute('PRAGMA auto_vacuum=INCREMENTAL')
         self.db.execute("PRAGMA journal_mode=WAL")
-        self.db.execute("PRAGMA synchronous=FULL")
+        self.db.execute("PRAGMA synchronous=NORMAL")
         self.db.executescript("""
           CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY, kind TEXT, team TEXT, data TEXT);
           CREATE INDEX IF NOT EXISTS documents_kind_team ON documents(kind,team);

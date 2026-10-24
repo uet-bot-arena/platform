@@ -175,7 +175,7 @@ class Hardening(unittest.TestCase):
             store.db.close()
             store = Store(tmp)
             pending = DurableJobQueue(store)
-            self.assertEqual(store.db.execute("PRAGMA synchronous").fetchone()[0], 2)
+            self.assertEqual(store.db.execute("PRAGMA synchronous").fetchone()[0], 1)
             self.assertEqual(pending.qsize(), 200)
             self.assertEqual(store.get(first)["status"], "queued")
             self.assertIsNone(store.get(first)["report"])

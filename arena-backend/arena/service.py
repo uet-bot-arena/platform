@@ -359,7 +359,7 @@ class Service:
             if grader["revoked_ms"] is not None:
                 raise Fault("unauthorized", "Grader token revoked")
             now=now_ms()
-            if grader['last_seen_ms'] is None or now<grader['last_seen_ms'] or now-grader['last_seen_ms']>=1000:
+            if grader['last_seen_ms'] is None or now<grader['last_seen_ms'] or now-grader['last_seen_ms']>=5000:
                 with self.store.db:
                     self.store.db.execute("UPDATE graders SET last_seen_ms=? WHERE id=?", (now, grader["id"]))
         return grader
@@ -386,9 +386,9 @@ class Service:
     def lease_now_ms(self):
         return self.lease_epoch_ms + time.monotonic_ns() // 1_000_000
 
-    def try_lease(self, grader):
+    def try_lease(self, grader, schedule=True):
         """Claim the best eligible queued job for this grader, or None."""
-        if self.before_next:
+        if schedule and self.before_next:
             self.before_next()
         if not grader.get("platform"):
             raise Fault("invalid_request", "Call /grader/hello first")
