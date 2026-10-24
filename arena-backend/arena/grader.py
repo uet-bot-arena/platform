@@ -55,7 +55,9 @@ class HubClient:
         self.hub, self.token, self.timeout = hub.rstrip("/"), token, timeout
 
     def call(self, method, path, body=None, data=None, headers=None, timeout=None, raw=False):
-        request_headers = {"Authorization": "Bearer " + self.token, "Accept": "application/json", **(headers or {})}
+        # Cloudflare Browser Integrity Check rejects the default "Python-urllib" agent (error 1010).
+        request_headers = {"Authorization": "Bearer " + self.token, "Accept": "application/json",
+                           "User-Agent": "uet-arena-grader/" + VERSION, **(headers or {})}
         if body is not None:
             data = json.dumps(body, separators=(",", ":")).encode()
             request_headers["Content-Type"] = "application/json"

@@ -826,5 +826,20 @@ class GraderClientEndToEnd(unittest.TestCase):
                 thread.join(10)
 
 
+class HubClientHeaderTest(unittest.TestCase):
+    def test_sends_own_user_agent(self):
+        # Cloudflare's Browser Integrity Check answers 403 (error 1010) to "Python-urllib".
+        from arena.grader import VERSION, HubClient
+        response = Mock()
+        response.read.return_value = b'{"ok":true}'
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        with patch("urllib.request.urlopen", return_value=response) as urlopen:
+            self.assertEqual(HubClient("https://hub.example", "token").call("POST", "/api/v1/grader/hello", {}), {"ok": True})
+        request = urlopen.call_args[0][0]
+        self.assertEqual(request.get_header("User-agent"), "uet-arena-grader/" + VERSION)
+        self.assertNotIn("python-urllib", request.get_header("User-agent").lower())
+
+
 if __name__ == "__main__":
     unittest.main()
