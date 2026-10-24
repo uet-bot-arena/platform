@@ -227,7 +227,7 @@ def main():
                         if time.monotonic()>=cutoff[0] or stop.is_set():break
                         waited=time.monotonic();lease=None
                         while lease is None and time.monotonic()<cutoff[0] and not stop.is_set():
-                            lease=grader.client.call('POST','/api/v1/grader/lease',dict(wait_seconds=min(25,max(0,int(cutoff[0]-time.monotonic())))))['lease']
+                            lease=grader.client.call('POST','/api/v1/grader/lease',dict(wait_seconds=min(25,max(1,int(cutoff[0]-time.monotonic())))))['lease']
                         lease_waits[number]+=time.monotonic()-waited
                         if lease is None:break
                 except Exception as exc:event_errors.append(repr(exc))
