@@ -6,7 +6,9 @@ Tài liệu: [Cài đặt chi tiết](INSTALL.md) · [Hướng dẫn viết bot]
 
 [Mục lục tài liệu](docs/TAI-LIEU.md). Vận hành Mốc 1: [triển khai](docs/DEPLOY.md), [máy chấm](docs/MAY-CHAM.md), [email](docs/EMAIL.md), [tài khoản và đội](docs/TAI-KHOAN-VA-DOI.md), [nộp bài GitHub](docs/NOP-BAI.md), [GitHub App](docs/GITHUB-APP.md), [13 tình huống chống phá](docs/BAO-MAT.md), [thay đổi](CHANGELOG.md).
 
-Nghiệm thu Mốc 1 trên PC: [gói 10b](docs/M1-GOI-10B.md) đạt tải 4.000 người bình thường trên bản cài WSL 4 vCPU / 2 GiB. Triển khai tên miền/VPS và đo lại trên máy thật thuộc Mốc 2.
+**Web đang chạy: https://uetbotarena.id.vn** (Mốc 2, từ 24/10/2026; hub trên VPS 4 vCPU / 2 GB qua Cloudflare Tunnel, máy chấm là máy Windows của nhóm). Xem [bản đang chạy](docs/DEPLOY.md#bản-đang-chạy-mốc-2-từ-24102026).
+
+Nghiệm thu Mốc 1 trên PC: [gói 10b](docs/M1-GOI-10B.md) đạt tải 4.000 người bình thường trên bản cài WSL 4 vCPU / 2 GiB. Đo lại trên VPS thật đang làm ở Mốc 2.
 
 ## Tính năng
 
