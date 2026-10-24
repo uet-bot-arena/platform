@@ -16,7 +16,7 @@ import tempfile
 DATA = Path('/var/lib/uet-arena/data')
 CONFIG = Path('/etc/uet-arena')
 BACKUPS = Path('/var/backups/uet-arena')
-UNITS = ['uet-arena-hub', 'uet-arena-publisher', 'uet-arena-mailer']
+UNITS = ['uet-arena-hub', 'uet-arena-publisher', 'uet-arena-mailer', 'uet-arena-nginx']
 
 
 @contextmanager

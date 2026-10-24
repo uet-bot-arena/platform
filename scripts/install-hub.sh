@@ -17,11 +17,11 @@ done
 (( EUID == 0 )) || { echo 'Run with sudo/root.' >&2; exit 1; }
 [[ "$arena_vcpus" =~ ^[1-9][0-9]?$ ]] || { echo 'vCPUs must be 1..99.' >&2; exit 2; }
 if "$arena_remove"; then
-  systemctl disable --now uet-arena-backup.timer uet-arena-hub.service uet-arena-publisher.service uet-arena-mailer.service 2>/dev/null || true
-  for arena_unit in hub publisher mailer backup; do
+  systemctl disable --now uet-arena-backup.timer uet-arena-nginx.service uet-arena-hub.service uet-arena-publisher.service uet-arena-mailer.service 2>/dev/null || true
+  for arena_unit in hub publisher mailer nginx backup; do
     rm -f "/etc/systemd/system/uet-arena-${arena_unit}.service"
   done
-  rm -f /etc/systemd/system/uet-arena-backup.timer /etc/systemd/system/uet-arena.slice
+  rm -f /etc/systemd/system/uet-arena-backup.timer /etc/systemd/system/uet-arena.slice /etc/systemd/system/arena.slice
   rm -f /etc/systemd/journald.conf.d/uet-arena.conf
   systemctl daemon-reload
   systemctl restart systemd-journald
@@ -41,13 +41,23 @@ assert all(c.isalnum() or c in ':/.-' for c in sys.argv[1])
 PY
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq python3 python3-venv ca-certificates curl openssl sqlite3 rsync
+# Prevent the distro's default nginx site from listening on port 80 during install.
+arena_policy=false
+if [[ ! -e /usr/sbin/policy-rc.d ]]; then
+  printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
+  chmod 755 /usr/sbin/policy-rc.d
+  arena_policy=true
+  trap 'rm -f /usr/sbin/policy-rc.d' EXIT
+fi
+apt-get install -y -qq python3 python3-venv ca-certificates curl openssl sqlite3 rsync nginx
+if "$arena_policy"; then rm -f /usr/sbin/policy-rc.d; trap - EXIT; fi
+systemctl disable --now nginx 2>/dev/null || true
 if ! id arena >/dev/null 2>&1; then useradd --system --create-home --home-dir /var/lib/uet-arena --shell /usr/sbin/nologin arena; fi
 if id -nG arena | tr ' ' '\n' | grep -Eq '^(sudo|admin)$'; then echo 'arena must not have sudo rights.' >&2; exit 1; fi
 install -d -m 755 /opt/uet-arena/app
 install -d -m 700 -o arena -g arena /var/lib/uet-arena /var/lib/uet-arena/data /etc/uet-arena
 install -d -m 700 /var/backups/uet-arena
-systemctl stop uet-arena-publisher uet-arena-mailer uet-arena-hub 2>/dev/null || true
+systemctl stop uet-arena-nginx uet-arena-publisher uet-arena-mailer uet-arena-hub 2>/dev/null || true
 # Updating from the same installed tree needs no copy; rsync removes no data.
 if [[ "$arena_source" != /opt/uet-arena/app ]]; then
   for arena_dir in arena-backend uet-bot-arena docs; do
@@ -58,6 +68,7 @@ if [[ "$arena_source" != /opt/uet-arena/app ]]; then
   install -m 755 "$arena_source/scripts/hub-backup.py" /opt/uet-arena/app/scripts/
   install -m 755 "$arena_source/scripts/hub-status.py" /opt/uet-arena/app/scripts/
   install -m 755 "$arena_source/scripts/install-hub.sh" /opt/uet-arena/app/scripts/
+  install -m 644 "$arena_source/scripts/hub-nginx.conf" "$arena_source/scripts/hub-nginx-security.conf" /opt/uet-arena/app/scripts/
 fi
 chown -R root:root /opt/uet-arena/app
 chmod -R go-w,a+rX /opt/uet-arena/app
@@ -96,9 +107,10 @@ PY
 fi
 chown arena:arena /etc/uet-arena/config.toml /etc/uet-arena/secrets.toml
 chmod 600 /etc/uet-arena/config.toml /etc/uet-arena/secrets.toml
-cat > /etc/systemd/system/uet-arena.slice <<EOF
+rm -f /etc/systemd/system/uet-arena.slice
+cat > /etc/systemd/system/arena.slice <<EOF
 [Unit]
-Description=UET Arena combined hub, publisher and mailer budget
+Description=UET Arena combined hub, publisher, mailer and nginx budget
 [Slice]
 CPUAccounting=yes
 MemoryAccounting=yes
@@ -109,7 +121,7 @@ TasksMax=1024
 EOF
 for arena_component in hub publisher mailer; do
   case "$arena_component" in
-    hub) arena_command='arena_api serve --access-log'; arena_memory=1400M ;;
+    hub) arena_command='arena_api serve --port 4182 --access-log'; arena_memory=1400M ;;
     publisher) arena_command='arena_api publish'; arena_memory=384M ;;
     mailer) arena_command='arena_api.mailer'; arena_memory=256M ;;
   esac
@@ -132,7 +144,7 @@ ExecStart=/opt/uet-arena/venv/bin/python -m $arena_command
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=420
-Slice=uet-arena.slice
+Slice=arena.slice
 MemoryMax=$arena_memory
 NoNewPrivileges=true
 PrivateTmp=true
@@ -148,6 +160,36 @@ LogRateLimitBurst=10000
 WantedBy=multi-user.target
 EOF
 done
+install -m 644 /opt/uet-arena/app/scripts/hub-nginx.conf /etc/uet-arena/nginx.conf
+install -m 644 /opt/uet-arena/app/scripts/hub-nginx-security.conf /etc/uet-arena/nginx-security.conf
+cat > /etc/systemd/system/uet-arena-nginx.service <<'EOF'
+[Unit]
+Description=UET Bot Arena nginx (loopback static files and API proxy)
+After=network-online.target uet-arena-hub.service
+[Service]
+Type=simple
+User=arena
+Group=arena
+RuntimeDirectory=uet-arena-nginx
+RuntimeDirectoryMode=0700
+ExecStartPre=/usr/sbin/nginx -t -c /etc/uet-arena/nginx.conf
+ExecStart=/usr/sbin/nginx -c /etc/uet-arena/nginx.conf -g 'daemon off;'
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=2
+Slice=arena.slice
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/var/lib/uet-arena
+ReadWritePaths=/run/uet-arena-nginx
+UMask=0077
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=100000
+[Install]
+WantedBy=multi-user.target
+EOF
 install -d -m 755 /etc/systemd/journald.conf.d
 cat > /etc/systemd/journald.conf.d/uet-arena.conf <<'EOF'
 [Journal]
@@ -177,5 +219,8 @@ EOF
 # Run from the installed package, not the caller's checkout.
 (cd /opt/uet-arena/app/arena-backend && runuser -u arena -- env ARENA_CONFIG=/etc/uet-arena/config.toml ARENA_SECRETS=/etc/uet-arena/secrets.toml /opt/uet-arena/venv/bin/python -m arena_api migrate)
 systemctl daemon-reload
-systemctl enable --now uet-arena-hub uet-arena-publisher uet-arena-mailer uet-arena-backup.timer
+systemctl enable --now uet-arena-hub uet-arena-publisher uet-arena-mailer uet-arena-nginx uet-arena-backup.timer
+for arena_component in hub publisher mailer nginx; do
+  systemctl is-active --quiet "uet-arena-$arena_component" || { echo "$arena_component failed to start; inspect its journal." >&2; exit 1; }
+done
 echo 'Installed. Existing config/secrets were preserved. Bootstrap an admin (docs/DEPLOY.md); SMTP and named tunnel need configuration.'

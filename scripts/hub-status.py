@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import time
 
-unit = subprocess.check_output(['systemctl', 'show', 'uet-arena.slice', '--property=ControlGroup', '--value', '--no-pager']).decode().strip()
+unit = subprocess.check_output(['systemctl', 'show', 'arena.slice', '--property=ControlGroup', '--value', '--no-pager']).decode().strip()
 assert unit.startswith('/') and '..' not in unit
 group = Path('/sys/fs/cgroup' + unit)
 
@@ -21,7 +21,7 @@ time.sleep(1)
 quota, period = (group / 'cpu.max').read_text().split()
 cores = int(quota) / int(period) if quota != 'max' else 1
 used = (cpu() - before) / (time.monotonic() - started) / 1_000_000 / cores * 100
-raw = subprocess.check_output(['journalctl', '-u', 'uet-arena-hub', '--since=-1min', '-o', 'json', '--no-pager']).decode()
+raw = subprocess.check_output(['journalctl', '-t', 'uet_arena_nginx', '--since=-1min', '-o', 'json', '--no-pager']).decode()
 codes = []
 for line in raw.splitlines():
     match = re.search(r'HTTP/1\.[01]" (\d{3})', json.loads(line).get('MESSAGE', ''))
