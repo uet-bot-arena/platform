@@ -15,6 +15,111 @@ from arena_api.dependencies import peer
 
 
 class Hardening(unittest.TestCase):
+    def test_sse_staggered_cursors_share_one_read_and_old_cursors_recover_full_history(self):
+        async def check():
+            feeds=Snapshots(ttl=100)
+            calls=[]
+            events=[dict(seq=i,type='state',data=dict(n=i)) for i in range(1,1501)]
+            def load(after):
+                calls.append(after);batch=events[after:after+1000]
+                return batch,batch[-1]['seq'] if batch else after,after+len(batch)>=len(events)
+            for cursor in range(20):
+                payload,end,done=await feeds.event_chunk('game',cursor,load)
+                self.assertEqual(payload.count('event: arena'),1000-cursor)
+                self.assertEqual(end,1000)
+            self.assertEqual(calls,[0])
+            feeds.items.clear()
+            payload,end,done=await feeds.event_chunk('game',1000,load)
+            self.assertEqual(payload.count('event: arena'),500);self.assertTrue(done)
+            payload,end,done=await feeds.event_chunk('game',0,load)
+            self.assertEqual(payload.count('event: arena'),1000);self.assertEqual(end,1000)
+            self.assertEqual(calls,[0,1000,0])
+            payload,end,done=await feeds.event_chunk('game',end,load)
+            self.assertEqual(payload.count('event: arena'),500);self.assertEqual(end,1500)
+        asyncio.run(check())
+
+    def test_materialized_summaries_follow_direct_writes_rollback_and_deletion(self):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            store=Store(tmp)
+            try:
+                job=store.create('job','team',dict(kind='benchmark',status='completed',report=dict(samples=[{},{}],build_log='private')))
+                summary=store.list('job','team',summary=True)[0]
+                self.assertEqual(summary['report'],dict(samples=2))
+                with self.assertRaises(RuntimeError):
+                    with store.transaction():
+                        store.update(job['id'],status='aborted')
+                        raise RuntimeError('rollback')
+                self.assertEqual(store.list('job','team',summary=True)[0]['status'],'completed')
+                updated=dict(job,report=dict(samples=[{}]))
+                with store.transaction():store.db.execute('UPDATE documents SET data=? WHERE id=?',(json.dumps(updated),job['id']))
+                self.assertEqual(store.list('job','team',summary=True)[0]['report']['samples'],1)
+                with store.transaction():store.db.execute('DELETE FROM documents WHERE id=?',(job['id'],))
+                self.assertEqual(store.db.execute('SELECT COUNT(*) FROM job_summaries').fetchone()[0],0)
+            finally:store.db.close()
+
+    def test_stream_watch_subscription_controls_batch_interval_and_releases_on_close(self):
+        async def check():
+            feeds=Snapshots()
+            async def stream():
+                yield 'one'
+                yield 'two'
+            chunks=feeds.limited('user',stream(),job='game')
+            self.assertTrue(feeds.watched('game'))
+            self.assertFalse(feeds.watched('other'))
+            self.assertEqual(await anext(chunks),'one')
+            await chunks.aclose()
+            self.assertFalse(feeds.watched('game'))
+        asyncio.run(check())
+
+    def test_restart_memory_does_not_grow_with_completed_report_history(self):
+        import tracemalloc
+        with tempfile.TemporaryDirectory() as tmp:
+            store=Store(tmp)
+            heavy=dict(samples=[dict(wall_ms=1,output='x'*128)]*720)
+            with store.transaction():
+                for _ in range(300):store.create('job','team',dict(kind='benchmark',status='completed',report=heavy))
+                queued=store.create('job','team',dict(kind='benchmark',status='queued',report=None))
+            steps=[]
+            store.db.set_progress_handler(lambda:steps.append(1) or 0,100)
+            self.assertEqual([j['id'] for j in store.unfinished_jobs(queued_only=True)],[queued['id']])
+            store.db.set_progress_handler(None,0)
+            self.assertLess(len(steps)*100,500,'Historical completed reports were scanned')
+            store.db.close()
+            tracemalloc.start()
+            try:
+                recovered=Store(tmp);pending=DurableJobQueue(recovered)
+                _,peak=tracemalloc.get_traced_memory()
+                self.assertEqual(pending.qsize(),1)
+                self.assertLess(peak,5*1024**2,'Restart decoded completed reports instead of unfinished work')
+                self.assertEqual(pending.get_nowait(),queued['id'])
+            finally:
+                tracemalloc.stop()
+                if 'recovered' in locals():recovered.db.close()
+
+    def test_shared_connection_readers_wait_for_transaction_rollback(self):
+        from arena_api.accounts import Accounts
+        with tempfile.TemporaryDirectory() as tmp:
+            store=Store(tmp);accounts=Accounts(store)
+            store.db.execute('CREATE TABLE atomic_read(value TEXT)')
+            store.db.execute("INSERT INTO atomic_read VALUES('original')");store.db.commit()
+            started=threading.Barrier(3)
+            def reader(many):
+                started.wait(3)
+                return (accounts.rows if many else accounts.one)('SELECT value FROM atomic_read')
+            try:
+                with ThreadPoolExecutor(2) as pool:
+                    with self.assertRaisesRegex(RuntimeError,'rollback fixture'):
+                        with store.transaction():
+                            store.db.execute("UPDATE atomic_read SET value='uncommitted'")
+                            futures=[pool.submit(reader,many) for many in (False,True)]
+                            started.wait(3);time.sleep(.1)
+                            self.assertFalse(any(f.done() for f in futures),'A concurrent reader observed an unfinished transaction')
+                            raise RuntimeError('rollback fixture')
+                    self.assertEqual(futures[0].result(3),dict(value='original'))
+                    self.assertEqual(futures[1].result(3),[dict(value='original')])
+            finally:store.db.close()
+
     def test_pch_does_not_override_source_configuration_or_custom_headers(self):
         from arena.supervisor import pch_compatible
         with tempfile.TemporaryDirectory() as tmp:

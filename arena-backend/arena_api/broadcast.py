@@ -2,6 +2,7 @@
 from collections import OrderedDict
 import asyncio
 import hashlib
+import json
 import threading
 from time import monotonic
 import uuid
@@ -14,6 +15,7 @@ class Snapshots:
         self.ttl, self.capacity = ttl, capacity
         self.lock = threading.Lock()
         self.items = OrderedDict()
+        self.event_windows = OrderedDict()
         self.async_lock = asyncio.Lock()
         self.max_streams = max_streams
         self.streams = {}
@@ -43,11 +45,36 @@ class Snapshots:
                 self.items.popitem(last=False)
             return value
 
+    async def event_chunk(self, job, after, load):
+        def encoded(cursor):
+            events,end,done=load(cursor)
+            return [(e['seq'],f"id: {job}:{e['seq']}\nevent: arena\ndata: {json.dumps(e,separators=(',',':'))}\n\n") for e in events],end,done
+        def update():
+            end,frames,floor,_=self.event_windows.get(job,(0,[],0,False))
+            extra,end,done=encoded(end)
+            frames=frames+extra
+            size=sum(len(text) for _,text in frames)
+            cut=0
+            while len(frames)-cut>1 and (len(frames)-cut>1000 or size>256*1024):
+                size-=len(frames[cut][1]);floor=frames[cut][0];cut+=1
+            value=(end,frames[cut:],floor,done)
+            self.event_windows[job]=value;self.event_windows.move_to_end(job)
+            while len(self.event_windows)>self.capacity:self.event_windows.popitem(last=False)
+            return value
+        end,frames,floor,done=await self.get_async(('event-window',job),update)
+        if after<floor or after>end:
+            frames,end,done=await self.get_async(('event-history',job,after),lambda:encoded(after))
+        return ''.join(text for seq,text in frames if seq>after),end,done
+
     async def principal(self, accounts, cookie):
         key = ('session', hashlib.sha256(cookie.encode()).hexdigest())
         return await self.get_async(key, lambda: accounts.principal(cookie), ttl=14)  # plus the one-second heartbeat: revocation within 15 seconds
 
-    def limited(self, account, stream):
+    def watched(self, job):
+        with self.stream_lock:
+            return any(value[1]>monotonic() and value[2]==job for value in self.streams.values())
+
+    def limited(self, account, stream, job=None):
         now = monotonic()
         ticket = uuid.uuid4().hex
         with self.stream_lock:
@@ -55,7 +82,7 @@ class Snapshots:
             self.streams = {k:v for k,v in self.streams.items() if v[1] > now}
             if sum(v[0] == account for v in self.streams.values()) >= self.max_streams:
                 raise Fault('rate_limited', 'Đã mở đủ luồng trực tiếp; hãy đóng bớt tab')
-            self.streams[ticket] = (account, now+65)
+            self.streams[ticket] = (account, now+65, job)
         async def chunks():
             try:
                 async for chunk in stream:

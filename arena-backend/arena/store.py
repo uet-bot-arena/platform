@@ -36,8 +36,23 @@ class Store:
           CREATE TABLE IF NOT EXISTS idempotency(team TEXT, operation TEXT, key TEXT, hash TEXT, id TEXT,
              PRIMARY KEY(team,operation,key));
         """)
+        # Materialize the same public summary once per write, not once per page.
+        summary = self._job_summary_column().replace('data', 'NEW.data')
+        self.db.executescript("""
+          CREATE TABLE IF NOT EXISTS job_summaries(job TEXT PRIMARY KEY,team TEXT,data TEXT);
+          CREATE INDEX IF NOT EXISTS job_summaries_team ON job_summaries(team);
+          CREATE TRIGGER IF NOT EXISTS job_summary_insert AFTER INSERT ON documents WHEN NEW.kind='job'
+          BEGIN INSERT INTO job_summaries VALUES(NEW.id,NEW.team,""" + summary + """); END;
+          CREATE TRIGGER IF NOT EXISTS job_summary_update AFTER UPDATE ON documents WHEN NEW.kind='job'
+          BEGIN INSERT INTO job_summaries VALUES(NEW.id,NEW.team,""" + summary + """)
+          ON CONFLICT(job) DO UPDATE SET team=excluded.team,data=excluded.data; END;
+          CREATE TRIGGER IF NOT EXISTS job_summary_delete AFTER DELETE ON documents
+          BEGIN DELETE FROM job_summaries WHERE job=OLD.id; END;
+        """)
+        self.db.execute("INSERT INTO job_summaries SELECT d.id,d.team," + self._job_summary_column().replace('data','d.data') +
+            " FROM documents d LEFT JOIN job_summaries s ON s.job=d.id WHERE d.kind='job' AND s.job IS NULL")
         self.db.commit()
-        for job in self.list("job") if recover_jobs else []:
+        for job in self.unfinished_jobs() if recover_jobs else []:
             # The service invalidates remote leases after its tables are available.
             if job["status"] not in ("queued", "completed", "failed", "aborted") and not job.get("lease_id"):
                 if job.get("official"):
@@ -75,13 +90,14 @@ class Store:
                 self.pending_idempotency = None
         return item
 
-    def get(self, ident, team=None, kind=None, hydrate=True):
+    def get(self, ident, team=None, kind=None, hydrate=True, *, summary=False):
+        column=self._job_summary_column() if summary else 'data'
         with self.lock:
-            row = self.db.execute("SELECT kind,team,data FROM documents WHERE id=?", (ident,)).fetchone()
+            row = self.db.execute("SELECT kind,team,"+column+" FROM documents WHERE id=?", (ident,)).fetchone()
         if row is None or (team is not None and row[1] != team) or (kind and row[0] != kind):
             raise Fault("not_found", "Record not found")
         item = json.loads(row[2])
-        if hydrate and item.get('report_compacted') and item.get('report'):
+        if hydrate and not summary and item.get('report_compacted') and item.get('report'):
             with self.lock:
                 archive = self.db.execute('SELECT data FROM replay_archives WHERE job=?', (ident,)).fetchone()
             if archive:
@@ -97,18 +113,44 @@ class Store:
             self.db.execute("UPDATE documents SET data=? WHERE id=?", (json.dumps(item), ident))
         return item
 
-    def list(self, kind, team=None):
+    @staticmethod
+    def _job_summary_column():
+        # Lists/status need counts, never retained replay/build diagnostics.
+        column = "CASE WHEN json_type(data,'$.report.samples')='array' THEN " \
+            "json_set(data,'$.report.samples',json_array_length(data,'$.report.samples')) ELSE data END"
+        paths = (*REPLAY_REPORT_FIELDS, 'artifacts', 'build_log', 'startup_faults', 'fault')
+        return "json_remove(" + column + "," + ",".join("'$.report." + p + "'" for p in paths if p != 'samples') + ")"
+
+    def list(self, kind, team=None, *, summary=False):
         with self.lock:
-            rows = self.db.execute("SELECT data FROM documents WHERE kind=?" + (" AND team=?" if team is not None else "") + " ORDER BY rowid DESC",
-                                   (kind, team) if team is not None else (kind,)).fetchall()
+            if summary and kind=='job':
+                rows=self.db.execute("SELECT s.data FROM documents d JOIN job_summaries s ON s.job=d.id WHERE d.kind=? "
+                    + ("AND d.team=? " if team is not None else '') + "ORDER BY d.rowid DESC",(kind,team) if team is not None else (kind,)).fetchall()
+            else:
+                rows=self.db.execute("SELECT data FROM documents WHERE kind=? " + ("AND team=? " if team is not None else '') +
+                    "ORDER BY rowid DESC",(kind,team) if team is not None else (kind,)).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
+    def unfinished_jobs(self, *, queued_only=False):
+        # Use the partial index; completed benchmark reports can be large and
+        # are not needed to reconstruct the durable queue or restart clocks.
+        with self.lock:
+            rows = self.db.execute("SELECT data FROM documents INDEXED BY documents_active_team WHERE kind='job' "
+                "AND json_extract(data,'$.status') NOT IN ('completed','failed','aborted') "
+                + ("AND json_extract(data,'$.status')='queued' " if queued_only else "")
+                + "ORDER BY rowid").fetchall()
         return [json.loads(row[0]) for row in rows]
 
     def event(self, job, kind, data):
+        return self.event_batch(job,[dict(type=kind,data=data)])[0]
+
+    def event_batch(self, job, items):
         with self.transaction():
-            seq = self.db.execute("SELECT COALESCE(MAX(seq),0)+1 FROM events WHERE job=?", (job,)).fetchone()[0]
-            event = {"seq": seq, "type": kind, "server_unix_ms": time.time_ns() // 1_000_000, "data": data}
-            self.db.execute("INSERT INTO events VALUES(?,?,?)", (job, seq, json.dumps(event)))
-        return event
+            first=self.db.execute("SELECT COALESCE(MAX(seq),0)+1 FROM events WHERE job=?",(job,)).fetchone()[0]
+            now=time.time_ns()//1_000_000
+            events=[dict(seq=first+i,type=item['type'],server_unix_ms=now,data=item['data']) for i,item in enumerate(items)]
+            self.db.executemany("INSERT INTO events VALUES(?,?,?)",((job,e['seq'],json.dumps(e)) for e in events))
+        return events
 
     def events(self, job, after=0):
         with self.lock:

@@ -333,15 +333,24 @@ class GitHub:
             else:
                 for row in pending:
                     self.receive(row)
+            touched=set()
             for check in self.rows("SELECT * FROM github_checks WHERE state IN ('waiting','checking') AND retry_ms<=?", (self.clock(),)):
                 self.run_check(check)
-            for row in self.rows("SELECT * FROM github_commits WHERE submission_id IS NOT NULL AND state<>'detected'"):
+                touched.add((check['team_id'],check['sha']))
+            # Only checks processed above can change an existing source state.
+            # Completed historical commits need neither per-row queries nor a
+            # second status post on every one-second intake tick.
+            for team,sha in sorted(touched):
+                row=self.one("SELECT * FROM github_commits WHERE team_id=? AND sha=? AND submission_id IS NOT NULL AND state<>'detected'",(team,sha))
+                if not row:continue
                 states = [c["state"] for c in self.rows("SELECT state FROM github_checks WHERE team_id=? AND sha=?", (row["team_id"], row["sha"]))]
                 state = "checking" if not states or any(s in ("waiting", "checking") for s in states) else "fail" if "fail" in states else "pass" if "pass" in states else "replaced"
                 if state != row["state"]:
                     self.execute("UPDATE github_commits SET state=? WHERE team_id=? AND sha=?", (state, row["team_id"], row["sha"]))
             self.deadlines()
-            for row in self.rows("SELECT * FROM github_commits WHERE state IN ('pass','fail')"):
+            for row in self.rows("SELECT g.* FROM github_commits g WHERE g.state IN ('pass','fail') AND "
+                "(NOT EXISTS(SELECT 1 FROM github_checks c WHERE c.team_id=g.team_id AND c.sha=g.sha) "
+                "OR EXISTS(SELECT 1 FROM github_checks c WHERE c.team_id=g.team_id AND c.sha=g.sha AND c.status_sent=0))"):
                 self.send_status(row)
         finally:
             self.tick_lock.release()
@@ -478,19 +487,33 @@ class GitHub:
         repo = self.one("SELECT * FROM github_repositories WHERE team_id=?", (team,))
         commits = self.rows("SELECT * FROM github_commits WHERE team_id=? ORDER BY received_ms DESC LIMIT 20", (team,))
         queue_total = self.service.pending.qsize()
+        by_sha={}
+        if commits:
+            checks=self.rows("SELECT c.*,json_extract(d.data,'$.status') AS _phase,"
+                "CASE WHEN json_type(d.data,'$.report.samples')='array' THEN json_array_length(d.data,'$.report.samples') "
+                "ELSE COALESCE(json_extract(d.data,'$.report.samples'),json_extract(d.data,'$.check_summary.samples'),0) END AS _samples "
+                "FROM github_checks c LEFT JOIN job_summaries d ON d.job=c.job_id AND d.team=c.team_id "
+                "WHERE c.team_id=? AND c.sha IN ("+','.join('?' for _ in commits)+") ORDER BY c.sha,c.purpose",
+                (team,*(row['sha'] for row in commits)))
+            for check in checks:by_sha.setdefault(check['sha'],[]).append(check)
         for commit in commits:
-            checks = self.rows("SELECT * FROM github_checks WHERE team_id=? AND sha=?", (team, commit["sha"]))
+            checks = by_sha.get(commit['sha'],[])
             commit["checks"] = checks
             for check in checks:
+                phase=check.pop('_phase');samples=check.pop('_samples')
+                if phase in TERMINAL:
+                    check.update(phase=phase,queue_position=None,queue_total=queue_total,eta=None,samples=samples)
+                    continue
                 if check["job_id"]:
-                    job = self.store.get(check["job_id"], team, "job")
+                    job = self.store.get(check["job_id"], team, "job", summary=True)
                     check["phase"] = job["status"]
                     check["queue_position"] = self.service.pending.position(job["id"])
                     check["queue_total"] = queue_total
                     check['eta'] = self.service.job_eta(job)
-                    report = job.get("report") or {}
-                    progress = [e["data"].get("completed", 0) for e in self.store.events(job["id"]) if e["type"] == "progress"]
-                    check["samples"] = max([len(report.get("samples", [])), *progress])
+                    report = job.get("report") or job.get('check_summary') or {}
+                    progress = [e["data"].get("completed", 0) for e in self.store.events(job["id"]) if e["type"] == "progress"] if job['status'] not in TERMINAL else []
+                    samples=report.get('samples',0)
+                    check["samples"] = max([len(samples) if isinstance(samples,list) else samples, *progress])
         previews = []
         for comp in self.rows("SELECT id,title,submission_deadline FROM competitions WHERE status='open' AND submission_deadline>? AND archived_ms IS NULL", (self.clock(),)):
             passed = next((r for r in self.observations(team, self.clock()) if self.one("SELECT 1 FROM github_checks WHERE team_id=? AND sha=? AND purpose=? AND state='pass'", (team, r["sha"], comp["id"]))), None)

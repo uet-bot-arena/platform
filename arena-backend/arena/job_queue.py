@@ -31,13 +31,13 @@ class DurableJobQueue:
                     store.db.execute(f"ALTER TABLE job_queue ADD COLUMN {column} TEXT")
                 except sqlite3.OperationalError:
                     pass  # already migrated
-            for job in reversed(store.list("job")):
-                if job["status"] == "queued":
-                    requires = job.get("requires") or {}
-                    self.put(job["id"], official=official_priority(job), kind=job.get("kind"),
-                             platform=requires.get("platform"), runtime_id=requires.get("runtime_id"))
-                else:
-                    self.remove(job["id"])
+            store.db.execute("DELETE FROM job_queue AS q WHERE EXISTS (SELECT 1 FROM documents d "
+                "WHERE d.id=q.id AND d.kind='job' "
+                "AND json_extract(d.data,'$.status') IS NOT 'queued')")
+            for job in store.unfinished_jobs(queued_only=True):
+                requires = job.get("requires") or {}
+                self.put(job["id"], official=official_priority(job), kind=job.get("kind"),
+                         platform=requires.get("platform"), runtime_id=requires.get("runtime_id"))
 
     def put(self, ident, block=True, timeout=None, *, official=False, kind=None, platform=None, runtime_id=None, front=False):
         with self.store.lock, self.store.db:

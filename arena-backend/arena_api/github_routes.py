@@ -1,3 +1,4 @@
+from starlette.responses import JSONResponse
 from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,7 +19,7 @@ class Repository(BaseModel):
 
 @router.get("/teams/me/github", summary="Repo, 20 commit gần nhất và bản dự giải của đội")
 def view(request: Request, auth=Depends(team_principal)):
-    return request.app.state.github.view(auth["user"]["team_id"])
+    return JSONResponse(request.app.state.github.view(auth["user"]["team_id"]))
 
 
 @router.post("/teams/me/github", status_code=201, summary="Đội trưởng gắn repo private đúng mã đội, một lần")

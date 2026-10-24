@@ -13,6 +13,8 @@ from urllib.request import build_opener, HTTPRedirectHandler, Request
 from arena.conf import host_path
 from arena.protocol import Fault
 
+_http_threads = threading.local()
+
 API = "https://api.github.com"
 SHA = re.compile(r"[0-9a-f]{40}")
 OWNER = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?")
@@ -60,7 +62,11 @@ class GitHubClient:
     def http(method, url, headers, body, limit):
         request = Request(url, data=body, headers=headers, method=method)
         try:
-            response = build_opener(NoRedirect).open(request, timeout=15)
+            # HTTPSHandler loads the system CA store when it is constructed.
+            # Reuse the opener within each worker; headers remain on Request.
+            if not hasattr(_http_threads, 'opener'):
+                _http_threads.opener = build_opener(NoRedirect)
+            response = _http_threads.opener.open(request, timeout=15)
         except HTTPError as exc:
             response = exc
         except (URLError, OSError, TimeoutError):

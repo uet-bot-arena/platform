@@ -48,14 +48,18 @@ class Accounts:
             return False
 
     def one(self, sql, args=()):
-        cursor = self.db.execute(sql, args)
-        row = cursor.fetchone()
-        return dict(zip([c[0] for c in cursor.description], row)) if row else None
+        # The connection and its statement cache are shared by HTTP/scheduler
+        # threads. Keep execute, description and fetch in the same lock scope.
+        with self.store.lock:
+            cursor = self.db.execute(sql, args)
+            row = cursor.fetchone()
+            return dict(zip([c[0] for c in cursor.description], row)) if row else None
 
     def rows(self, sql, args=()):
-        cursor = self.db.execute(sql, args)
-        keys = [c[0] for c in cursor.description]
-        return [dict(zip(keys, row)) for row in cursor.fetchall()]
+        with self.store.lock:
+            cursor = self.db.execute(sql, args)
+            keys = [c[0] for c in cursor.description]
+            return [dict(zip(keys, row)) for row in cursor.fetchall()]
 
     def audit(self, actor, action, target):
         # Deliberately records identifiers only, never request bodies or secrets.

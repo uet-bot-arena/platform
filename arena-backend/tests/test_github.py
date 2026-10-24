@@ -151,6 +151,28 @@ class GitHubArchive(TestCase):
 
 
 class GitHubTransport(TestCase):
+    def test_http_worker_reuses_tls_setup_and_keeps_authorization_per_request(self):
+        from urllib.request import build_opener as real_opener
+        received=[]
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self,*_):pass
+            def do_GET(self):
+                received.append(self.headers.get('Authorization'))
+                self.send_response(200);self.send_header('Content-Length','2');self.end_headers();self.wfile.write(b'{}')
+        server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+        thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        try:
+            with patch('arena_api.github_client.build_opener',wraps=real_opener) as setup:
+                def requests():
+                    for i in range(12):
+                        token='Bearer fixture-'+str(i%2)
+                        status,_,data=GitHubClient.http('GET',f'http://127.0.0.1:{server.server_port}/',{'Authorization':token},None,1024)
+                        self.assertEqual((status,data),(200,b'{}'))
+                with ThreadPoolExecutor(1) as pool:pool.submit(requests).result(15)
+                self.assertEqual(setup.call_count,1,'Reloaded HTTPS/CA setup for each request')
+            self.assertEqual(received,['Bearer fixture-'+str(i%2) for i in range(12)])
+        finally:server.shutdown();server.server_close();thread.join(5)
+
     def test_token_cache_serializes_each_repo_without_blocking_other_installations(self):
         barrier, calls = threading.Barrier(2), []
         def transport(method, url, headers, body, limit):
@@ -212,6 +234,20 @@ class GitHubTransport(TestCase):
 
 
 class GitHubAPI(APIHarness):
+    def test_team_github_view_does_not_decode_retained_private_reports(self):
+        import tracemalloc
+        self.attach();sha=self.push();self.complete(sha)
+        check=self.g.one('SELECT job_id FROM github_checks WHERE team_id=? AND sha=?',(self.team_id,sha))
+        self.store.update(check['job_id'],report=dict(passed=True,samples=[{}]*72,artifacts=[dict(log='PRIVATE-BUILD-'+'x'*(4*1024**2))]))
+        tracemalloc.start()
+        try:
+            value=self.g.view(self.team_id)
+            _,peak=tracemalloc.get_traced_memory()
+            self.assertEqual(value['commits'][0]['checks'][0]['samples'],72)
+            self.assertNotIn('PRIVATE-BUILD',json.dumps(value))
+            self.assertLess(peak,2*1024**2,'GitHub status decoded a private build report')
+        finally:tracemalloc.stop()
+
     def setUp(self):
         super().setUp()
         self.g, self.store = self.app.state.github, self.app.state.store
@@ -267,6 +303,21 @@ class GitHubAPI(APIHarness):
             row = comp.create("unit-test", {"title": "GitHub deadline test", "max_teams": 16, "match_ms": 60000, "submission_deadline": deadline}, "github-create-competition")
         comp.transition("unit-test", row["id"], "open", "github-open-competition")
         return row["id"]
+
+    def test_idle_intake_cost_is_bounded_when_finished_history_grows(self):
+        self.attach();sha=self.push();self.complete(sha)
+        old=self.g.one('SELECT * FROM github_commits WHERE team_id=? AND sha=?',(self.team_id,sha))
+        check=self.g.one('SELECT * FROM github_checks WHERE team_id=? AND sha=?',(self.team_id,sha))
+        with self.store.transaction():
+            for number in range(2,202):
+                previous=f'{number:040x}'
+                self.store.db.execute("INSERT INTO github_commits(team_id,sha,received_ms,submission_id,bot_hash,state) VALUES(?,?,?,?,?,'pass')",(self.team_id,previous,self.clock-number,old['submission_id'],old['bot_hash']))
+                self.store.db.execute("INSERT INTO github_checks(team_id,sha,purpose,job_id,state,status_sent) VALUES(?,?,'practice',?,'pass',1)",(self.team_id,previous,check['job_id']))
+        statements=[];self.store.db.set_trace_callback(statements.append)
+        try:self.g.tick()
+        finally:self.store.db.set_trace_callback(None)
+        self.assertLess(len(statements),50,'Idle intake queried each already reported historical commit')
+        self.assertEqual(len(self.fake.statuses),1)
 
     def test_cross_team_duplicate_warns_admin_without_penalty_or_student_disclosure(self):
         self.attach();sha=self.push()
