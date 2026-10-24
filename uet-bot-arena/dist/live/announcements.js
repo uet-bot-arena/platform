@@ -1,3 +1,4 @@
+import {tr,html as l10n} from './i18n.js';
 // The banner survives page/board rendering and never interprets notice HTML.
 export function startAnnouncements(api){
   const target=document.getElementById('announcements-banner');
@@ -12,7 +13,7 @@ export function startAnnouncements(api){
       const title=document.createElement('strong'),body=document.createElement('span'),link=document.createElement('a');
       title.textContent=notice.title;
       const text=Array.from(notice.body.replace(/\s+/g,' '));body.textContent=text.slice(0,180).join('')+(text.length>180?'…':'');
-      link.href='#/announcements';link.textContent='Xem thông báo';
+      link.href='#/announcements';link.textContent=tr('Xem thông báo');
       target.append(title,body,link);
     }catch{/* Keep the last public notice while reconnecting. */}
     finally{busy=false;}

@@ -24,7 +24,7 @@ from arena_api.app import create_app
 from arena_api.settings import Settings
 
 
-def main(output=None,extended=False):
+def main(output=None,extended=False,english=False):
     output=output or ROOT/'test-results/m1/g8/ui';output.mkdir(parents=True,exist_ok=True)
     result=dict(checks=[],page_errors=[],contrast_failures=[])
     with tempfile.TemporaryDirectory(prefix='elo-ui-') as tmp:
@@ -107,6 +107,18 @@ def main(output=None,extended=False):
                 with app.state.store.transaction():app.state.store.db.execute("UPDATE elo_games SET status='queued',current_job_id=? WHERE id=?",(job['id'],game['id']))
                 state=engine.initial_state();app.state.store.event(job['id'],'state',dict(state=state,counts=engine.counts(state),clocks=dict(red=60000,blue=60000)))
                 guest_boards[scheme]=(game,job,state)
+            # A complete synthetic replay for each English detail view, not just a scored row.
+            from test_graders import play_out
+            for competition in (item,ladder):
+                game=comp.one("SELECT g.* FROM elo_games g JOIN elo_rounds r ON r.id=g.round_id WHERE r.competition_id=? AND g.status='completed' ORDER BY g.ordinal LIMIT 1",(competition['id'],))
+                value=dict(kind='match',status='completed',profile=competition['config']['profile'],report=None,submission_ids=[])
+                report=play_out(value);value['report']=report
+                job=app.state.store.create('job','competition:'+competition['id'],value)
+                with app.state.store.transaction():app.state.store.db.execute('UPDATE elo_games SET current_job_id=?,result=? WHERE id=?',(job['id'],json.dumps(report['result']),game['id']))
+                app.state.store.event(job['id'],'state',dict(state=engine.initial_state()))
+                app.state.store.event(job['id'],'state',dict(state=report['final_state']))
+                app.state.store.event(job['id'],'completed',dict(result=report['result']))
+                app.state.store.archive_events(job['id'])
             publisher=Publisher(app.state.settings)
             try:publisher.publish()
             finally:publisher.close()
@@ -120,7 +132,10 @@ def main(output=None,extended=False):
                 publish_thread=threading.Thread(target=publish_loop,daemon=True);publish_thread.start()
             with sync_playwright() as p:
                 browser=p.chromium.launch(headless=True)
-                for scheme in ('light','dark'):
+                if english:
+                    from i18n_ui import survey
+                    survey(browser,origin,result,output)
+                for scheme in (() if english else ('light','dark')):
                     sessions={}
                     routes=[('organizer','operations'),('ui-fixture','practice'),('ui-fixture','benchmark'),('organizer','home'),('organizer',elo_route),('organizer',ladder_route),('ui-fixture','team')]
                     if extended:routes += [('organizer',r) for r in ('announcements','admin','users','graders','email','audit','rulesets','standings?competition='+legacy['id'])]+[('ui-fixture',r) for r in ('submissions','matching','jobs/'+entry['benchmark_id'])]
@@ -203,7 +218,7 @@ def main(output=None,extended=False):
                 publisher=Publisher(app.state.settings)
                 try:publisher.publish()
                 finally:publisher.close()
-                for scheme in ('light','dark'):
+                for scheme in (() if english else ('light','dark')):
                     context=browser.new_context(color_scheme=scheme,reduced_motion='reduce',viewport=dict(width=1440,height=1000))
                     page=context.new_page();requests=[]
                     page.on('request',lambda request:requests.append(request.url))

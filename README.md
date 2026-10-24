@@ -2,9 +2,9 @@
 
 Nền tảng cho các đội nộp bot **Python, C hoặc C++** và cho bot đấu với nhau trên bàn cờ Oẳn Tù Tì. Máy chấm từ xa biên dịch và chạy bot trong sandbox native, làm trọng tài từng nước, xếp lịch giải (ladder Elo, vòng tròn hoặc Swiss), tính điểm, phát trực tiếp và lưu replay. Giao diện web và API chạy cùng một server.
 
-Tài liệu: [Cài đặt chi tiết](INSTALL.md) · [Hướng dẫn viết bot](uet-bot-arena/dist/live/bot-guide.md) · [Thể thức giải](arena-backend/docs/COMPETITIONS.md) · [Giao thức bot](arena-backend/docs/PROTOCOL.md) · [Bảo mật](arena-backend/docs/SECURITY.md)
+Tài liệu: [Cài đặt chi tiết](INSTALL.md) · [Hướng dẫn viết bot](uet-bot-arena/dist/live/bot-guide.md) · [Thể lệ online](docs/THE-LE.md) · [Giao thức bot](docs/PROTOCOL.md) · [Bảo mật](docs/BAO-MAT.md)
 
-Vận hành Mốc 1: [triển khai](docs/DEPLOY.md), [máy chấm](docs/MAY-CHAM.md), [email](docs/EMAIL.md), [tài khoản và đội](docs/TAI-KHOAN-VA-DOI.md), [nộp bài GitHub](docs/NOP-BAI.md), [GitHub App](docs/GITHUB-APP.md), [13 tình huống chống phá](docs/BAO-MAT.md), [thay đổi](CHANGELOG.md).
+[Mục lục tài liệu](docs/TAI-LIEU.md). Vận hành Mốc 1: [triển khai](docs/DEPLOY.md), [máy chấm](docs/MAY-CHAM.md), [email](docs/EMAIL.md), [tài khoản và đội](docs/TAI-KHOAN-VA-DOI.md), [nộp bài GitHub](docs/NOP-BAI.md), [GitHub App](docs/GITHUB-APP.md), [13 tình huống chống phá](docs/BAO-MAT.md), [thay đổi](CHANGELOG.md).
 
 ## Tính năng
 
@@ -50,7 +50,7 @@ Cấu hình bằng biến môi trường trước khi chạy `scripts/start.sh`:
 | `ARENA_API_ORIGIN` | `http://127.0.0.1:<port>` | Địa chỉ công khai của web |
 | `ARENA_TRUSTED_PROXIES` | (trống) | CIDR của reverse proxy, ví dụ `127.0.0.1/32` |
 
-Khi mở ra mạng: đặt server sau HTTPS reverse proxy theo mẫu `arena-backend/deploy/`, đặt `ARENA_API_ORIGIN=https://…`, `ARENA_API_COOKIE_SECURE=1`, `ARENA_TRUSTED_PROXIES`, và chạy worker trên máy không chứa dữ liệu quan trọng ([SECURITY.md](arena-backend/docs/SECURITY.md)).
+Khi mở ra mạng: đặt server sau HTTPS reverse proxy theo mẫu `arena-backend/deploy/`, đặt `ARENA_API_ORIGIN=https://…`, `ARENA_API_COOKIE_SECURE=1`, `ARENA_TRUSTED_PROXIES`, và chạy worker trên máy không chứa dữ liệu quan trọng ([SECURITY.md](docs/BAO-MAT.md)).
 
 ## Kiểm thử
 

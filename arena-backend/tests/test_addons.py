@@ -47,6 +47,8 @@ class AddonPipeline(APIHarness):
             self.assertEqual(json.loads(z.read('contract.json'))['hash'],r['hash'])
             self.assertIn('starter.zip',z.namelist())
             self.assertIn('RULESET-ADDONS.md',z.namelist())
+            self.assertIn('Pipeline add-on',z.read('RULESET-ADDONS.md').decode())
+            self.assertIn('rules-v1',z.read('PROTOCOL.md').decode())
         starter=team.get('/api/v1/rulesets/'+r['id']+'/starter.zip')
         source=self.upload(team, content=starter.content,headers={'Idempotency-Key':uuid.uuid4().hex,'Content-Type':'application/zip','X-Submission-Version':'v1.0.0','X-Arena-Protocol':'3'})
         self.assertEqual(source.status_code,201,source.text)

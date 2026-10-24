@@ -1,3 +1,4 @@
+import {tr,html as l10n,language} from './i18n.js';
 // Same-origin session only. No password, session or CSRF in browser storage.
 import {snapshotPath,publicRequest,PublicFeed} from './public-client.js';
 const responseBody=response=>(response.headers.get('Content-Type')||'').includes('json')?response.json():response.text();
@@ -6,15 +7,15 @@ export class APIError extends Error {
     const data=result&&typeof result==='object'&&!Array.isArray(result)?result:{};
     const error = data.error || {};
     const code=error.code||(response.status===503?'server_busy':response.status>=500?'server_error':response.status===429?'rate_limited':undefined);
-    const labels = {unauthorized:'Phiên hết hạn hoặc tài khoản/mật khẩu chưa đúng.', forbidden:'Bạn không có quyền thực hiện thao tác này.',
-      server_busy:'Máy chủ đang bận vì quá nhiều kết nối. Hãy chờ một chút rồi thử lại.',
-      server_error:'Máy chủ đang gặp sự cố. Hãy giữ nguyên biểu mẫu và thử lại sau.',
-      password_change_required:'Hãy đổi mật khẩu tạm trước khi tiếp tục.', worker_unavailable:'Máy chấm chưa nhận được yêu cầu. Hãy thử lại sau.',
-      qualification_required:'Cần bản kiểm tra Đạt đủ 72 mẫu với đúng bộ luật và cấu hình máy chấm của giải.',
-      competition_conflict:error.detail, registration_conflict:'Tên đội đã đăng ký hoặc hồ sơ đã được xử lý.',
-      account_conflict:'Tên đăng nhập đã tồn tại. Hãy chọn tên khác.', quota_exceeded:'Đã đạt giới hạn hoặc hàng đợi đang đầy. Hãy thử lại sau.',
-      rate_limited:'Bạn đã gửi quá nhiều yêu cầu. Hãy thử lại sau.', version_conflict:'Phiên bản đã tồn tại. Hãy dùng một phiên bản mới.'};
-    super(labels[code] || (typeof error.detail === 'string' ? error.detail : 'Thông tin chưa hợp lệ. Hãy kiểm tra các trường đã nhập.'));
+    const labels = {unauthorized:tr('Phiên hết hạn hoặc tài khoản/mật khẩu chưa đúng.'), forbidden:tr('Bạn không có quyền thực hiện thao tác này.'),
+      server_busy:tr('Máy chủ đang bận vì quá nhiều kết nối. Hãy chờ một chút rồi thử lại.'),
+      server_error:tr('Máy chủ đang gặp sự cố. Hãy giữ nguyên biểu mẫu và thử lại sau.'),
+      password_change_required:tr('Hãy đổi mật khẩu tạm trước khi tiếp tục.'), worker_unavailable:tr('Máy chấm chưa nhận được yêu cầu. Hãy thử lại sau.'),
+      qualification_required:tr('Cần bản kiểm tra Đạt đủ 72 mẫu với đúng bộ luật và cấu hình máy chấm của giải.'),
+      competition_conflict:error.detail, registration_conflict:tr('Tên đội đã đăng ký hoặc hồ sơ đã được xử lý.'),
+      account_conflict:tr('Tên đăng nhập đã tồn tại. Hãy chọn tên khác.'), quota_exceeded:tr('Đã đạt giới hạn hoặc hàng đợi đang đầy. Hãy thử lại sau.'),
+      rate_limited:tr('Bạn đã gửi quá nhiều yêu cầu. Hãy thử lại sau.'), version_conflict:tr('Phiên bản đã tồn tại. Hãy dùng một phiên bản mới.')};
+    super(labels[code] || (typeof error.detail === 'string' && language()==='vi' ? error.detail : tr('Thông tin chưa hợp lệ. Hãy kiểm tra các trường đã nhập.')));
     this.status = response.status; this.code = code; this.requestId = data.request_id||response.headers.get('X-Request-ID');
     this.retryAfter = response.headers.get('Retry-After');
   }
@@ -30,7 +31,7 @@ export class ArenaAPI {
     }
     let response;
     try { response = await fetch('/api/v1'+path, {method, body, headers, signal:signal||AbortSignal.timeout(30000), credentials:'same-origin', cache:'no-store'}); }
-    catch (error) { if(error.name === 'AbortError') throw error; throw new Error('Không kết nối được máy chủ. Giữ nguyên biểu mẫu và thử lại.'); }
+    catch (error) { if(error.name === 'AbortError') throw error; throw new Error(tr('Không kết nối được máy chủ. Giữ nguyên biểu mẫu và thử lại.')); }
     const result = await responseBody(response);
     if (!response.ok) { if(response.status === 401) this.csrf=null; throw new APIError(response, result); }
     if (result.csrf_token) this.csrf=result.csrf_token;

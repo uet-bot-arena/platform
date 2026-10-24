@@ -8,7 +8,7 @@ gcc -std=c11 -O2 -Wall -Wextra bot.c -lm -o bot
 pypy3 bot.py
 ```
 
-Python chạy bằng **PyPy 7.3.23 (Python 3.11)**, chỉ thư viện chuẩn. C/C++ và Python có **cùng quỹ giờ**, không nhân hệ số; C/C++ thường tính nhanh hơn Python. Xem [số đo OTTv2](../docs/PYTHON-COMPARISON.md) và [kiểm chứng PyPy](../docs/PYPY-VALIDATION.md).
+Python chạy bằng **PyPy 7.3.23 (Python 3.11)**, chỉ thư viện chuẩn. C/C++ và Python có **cùng quỹ giờ**, không nhân hệ số; C/C++ thường tính nhanh hơn Python. Xem [số đo OTTv2](../../docs/history/PYTHON-COMPARISON.md) và [kiểm chứng PyPy](../../docs/history/PYPY-VALIDATION.md).
 
 Bot sống xuyên trận, stdin/stdout JSON Lines: `init → ready`, `observation → action`. Copy nguyên `match_id`, `turn_id`, `state_version`; stdout chỉ JSON + LF và flush; log ra stderr; EOF thì thoát. Server ghép hai bot ở hai container độc lập, không cần dịch chúng về cùng ngôn ngữ.
 
@@ -18,4 +18,4 @@ Startup có 2 giây riêng; bot 256 MiB, một process/thread, không network; s
 
 Benchmark dự giải bằng `{submission_id, competition_id}` để dùng đúng luật và quỹ đã ghim. Trận luyện tập không tính hạng. Luật mặc định hòa khi lặp thế 3 lần hoặc đạt 512 ply/20 phút. Add-on năng lượng/khiên dùng SDK v3 riêng, mặc định tắt.
 
-Giữ giấy phép MIT của nlohmann/json trong `LICENSE.MIT` và của jsmn trong `jsmn.h` khi phân phối. Chi tiết: [BOT-LANGUAGES.md](../docs/BOT-LANGUAGES.md), [PROTOCOL.md](../docs/PROTOCOL.md), [TIMING.md](../docs/TIMING.md).
+Giữ giấy phép MIT của nlohmann/json trong `LICENSE.MIT` và của jsmn trong `jsmn.h` khi phân phối. Chi tiết: [BOT-LANGUAGES.md](../../docs/BOT-LANGUAGES.md), [PROTOCOL.md](../../docs/PROTOCOL.md), [TIMING.md](../../docs/TIMING.md).

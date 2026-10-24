@@ -1,16 +1,17 @@
+import {tr,html as l10n} from './i18n.js';
 import {select} from './view.js';
 
-export const matchControls=[['10000','Ladder · 10 giây / đội'],['60000','Bullet · 1 phút / đội'],['300000','Đấu thường · 5 phút / đội']];
-export const timeLabel=p=>p?.id?.startsWith('ottv2-check-500ms-v1')?'Kiểm tra · 0,5 giây / mẫu':p?.match_ms?(matchControls.find(([ms])=>Number(ms)===p.match_ms)?.[1]||`${p.match_ms/1000} giây / đội`):`${(p?.turn_ms||15000)/1000}s / lượt (luật cũ)`;
+export const matchControls=[['10000',tr('Ladder · 10 giây / đội')],['60000',tr('Bullet · 1 phút / đội')],['300000',tr('Đấu thường · 5 phút / đội')]];
+export const timeLabel=p=>p?.id?.startsWith('ottv2-check-500ms-v1')?tr('Kiểm tra · 0,5 giây / mẫu'):p?.match_ms?(matchControls.find(([ms])=>Number(ms)===p.match_ms)?.[1]||l10n`${p.match_ms/1000} giây / đội`):l10n`${(p?.turn_ms||15000)/1000}s / lượt (luật cũ)`;
 export const timeQuery=p=>p?.match_ms?'match='+p.match_ms:'turn='+(p?.turn_ms||15000);
 export function timeField(p={match_ms:300000}) {
   const legacy=!p.match_ms&&p.turn_ms;
-  return `<label class="field"><span>${legacy?'Thời gian (giải cũ)':'Tổng thời gian mỗi đội'}</span>${select(legacy?'turn_ms':'match_ms',legacy?[15000,30000,60000,300000].map(v=>[String(v),v/1000+' giây / lượt (luật cũ)']):matchControls,String(legacy?p.turn_ms:p.match_ms||300000))}</label>`;
+  return `<label class="field"><span>${legacy?tr('Thời gian (giải cũ)'):tr('Tổng thời gian mỗi đội')}</span>${select(legacy?'turn_ms':'match_ms',legacy?[15000,30000,60000,300000].map(v=>[String(v),v/1000+tr(' giây / lượt (luật cũ)')]):matchControls,String(legacy?p.turn_ms:p.match_ms||300000))}</label>`;
 }
 export function timeBody(data) {
   if(data.get('match_ms'))return {match_ms:Number(data.get('match_ms'))};
   if(data.get('turn_ms'))return {turn_ms:Number(data.get('turn_ms'))};
-  throw new Error('Chọn thể thức thời gian trước khi gửi.');
+  throw new Error(tr('Chọn thể thức thời gian trước khi gửi.'));
 }
 export function remainingClocks(clocks,turn,now,live) {
   if(!clocks)return null;

@@ -1,3 +1,4 @@
+import {tr,html as l10n} from './i18n.js';
 import {esc} from './view.js';
 
 // Render the Markdown constructs used by the supplied rulebook. Raw HTML is
@@ -48,7 +49,7 @@ export function renderRules(text) {
       while(i<lines.length&&lines[i].trim().startsWith('|')) {
         rows.push(`<tr>${cells(lines[i++]).map(x=>`<td>${inline(x)}</td>`).join('')}</tr>`);
       }
-      html+=`<div class="rules-table" role="region" aria-label="Bảng luật OTTv2" tabindex="0"><table><thead><tr>${headers.map(x=>`<th scope="col">${inline(x)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+      html+=l10n`<div class="rules-table" role="region" aria-label="Bảng luật OTTv2" tabindex="0"><table><thead><tr>${headers.map(x=>`<th scope="col">${inline(x)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
       continue;
     }
     const first=listItem(lines[i]);

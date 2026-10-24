@@ -1,3 +1,4 @@
+import {tr,html as l10n,language,setLanguage} from './i18n.js';
 import {startAnnouncements} from './announcements.js';
 import {readTournamentOptions} from './tournament-options.js';
 import {timeField,timeBody} from './time-control.js';
@@ -27,12 +28,12 @@ const uuid=()=>crypto.randomUUID();
 const enc=encodeURIComponent;
 function toast(message){const el=document.getElementById('toast');el.className='toast show';el.textContent=message;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),6000);}
 function clearView(){clearTimeout(eloPoll);clearTimeout(emailPoll);competitionFeed?.close();competitionFeed=null;board?.close();board=null;jobFeed?.close();jobFeed=null;closeModal();}
-function render(){app.innerHTML=page(s);const title={home:'UET Bot Arena',login:'Đăng nhập',register:'Đăng ký đội',recover:'Cấp lại mật khẩu','change-password':'Đổi mật khẩu'}[s.route]||document.querySelector('#main h1')?.textContent||'UET Bot Arena';document.title=title==='UET Bot Arena'?title:title+' · UET Bot Arena';mobileSidebar();}
+function render(){app.innerHTML=page(s);const title={home:'UET Bot Arena',login:tr('Đăng nhập'),register:tr('Đăng ký đội'),recover:tr('Cấp lại mật khẩu'),'change-password':tr('Đổi mật khẩu')}[s.route]||document.querySelector('#main h1')?.textContent||'UET Bot Arena';document.title=title==='UET Bot Arena'?title:title+' · UET Bot Arena';mobileSidebar();}
 function mobileSidebar(){const sidebar=document.querySelector('.sidebar');if(sidebar)sidebar.inert=matchMedia('(max-width:760px)').matches&&!s.menuOpen;}
 matchMedia('(max-width:760px)').addEventListener('change',mobileSidebar);
 function go(route){if(location.hash==='#/'+route)openRoute();else location.hash='/'+route;}
 function clearAccount(){Object.assign(s,defaults(),{user:null,emailRequest:null,emailAddress:'',emailPurpose:'verify',passwordFinished:false,inviteCode:''});api.csrf=null;issued=null;}
-function expired(){clearAccount();toast('Phiên đã hết hạn. Hãy đăng nhập lại.');go('login');}
+function expired(){clearAccount();toast(tr('Phiên đã hết hạn. Hãy đăng nhập lại.'));go('login');}
 async function refreshPerson(){
   const session=await api.request('/auth/me');s.user=session.user;authChanged();go('team');
 }
@@ -48,7 +49,7 @@ async function loadData(route,ids,q){
   }
   if(['practice','operations'].includes(route))data.sampleBots=(await api.request(s.user?.role==='admin'?'/admin/sample-bots':'/sample-bots')).items;
   if(route==='guide'){
-    const [rules,botGuide]=await Promise.all([api.request('/rules'),loadBotGuide()]);
+    const [rules,botGuide]=await Promise.all([api.request('/rules?lang='+language()),loadBotGuide()]);
     return {rules,botGuide};
   }
   if(['login','register','recover','change-password'].includes(route))return data;
@@ -116,11 +117,11 @@ async function openRoute(){
     Object.assign(s,data,{loading:false,offline:false});
     if(['arena','replay'].includes(s.route)){
       const practice=s.ids[0]==='practice',fixture=s.fixtures.find(f=>f.id===s.ids[1]);
-      if(practice&&s.job?.kind!=='match')throw new Error('Tác vụ này không phải trận đấu.');
-      if(!practice&&!fixture)throw new Error('Không tìm thấy trận trong giải này.');
+      if(practice&&s.job?.kind!=='match')throw new Error(tr('Tác vụ này không phải trận đấu.'));
+      if(!practice&&!fixture)throw new Error(tr('Không tìm thấy trận trong giải này.'));
       const teamName=tid=>s.competition.entries.find(e=>e.team_id===tid)?.name||short(tid);
       const name=sid=>s.submissions.find(x=>x.id===sid)?.version||short(sid);
-      const options={title:practice?'Phòng luyện tập · '+short(s.job.id):s.competition.title+' · Trận '+fixture.ordinal,red:practice?name(s.job.submission_ids[0]):teamName(fixture.red_team_id),blue:practice?name(s.job.submission_ids[1]):teamName(fixture.blue_team_id),back:practice?'practice':'competitions/'+s.competition.id,admin:!practice&&s.user?.role==='admin',officialLive:!practice&&s.route==='arena'};
+      const options={title:practice?tr('Phòng luyện tập · ')+short(s.job.id):s.competition.title+tr(' · Trận ')+fixture.ordinal,red:practice?name(s.job.submission_ids[0]):teamName(fixture.red_team_id),blue:practice?name(s.job.submission_ids[1]):teamName(fixture.blue_team_id),back:practice?'practice':'competitions/'+s.competition.id,admin:!practice&&s.user?.role==='admin',officialLive:!practice&&s.route==='arena'};
       options.profile=practice?s.job.profile:s.competition.config.profile;
       options.basicRules=(practice?s.job.basic_rules:s.competition.config.basic_rules)?.definition;
       app.innerHTML=shell(s,boardPage(options));mobileSidebar();document.title=options.title+' · UET Bot Arena';
@@ -137,10 +138,10 @@ async function openRoute(){
             if(id!==generation)return;
             s.ids[1]=next.id;
             history.replaceState(null,'','#/arena/'+s.competition.id+'/'+next.id);
-            const title=s.competition.title+' · Trận '+next.ordinal;
+            const title=s.competition.title+tr(' · Trận ')+next.ordinal;
             document.querySelector('#main h1').textContent=title;document.title=title+' · UET Bot Arena';
             for(const side of ['red','blue'])document.querySelector('#player-'+side+' strong').textContent=teamName(next[side+'_team_id']);
-            mountBoard(next,true);toast('Đang theo dõi trận #'+next.ordinal);
+            mountBoard(next,true);toast(tr('Đang theo dõi trận #')+next.ordinal);
           }});
         competitionFeed.start();
       }
@@ -170,7 +171,7 @@ function watchEmail(id){
   if(id!==generation||!['register','recover','verify-email'].includes(s.route)||!r||r.verified_ms||r.status==='dropped'||r.status==='sent'&&!r.resend_after_seconds)return;
   emailPoll=setTimeout(async()=>{try{const next=await api.request('/auth/email/requests/'+r.id);if(id===generation&&s.emailRequest?.id===r.id&&!s.emailRequest.verified_ms){s.emailRequest=next;patchPage();watchEmail(id);}}catch(e){handleError(e);}},3000);
 }
-function connectionStatus(offline){const el=document.querySelector('.connection-label'),text=offline?'Đang nối lại máy chủ':'Kết nối máy chủ';if(el&&el.textContent!==text){el.innerHTML='<i></i>'+text;el.classList.toggle('offline',offline);}}
+function connectionStatus(offline){const el=document.querySelector('.connection-label'),text=offline?tr('Đang nối lại máy chủ'):tr('Kết nối máy chủ');if(el&&el.textContent!==text){el.innerHTML='<i></i>'+text;el.classList.toggle('offline',offline);}}
 function patchPage(){
   const template=document.createElement('template');template.innerHTML=page(s);
   const current=document.getElementById('main'),next=template.content.querySelector('#main');
@@ -183,7 +184,7 @@ async function refreshData(){
   const id=generation;
   if(refreshingGeneration===id)return;
   refreshingGeneration=id;
-  try{const data=await loadData(s.route,s.ids,s.query);if(id===generation){Object.assign(s,data,{loading:false,error:null,offline:false});patchPage();toast('Đã cập nhật dữ liệu.');}}
+  try{const data=await loadData(s.route,s.ids,s.query);if(id===generation){Object.assign(s,data,{loading:false,error:null,offline:false});patchPage();toast(tr('Đã cập nhật dữ liệu.'));}}
   catch(e){if(id===generation){if(!e.status){s.offline=true;connectionStatus(true);}handleError(e);}}
   finally{if(refreshingGeneration===id)refreshingGeneration=null;}
 }
@@ -203,8 +204,8 @@ function draftRegistration(){const f=document.getElementById('registration-form'
 const pendingKeys=new WeakMap();
 function keyFor(form){if(!pendingKeys.has(form))pendingKeys.set(form,uuid());return pendingKeys.get(form);}
 document.addEventListener('input',e=>{if(e.target.form)pendingKeys.delete(e.target.form);});
-function showFormError(form,e){const el=form.querySelector('.form-error');if(el){el.classList.add('visible');el.textContent=e.message+(e.requestId?' · Mã hỗ trợ '+e.requestId:'');}else toast(e.message);if(e.status===401&&s.user)expired();}
-async function runForm(form,task){if(form.dataset.busy)return;form.dataset.busy='1';const controls=[...form.querySelectorAll('button')],error=form.querySelector('.form-error');controls.forEach(b=>b.disabled=true);if(error){error.classList.remove('visible');error.textContent='';}try{await task();pendingKeys.delete(form);}catch(e){showFormError(form,e);}finally{delete form.dataset.busy;controls.forEach(b=>b.disabled=false);}}
+function showFormError(form,e){const el=form.querySelector('.form-error');if(el){el.classList.add('visible');el.textContent=e.message+(e.requestId?tr(' · Mã hỗ trợ ')+e.requestId:'');}else toast(e.message);if(e.status===401&&s.user)expired();}
+async function runForm(form,task){if(form.dataset.busy)return;form.dataset.busy='1';const controls=[...form.querySelectorAll('button')],error=form.querySelector('.form-error');controls.forEach(b=>b.disabled=true);const loginButton=form.id==='login-form'?form.querySelector('[type=submit]'):null,loginLabel=loginButton?.textContent;if(loginButton)loginButton.textContent=tr('Đang đăng nhập…');if(error){error.classList.remove('visible');error.textContent='';}try{await task();pendingKeys.delete(form);}catch(e){showFormError(form,e);}finally{delete form.dataset.busy;controls.forEach(b=>b.disabled=false);if(loginButton)loginButton.textContent=loginLabel;}}
 document.addEventListener('submit',e=>{
   const form=e.target;if(!form.matches('.real-form'))return;e.preventDefault();const data=new FormData(form),v=name=>String(data.get(name)||'').trim();
   runForm(form,async()=>{
@@ -213,24 +214,24 @@ document.addEventListener('submit',e=>{
     }else if(form.id==='ruleset-form'){
       const definition=readRuleForm(form),r=s.ruleEditing;
       const result=await api.post(r?'/admin/rulesets/'+r.id+'/edit':'/admin/rulesets',{definition,release_notes:v('release-notes'),...(r?{expected_revision:r.revision}:{})},keyFor(form));
-      s.ruleEditing=result;s.ruleDraft=null;s.ruleNotes=null;s.rulePreview=null;s.rulePreviewActions=[];await refreshRules();toast('Đã lưu bản nháp. Chọn Kiểm tra & công bố để các đội sử dụng.');
+      s.ruleEditing=result;s.ruleDraft=null;s.ruleNotes=null;s.rulePreview=null;s.rulePreviewActions=[];await refreshRules();toast(tr('Đã lưu bản nháp. Chọn Kiểm tra & công bố để các đội sử dụng.'));
     }else if(form.id==='addon-import-form'){
-      const file=data.get('addon-file');if(!file?.size||file.size>32768)throw new Error('Chọn tệp JSON không rỗng, tối đa 32 KiB.');
-      let pack;try{pack=JSON.parse(await file.text());}catch{throw new Error('Tệp không phải JSON hợp lệ. Kiểm tra dấu ngoặc, dấu phẩy và encoding UTF-8.');}
+      const file=data.get('addon-file');if(!file?.size||file.size>32768)throw new Error(tr('Chọn tệp JSON không rỗng, tối đa 32 KiB.'));
+      let pack;try{pack=JSON.parse(await file.text());}catch{throw new Error(tr('Tệp không phải JSON hợp lệ. Kiểm tra dấu ngoặc, dấu phẩy và encoding UTF-8.'));}
       const result=await api.post('/admin/rulesets/import',{package:pack,publish:data.get('publish-import')==='on'},keyFor(form));
-      s.ruleEditing=result;s.ruleDraft=null;s.ruleNotes=null;s.rulePreview=null;s.rulePreviewActions=[];await refreshRules();toast(result.status==='published'?'Đã nhập, kiểm tra và công bố ruleset.':'Đã nhập và kiểm tra. Bạn có thể chỉnh tiếp hoặc công bố.');
+      s.ruleEditing=result;s.ruleDraft=null;s.ruleNotes=null;s.rulePreview=null;s.rulePreviewActions=[];await refreshRules();toast(result.status==='published'?tr('Đã nhập, kiểm tra và công bố ruleset.'):tr('Đã nhập và kiểm tra. Bạn có thể chỉnh tiếp hoặc công bố.'));
     }else if(form.id==='login-form'){
       const result=await api.post('/auth/login',{username:v('username'),password:data.get('login-password')});clearAccount();api.csrf=result.csrf_token;s.user=result.user;form.reset();authChanged();go(result.user.must_change_password?'change-password':returnTo);returnTo='home';
     }else if(form.id==='registration-form'){
       const draft=draftRegistration();s.registrationDraft=draft;
-      const ids=draft.members.map(m=>m.student_id.toLowerCase());if(new Set(ids).size!==ids.length)throw new Error('Mã sinh viên của các thành viên phải khác nhau.');
+      const ids=draft.members.map(m=>m.student_id.toLowerCase());if(new Set(ids).size!==ids.length)throw new Error(tr('Mã sinh viên của các thành viên phải khác nhau.'));
       s.registrationReceipt=await api.post('/registrations',{...draft,confirmed:data.get('confirmed')==='on'});s.registrationDraft=null;render();
     }else if(form.id==='email-request-form'){
       s.emailAddress=v('email');s.emailRequest=await api.post('/auth/email/request',{email:s.emailAddress,purpose:s.emailPurpose||'verify'});s.passwordFinished=false;render();watchEmail(generation);
     }else if(form.id==='email-code-form'){
       clearTimeout(emailPoll);s.emailRequest=await api.post('/auth/email/verify',{request_id:s.emailRequest.id,code:v('email-code')});render();
     }else if(form.id==='personal-password-form'){
-      const pw=data.get('new-password');if(pw!==data.get('confirm-password'))throw new Error('Hai mật khẩu chưa khớp.');
+      const pw=data.get('new-password');if(pw!==data.get('confirm-password'))throw new Error(tr('Hai mật khẩu chưa khớp.'));
       await api.post(s.emailPurpose==='reset'?'/auth/reset':'/auth/enroll',{request_id:s.emailRequest.id,verification_token:s.emailRequest.verification_token,password:pw,display_name:v('display-name')});
       if(s.emailPurpose==='reset'){clearAccount();s.emailPurpose='reset';authChanged();}
       s.emailRequest=null;s.passwordFinished=true;form.reset();render();
@@ -250,31 +251,31 @@ document.addEventListener('submit',e=>{
       await api.post('/admin/teams/'+enc(v('team-id'))+'/membership',{user_id:v('user-id'),action:v('member-action')});openRoute();
     }else if(form.id==='recovery-form'){await api.post('/auth/recovery',{username:v('username'),email:v('email')});s.recoverySent=true;render();
     }else if(form.id==='password-form'){
-      const pw=data.get('new-password');if(pw.length<8)throw new Error('Mật khẩu mới phải có ít nhất 8 ký tự.');if(pw!==data.get('confirm-password'))throw new Error('Hai lần nhập mật khẩu mới chưa khớp.');
-      const result=await api.post('/auth/password',{current_password:data.get('current-password'),new_password:pw});s.user=result.user;form.reset();authChanged();toast('Đã đổi mật khẩu và thu hồi các phiên cũ.');go('home');
+      const pw=data.get('new-password');if(pw.length<8)throw new Error(tr('Mật khẩu mới phải có ít nhất 8 ký tự.'));if(pw!==data.get('confirm-password'))throw new Error(tr('Hai lần nhập mật khẩu mới chưa khớp.'));
+      const result=await api.post('/auth/password',{current_password:data.get('current-password'),new_password:pw});s.user=result.user;form.reset();authChanged();toast(tr('Đã đổi mật khẩu và thu hồi các phiên cũ.'));go('home');
     }else if(form.id==='github-attach-form'){
-      s.github=await api.post('/teams/me/github',{url:v('repository')});toast('Đã gắn repo; push lên main để kiểm tra.');render();
+      s.github=await api.post('/teams/me/github',{url:v('repository')});toast(tr('Đã gắn repo; push lên main để kiểm tra.'));render();
     }else if(form.id==='benchmark-form'){
       const job=await api.post('/benchmarks',{submission_id:v('submission_id'),...(s.benchmarkCompetition?{competition_id:s.benchmarkCompetition}:{}),...botRulesetSelection(s,[v('submission_id')],v('ruleset_id'))},keyFor(form));go('jobs/'+job.id);
     }else if(form.id==='practice-form'){
       const mine=v('red_submission_id'),opponent=v('blue_submission_id'),teamRed=(v('team_side')||'red')==='red';const sides=opponent.startsWith('sample:')?{red_submission_id:mine,sample_bot_id:opponent.slice(7),sample_side:teamRed?'blue':'red'}:teamRed?{red_submission_id:mine,blue_submission_id:opponent}:{red_submission_id:opponent,blue_submission_id:mine};const job=await api.post('/matches',{...sides,...timeBody(data),delegate_timeout_claims:data.get('delegate')==='on',...botRulesetSelection(s,[mine,opponent],v('ruleset_id'))},keyFor(form));go('arena/practice/'+job.id);
     }else if(form.id==='competition-form'){
-      if(s.selectedRuleset&&(!s.rulesetCatalog?.enabled||!s.rulesetCatalog.items.some(r=>r.id===s.selectedRuleset&&r.status==='published')))throw new Error('Ruleset trong liên kết đang tắt hoặc chưa công bố. Bật add-on/chọn luật khả dụng trước; mở lại trang Giải đấu nếu muốn tạo giải tiêu chuẩn.');
+      if(s.selectedRuleset&&(!s.rulesetCatalog?.enabled||!s.rulesetCatalog.items.some(r=>r.id===s.selectedRuleset&&r.status==='published')))throw new Error(tr('Ruleset trong liên kết đang tắt hoặc chưa công bố. Bật add-on/chọn luật khả dụng trước; mở lại trang Giải đấu nếu muốn tạo giải tiêu chuẩn.'));
       const c=await api.post('/admin/competitions',{title:v('title'),...timeBody(data),max_teams:Number(v('max_teams')),...readTournamentOptions(data),...(data.get('use-experimental')==='on'?{ruleset_id:v('ruleset_id')}: {})},keyFor(form));go('competitions/'+c.id);
     }else if(form.id==='elo-exclude-form'){
-      await api.post('/admin/competitions/'+form.dataset.competition+'/teams/'+form.dataset.team+'/exclude',{excluded:form.dataset.excluded==='true',reason:v('reason')},keyFor(form));closeModal();toast('Đã cập nhật xếp hạng và ghi lý do.');openRoute();
+      await api.post('/admin/competitions/'+form.dataset.competition+'/teams/'+form.dataset.team+'/exclude',{excluded:form.dataset.excluded==='true',reason:v('reason')},keyFor(form));closeModal();toast(tr('Đã cập nhật xếp hạng và ghi lý do.'));openRoute();
     }else if(form.id==='competition-edit-form'){
-      await api.post('/admin/competitions/'+form.dataset.id+'/edit',{title:v('title'),...timeBody(data),max_teams:Number(v('max_teams')),expected_revision:Number(form.dataset.revision)},keyFor(form));closeModal();toast('Đã sửa giải.');openRoute();
+      await api.post('/admin/competitions/'+form.dataset.id+'/edit',{title:v('title'),...timeBody(data),max_teams:Number(v('max_teams')),expected_revision:Number(form.dataset.revision)},keyFor(form));closeModal();toast(tr('Đã sửa giải.'));openRoute();
     }else if(form.id==='admin-team-form'){
       const members=Array.from({length:4},(_,i)=>({name:v('name-'+i),student_id:v('student-'+i)})).filter((m,i)=>i<3||m.name||m.student_id);
       const profile={team:v('team'),email:v('email'),phone:v('phone'),members,confirmed:true};
-      if(form.dataset.id){await api.post('/admin/teams/'+form.dataset.id+'/edit',{...profile,expected_revision:Number(form.dataset.revision)});closeModal();toast('Đã sửa thông tin đội.');}
+      if(form.dataset.id){await api.post('/admin/teams/'+form.dataset.id+'/edit',{...profile,expected_revision:Number(form.dataset.revision)});closeModal();toast(tr('Đã sửa thông tin đội.'));}
       else{const body={profile,username:v('username')};if(data.get('temporary-password'))body.temporary_password=data.get('temporary-password');credentialModal(await api.post('/admin/teams',body));}
       await refreshAdmin();
     }else if(form.id==='grader-form'){
-      const item=await api.post('/admin/graders',{name:v('name')});form.reset();issuedGrader=item;modal('Mã máy chấm',graderTokenModal(item));
+      const item=await api.post('/admin/graders',{name:v('name')});form.reset();issuedGrader=item;modal(tr('Mã máy chấm'),graderTokenModal(item));
     }else if(form.id==='entry-form'){
-      const [submission_id,benchmark_id]=v('qualified').split(':');await api.post('/competitions/'+s.competition.id+'/entry',{submission_id,benchmark_id,delegate_timeout_claims:data.get('delegate')==='on'},keyFor(form));toast('Đã chọn bot dự giải.');openRoute();
+      const [submission_id,benchmark_id]=v('qualified').split(':');await api.post('/competitions/'+s.competition.id+'/entry',{submission_id,benchmark_id,delegate_timeout_claims:data.get('delegate')==='on'},keyFor(form));toast(tr('Đã chọn bot dự giải.'));openRoute();
     }else if(form.id==='approve-form'){
       const body={username:v('username')};if(data.get('temporary-password'))body.temporary_password=data.get('temporary-password');
       const cred=await api.post('/admin/registrations/'+form.dataset.id+'/approve',body);credentialModal(cred);await refreshAdmin();
@@ -328,16 +329,16 @@ async function ruleAction(action,b){
   if(['rule-validate','rule-publish','rule-release','rule-clone','rule-archive'].includes(action)){
     const r=s.rulesetCatalog.items.find(r=>r.id===b.dataset.id);b.disabled=true;
     const editor=document.getElementById('ruleset-form');
-    if(action==='rule-release'&&s.ruleEditing?.id===r.id&&editor&&(ruleFingerprint(readRuleForm(editor))!==ruleFingerprint(r.definition)||editor.elements.namedItem('release-notes').value.trim()!==(r.release_notes||''))){b.disabled=false;throw new Error('Có thay đổi chưa lưu. Lưu bản nháp trước khi kiểm tra & công bố.');}
+    if(action==='rule-release'&&s.ruleEditing?.id===r.id&&editor&&(ruleFingerprint(readRuleForm(editor))!==ruleFingerprint(r.definition)||editor.elements.namedItem('release-notes').value.trim()!==(r.release_notes||''))){b.disabled=false;throw new Error(tr('Có thay đổi chưa lưu. Lưu bản nháp trước khi kiểm tra & công bố.'));}
     try{const result=await api.post('/admin/rulesets/'+r.id+'/'+action.slice(5),{expected_revision:r.revision},keyFor(b));
-    s.ruleEditing=result;s.ruleDraft=null;s.ruleNotes=null;s.rulePreview=null;s.rulePreviewActions=[];await refreshRules();toast(result.status==='published'?'Đã kiểm tra & công bố. Các đội có thể xem luật trong thư viện.':'Đã cập nhật ruleset.');}finally{b.disabled=false;}return;
+    s.ruleEditing=result;s.ruleDraft=null;s.ruleNotes=null;s.rulePreview=null;s.rulePreviewActions=[];await refreshRules();toast(result.status==='published'?tr('Đã kiểm tra & công bố. Các đội có thể xem luật trong thư viện.'):tr('Đã cập nhật ruleset.'));}finally{b.disabled=false;}return;
   }
   const form=document.getElementById('ruleset-form');
   if(action==='rule-zone'){
-    const next={'':'energy',energy:'control',control:''}[b.dataset.kind];b.dataset.kind=next;b.className='rule-map-cell'+(next?' zone-'+next:'');b.setAttribute('aria-label',b.dataset.square+': '+(next==='energy'?'năng lượng':next==='control'?'kiểm soát':'thường'));b.querySelector('span').innerHTML=next?icon(next==='energy'?'bolt':'target'):'';pendingKeys.delete(form);return;
+    const next={'':'energy',energy:'control',control:''}[b.dataset.kind];b.dataset.kind=next;b.className='rule-map-cell'+(next?' zone-'+next:'');b.setAttribute('aria-label',b.dataset.square+': '+(next==='energy'?tr('năng lượng'):next==='control'?tr('kiểm soát'):tr('thường')));b.querySelector('span').innerHTML=next?icon(next==='energy'?'bolt':'target'):'';pendingKeys.delete(form);return;
   }
   if(['rule-add-modifier','rule-remove-modifier'].includes(action)){
-    const d=readRuleForm(form);if(action==='rule-add-modifier'){if(d.modifiers.length>=4)throw new Error('Tối đa 4 mẫu đi bổ sung.');d.modifiers.push({id:'skill'+(d.modifiers.length+1),filter:{kinds:['rock','paper','scissors']},pattern:'orthogonal',range:1,cost:0,cooldown:0});}else d.modifiers.splice(Number(b.dataset.index),1);
+    const d=readRuleForm(form);if(action==='rule-add-modifier'){if(d.modifiers.length>=4)throw new Error(tr('Tối đa 4 mẫu đi bổ sung.'));d.modifiers.push({id:'skill'+(d.modifiers.length+1),filter:{kinds:['rock','paper','scissors']},pattern:'orthogonal',range:1,cost:0,cooldown:0});}else d.modifiers.splice(Number(b.dataset.index),1);
     document.getElementById('rule-editor').innerHTML=ruleEditor(d,s.ruleEditing,form.elements.namedItem('release-notes').value);return;
   }
   if(action==='rule-export-editor'){document.getElementById('rule-json').value=JSON.stringify(readRuleForm(form),null,2);document.querySelector('.rule-json').open=true;return;}
@@ -353,15 +354,15 @@ async function ruleAction(action,b){
 async function refreshAdmin(){const id=generation;const data=await loadData('admin',[],new URLSearchParams());if(id===generation){Object.assign(s,data);render();}}
 function modal(title,body){
   if(!modalRoot.childElementCount)modalFocus=document.activeElement;
-  modalRoot.innerHTML=`<div class="modal-overlay"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-head"><h2 id="modal-title">${esc(title)}</h2><button class="icon-btn" data-action="close-modal" aria-label="Đóng">${icon('x')}</button></div><div class="modal-body">${body}</div></section></div>`;
+  modalRoot.innerHTML=l10n`<div class="modal-overlay"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-head"><h2 id="modal-title">${esc(title)}</h2><button class="icon-btn" data-action="close-modal" aria-label="Đóng">${icon('x')}</button></div><div class="modal-body">${body}</div></section></div>`;
   document.body.classList.add('modal-open');modalRoot.querySelector('input,button,a')?.focus();
 }
 function closeModal(){modalRoot.replaceChildren();document.body.classList.remove('modal-open');issued=null;issuedGrader=null;if(modalFocus?.isConnected)modalFocus.focus();modalFocus=null;}
-function confirmAction(title,text,task){modal(title,`<p>${esc(text)}</p><div class="form-error" role="alert"></div><div class="modal-actions">${button('Hủy','close-modal')}${button('Xác nhận','confirm-action','','primary')}</div>`);const b=modalRoot.querySelector('[data-action="confirm-action"]');b.addEventListener('click',async()=>{b.disabled=true;try{await task();closeModal();toast('Đã cập nhật.');openRoute();}catch(e){const el=modalRoot.querySelector('.form-error');el.textContent=e.message;el.classList.add('visible');b.disabled=false;if(e.status===401)expired();}});}
-function credentialModal(credential){issued=credential;modal('Tài khoản đã được cấp',`<p>Mật khẩu chỉ được trả ở lần cấp này. Hãy sao chép và phát qua kênh của ban tổ chức. Đội sẽ phải đổi khi đăng nhập.</p><label class="field"><span>Tên đăng nhập</span><div class="credential-value">${esc(credential.account.username)}</div></label><label class="field"><span>Mật khẩu tạm</span><div class="credential-value" id="issued-password">${esc(credential.temporary_password)}</div></label><div class="modal-actions">${button('Sao chép thông tin','copy-credential','','primary')}${button('Đã phát cho đội','credential-delivered')}${button('Đóng','close-modal')}</div>`);}
+function confirmAction(title,text,task){modal(title,`<p>${esc(text)}</p><div class="form-error" role="alert"></div><div class="modal-actions">${button(tr('Hủy'),'close-modal')}${button(tr('Xác nhận'),'confirm-action','','primary')}</div>`);const b=modalRoot.querySelector('[data-action="confirm-action"]');b.addEventListener('click',async()=>{b.disabled=true;try{await task();closeModal();toast(tr('Đã cập nhật.'));openRoute();}catch(e){const el=modalRoot.querySelector('.form-error');el.textContent=e.message;el.classList.add('visible');b.disabled=false;if(e.status===401)expired();}});}
+function credentialModal(credential){issued=credential;modal(tr('Tài khoản đã được cấp'),l10n`<p>Mật khẩu chỉ được trả ở lần cấp này. Hãy sao chép và phát qua kênh của ban tổ chức. Đội sẽ phải đổi khi đăng nhập.</p><label class="field"><span>Tên đăng nhập</span><div class="credential-value">${esc(credential.account.username)}</div></label><label class="field"><span>Mật khẩu tạm</span><div class="credential-value" id="issued-password">${esc(credential.temporary_password)}</div></label><div class="modal-actions">${button(tr('Sao chép thông tin'),'copy-credential','','primary')}${button(tr('Đã phát cho đội'),'credential-delivered')}${button(tr('Đóng'),'close-modal')}</div>`);}
 function teamForm(account){
   const t=account?.team||{name:'',email:'',phone:'',members:[]};
-  modal(account?'Sửa đội · '+t.name:'Thêm đội & cấp tài khoản',`<form class="real-form" id="admin-team-form" ${account?`data-id="${t.id}" data-revision="${t.revision}"`:''}>${field('Tên đội','team','required minlength="2" maxlength="40"','text',t.name)}<div class="form-grid">${field('Email đội trưởng','email','required maxlength="120"','email',t.email)}${field('Số điện thoại','phone','maxlength="20"','tel',t.phone)}</div>${Array.from({length:4},(_,i)=>`<fieldset class="member-field"><legend>${i===0?'Đội trưởng':i===3?'Thành viên 4 · Tùy chọn':'Thành viên '+(i+1)}</legend><div class="form-grid">${field('Họ và tên','name-'+i,`${i<3?'required ':''}minlength="2" maxlength="60"`,'text',t.members[i]?.name||'')}${field('Mã sinh viên','student-'+i,`${i<3?'required ':''}pattern="[A-Za-z0-9]{6,15}"`,'text',t.members[i]?.student_id||'')}</div></fieldset>`).join('')}${account?note('Mã đăng nhập giữ nguyên. Kết quả thi đấu vẫn gắn với mã đội khi đổi tên.'):field('Tên đăng nhập','username','required pattern="[A-Za-z0-9_-]{4,30}" autocomplete="off"')+field('Mật khẩu tạm (để trống cho server tạo)','temporary-password','minlength="8" maxlength="128" autocomplete="new-password"','password')+note('Ban tổ chức xác nhận thông tin đội. Tài khoản mới phải đổi mật khẩu khi đăng nhập lần đầu.')}${errors()}${submit(account?'Lưu thông tin':'Tạo đội & cấp tài khoản')}</form>`);
+  modal(account?tr('Sửa đội · ')+t.name:tr('Thêm đội & cấp tài khoản'),`<form class="real-form" id="admin-team-form" ${account?`data-id="${t.id}" data-revision="${t.revision}"`:''}>${field(tr('Tên đội'),'team','required minlength="2" maxlength="40"','text',t.name)}<div class="form-grid">${field(tr('Email đội trưởng'),'email','required maxlength="120"','email',t.email)}${field(tr('Số điện thoại'),'phone','maxlength="20"','tel',t.phone)}</div>${Array.from({length:4},(_,i)=>`<fieldset class="member-field"><legend>${i===0?tr('Đội trưởng'):i===3?tr('Thành viên 4 · Tùy chọn'):tr('Thành viên ')+(i+1)}</legend><div class="form-grid">${field(tr('Họ và tên'),'name-'+i,`${i<3?'required ':''}minlength="2" maxlength="60"`,'text',t.members[i]?.name||'')}${field(tr('Mã sinh viên'),'student-'+i,`${i<3?'required ':''}pattern="[A-Za-z0-9]{6,15}"`,'text',t.members[i]?.student_id||'')}</div></fieldset>`).join('')}${account?note(tr('Mã đăng nhập giữ nguyên. Kết quả thi đấu vẫn gắn với mã đội khi đổi tên.')):field(tr('Tên đăng nhập'),'username','required pattern="[A-Za-z0-9_-]{4,30}" autocomplete="off"')+field(tr('Mật khẩu tạm (để trống cho server tạo)'),'temporary-password','minlength="8" maxlength="128" autocomplete="new-password"','password')+note(tr('Ban tổ chức xác nhận thông tin đội. Tài khoản mới phải đổi mật khẩu khi đăng nhập lần đầu.'))}${errors()}${submit(account?tr('Lưu thông tin'):tr('Tạo đội & cấp tài khoản'))}</form>`);
 }
 function exportCSV(filename,rows){
   const cell=value=>'"'+String(value??'').replace(/^[=+@\-\t\r]/,"'$&").replaceAll('"','""')+'"';
@@ -371,14 +372,15 @@ async function diagnostic(fixtureId){
   const cid=s.competition.id,fid=fixtureId||s.ids[1];const {items}=await api.request(`/admin/competitions/${cid}/fixtures/${fid}/attempts`);
   const jobs=await Promise.all(items.map(a=>api.request(`/admin/competitions/${cid}/fixtures/${fid}/attempts/${a.number}`)));
   const f=s.fixtures.find(x=>x.id===fid);
-  modal('Lịch sử lần chạy · '+(f?.ordinal||short(fid)),(items.length?items.map((a,i)=>`<h3>Lần chạy ${a.number} ${badge(jobs[i].status)}</h3><pre class="report-json">${esc(JSON.stringify({error:jobs[i].error,report:jobs[i].report},null,2))}</pre>`).join(''):'<p>Chưa có lần chạy nào.</p>')+(f?.status==='attention'?button('Chạy lại trận','retry-fixture',`data-fixture="${fid}"`,'primary'):'')+note('Chỉ lần chạy hoàn tất hợp lệ được tính điểm. Lịch sử lỗi được giữ khi chạy lại.'));
+  modal(tr('Lịch sử lần chạy · ')+(f?.ordinal||short(fid)),(items.length?items.map((a,i)=>l10n`<h3>Lần chạy ${a.number} ${badge(jobs[i].status)}</h3><pre class="report-json">${esc(JSON.stringify({error:jobs[i].error,report:jobs[i].report},null,2))}</pre>`).join(''):tr('<p>Chưa có lần chạy nào.</p>'))+(f?.status==='attention'?button(tr('Chạy lại trận'),'retry-fixture',`data-fixture="${fid}"`,'primary'):'')+note(tr('Chỉ lần chạy hoàn tất hợp lệ được tính điểm. Lịch sử lỗi được giữ khi chạy lại.')));
 }
 document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-action]');if(!b||b.disabled)return;const action=b.dataset.action;
   try{
+    if(action==='language'){setLanguage(language()==='vi'?'en':'vi');location.reload();return;}
     if(action.startsWith('rule-')||action==='experimental-toggle'||action==='experimental-starter'){await ruleAction(action,b);return;}
     if(action.startsWith('board-')){board?.action(action.slice(6),b.dataset.index);return;}
-    if(action==='password'){const input=document.getElementById(b.dataset.target),visible=input.type==='password';input.type=visible?'text':'password';b.textContent=visible?'Ẩn':'Hiện';b.setAttribute('aria-label',visible?'Ẩn mật khẩu':'Hiện mật khẩu');return;}
+    if(action==='password'){const input=document.getElementById(b.dataset.target),visible=input.type==='password';input.type=visible?'text':'password';b.textContent=visible?tr('Ẩn'):tr('Hiện');b.setAttribute('aria-label',visible?tr('Ẩn mật khẩu'):tr('Hiện mật khẩu'));return;}
     if(action==='menu'){s.menuOpen=!s.menuOpen;document.querySelector('.app-shell')?.classList.toggle('menu-open',s.menuOpen);document.querySelector('.mobile-menu')?.setAttribute('aria-expanded',String(s.menuOpen));mobileSidebar();return;}
     if(action==='skip-main'){e.preventDefault();document.querySelector('#main')?.focus();return;}
     if(action==='close-modal'){closeModal();return;}
@@ -387,7 +389,7 @@ document.addEventListener('click',async e=>{
       const paths={'team-rotate':'/teams/invite/rotate','team-recruiting':'/teams/recruiting','team-leave':'/teams/leave','team-captain':'/teams/captain','team-remove':'/teams/member/remove'};
       const body=action==='team-recruiting'?{enabled:!s.personal?.team?.recruiting}:b.dataset.user?{user_id:b.dataset.user}:{};
       if(['team-leave','team-remove','team-captain'].includes(action)){
-        confirmAction('Xác nhận thay đổi đội','Thao tác có hiệu lực ngay và được ghi nhật ký.',async()=>{await api.post(paths[action],body);try{await refreshPerson();}catch(error){if(error.status===401)expired();else throw error;}});
+        confirmAction(tr('Xác nhận thay đổi đội'),tr('Thao tác có hiệu lực ngay và được ghi nhật ký.'),async()=>{await api.post(paths[action],body);try{await refreshPerson();}catch(error){if(error.status===401)expired();else throw error;}});
       }else{await api.post(paths[action],body);await refreshPerson();}
       return;
     }
@@ -406,56 +408,56 @@ document.addEventListener('click',async e=>{
     if(['team-detail','team-edit','team-archive','team-restore'].includes(action)){
       const a=s.accounts.find(x=>x.id===b.dataset.id),t=a.team;
       if(action==='team-edit')teamForm(a);
-      else if(action==='team-detail')modal('Hồ sơ đội · '+t.name,`<dl class="detail-list"><div><dt>Tài khoản</dt><dd>${esc(a.username)}</dd></div><div><dt>Email</dt><dd>${esc(t.email)}</dd></div><div><dt>Điện thoại</dt><dd>${esc(t.phone||'—')}</dd></div><div><dt>Ngày tạo</dt><dd>${date(t.created_ms)}</dd></div><div><dt>Trạng thái</dt><dd>${t.archived_ms?'Đã lưu trữ':a.locked?'Đang khóa':'Đang quản lý'}</dd></div></dl>${table(['Thành viên','Mã sinh viên'],t.members.map(m=>`<tr><td>${esc(m.name)}</td><td>${esc(m.student_id)}</td></tr>`))}`);
-      else{const restore=action==='team-restore';confirmAction((restore?'Khôi phục':'Xóa')+' đội '+t.name+'?',restore?'Đội được đưa lại vào danh sách. Tài khoản vẫn khóa; hãy mở khóa sau khi kiểm tra.':'Tài khoản sẽ bị khóa và mọi phiên đăng nhập bị thu hồi. Lịch sử bot và thi đấu được giữ; có thể khôi phục.',()=>api.post('/admin/teams/'+t.id+'/'+(restore?'restore':'archive'),{expected_revision:t.revision}));}return;
+      else if(action==='team-detail')modal(tr('Hồ sơ đội · ')+t.name,l10n`<dl class="detail-list"><div><dt>Tài khoản</dt><dd>${esc(a.username)}</dd></div><div><dt>Email</dt><dd>${esc(t.email)}</dd></div><div><dt>Điện thoại</dt><dd>${esc(t.phone||'—')}</dd></div><div><dt>Ngày tạo</dt><dd>${date(t.created_ms)}</dd></div><div><dt>Trạng thái</dt><dd>${t.archived_ms?tr('Đã lưu trữ'):a.locked?tr('Đang khóa'):tr('Đang quản lý')}</dd></div></dl>${table([tr('Thành viên'),tr('Mã sinh viên')],t.members.map(m=>`<tr><td>${esc(m.name)}</td><td>${esc(m.student_id)}</td></tr>`))}`);
+      else{const restore=action==='team-restore';confirmAction((restore?tr('Khôi phục'):tr('Xóa'))+tr(' đội ')+t.name+'?',restore?tr('Đội được đưa lại vào danh sách. Tài khoản vẫn khóa; hãy mở khóa sau khi kiểm tra.'):tr('Tài khoản sẽ bị khóa và mọi phiên đăng nhập bị thu hồi. Lịch sử bot và thi đấu được giữ; có thể khôi phục.'),()=>api.post('/admin/teams/'+t.id+'/'+(restore?'restore':'archive'),{expected_revision:t.revision}));}return;
     }
-    if(action==='export-teams'){exportCSV('teams.csv',[['Đội','Tài khoản','Email','Điện thoại','Trạng thái','Thành viên'],...s.accounts.map(a=>[a.team.name,a.username,a.team.email,a.team.phone,a.team.archived_ms?'Đã lưu trữ':a.locked?'Khóa':'Hoạt động',a.team.members.map(m=>m.name+' ('+m.student_id+')').join('; ')])]);return;}
-    if(action==='resolve-recovery'){confirmAction('Đánh dấu đã xử lý?','Đóng yêu cầu cấp lại này. Thao tác này không đổi mật khẩu.',()=>api.post('/admin/recoveries/'+b.dataset.id+'/resolve'));return;}
+    if(action==='export-teams'){exportCSV('teams.csv',[[tr('Đội'),tr('Tài khoản'),'Email',tr('Điện thoại'),tr('Trạng thái'),tr('Thành viên')],...s.accounts.map(a=>[a.team.name,a.username,a.team.email,a.team.phone,a.team.archived_ms?tr('Đã lưu trữ'):a.locked?tr('Khóa'):tr('Hoạt động'),a.team.members.map(m=>m.name+' ('+m.student_id+')').join('; ')])]);return;}
+    if(action==='resolve-recovery'){confirmAction(tr('Đánh dấu đã xử lý?'),tr('Đóng yêu cầu cấp lại này. Thao tác này không đổi mật khẩu.'),()=>api.post('/admin/recoveries/'+b.dataset.id+'/resolve'));return;}
     if(action==='admin-job'){
       b.disabled=true;const j=await api.request('/admin/jobs/'+enc(b.dataset.id));b.disabled=false;
-      modal('Tác vụ · '+short(j.id),`${badge(j.status)}<p>${esc(j.kind)} · ${date(j.created_unix_ms)}</p><pre class="report-json">${esc(JSON.stringify(j,null,2))}</pre>${button('Tải JSON','admin-job-download',`data-id="${j.id}"`)}${j.official?note('Mở giải đấu tương ứng để xem lịch sử lần chạy hoặc chạy lại trận lỗi.'):''}`);return;
+      modal(tr('Tác vụ · ')+short(j.id),`${badge(j.status)}<p>${esc(j.kind)} · ${date(j.created_unix_ms)}</p><pre class="report-json">${esc(JSON.stringify(j,null,2))}</pre>${button(tr('Tải JSON'),'admin-job-download',`data-id="${j.id}"`)}${j.official?note(tr('Mở giải đấu tương ứng để xem lịch sử lần chạy hoặc chạy lại trận lỗi.')):''}`);return;
     }
     if(action==='notice-visibility'){b.disabled=true;await api.post('/admin/announcements/'+enc(b.dataset.id)+'/visibility',{expected_revision:Number(b.dataset.revision),archived:b.dataset.archived!=='true'});await refreshNotices();await refreshData();return;}
-    if(action==='retention-run'){b.disabled=true;await api.post('/admin/retention/run');toast('Đã dọn dữ liệu theo chính sách.');await openRoute();return;}
+    if(action==='retention-run'){b.disabled=true;await api.post('/admin/retention/run');toast(tr('Đã dọn dữ liệu theo chính sách.'));await openRoute();return;}
     if(action==='admin-job-download'){saveBlob('job-'+short(b.dataset.id)+'.json',new Blob([JSON.stringify(await api.request('/admin/jobs/'+enc(b.dataset.id)),null,2)],{type:'application/json'}));return;}
     if(action==='submission-manifest'){const item=s.adminSubmissions.find(x=>x.id===b.dataset.id);modal('Source · '+item.version,`<pre class="report-json">${esc(JSON.stringify(item,null,2))}</pre>`);return;}
     if(action==='elo-exclude'){
       const excluded=b.dataset.excluded!=='true';
-      modal(excluded?'Loại đội khỏi xếp hạng':'Khôi phục đội',`<form class="real-form" id="elo-exclude-form" data-competition="${esc(s.competition.id)}" data-team="${esc(b.dataset.team)}" data-excluded="${excluded}">${note('Giữ nguyên các ván đã đấu; cập nhật hạng và suất chung kết. Lý do được lưu riêng cho BTC và ghi nhật ký.')}${field('Lý do','reason','required minlength="3" maxlength="300"')}${errors()}${submit('Áp dụng và ghi nhật ký')}</form>`);
+      modal(excluded?tr('Loại đội khỏi xếp hạng'):tr('Khôi phục đội'),`<form class="real-form" id="elo-exclude-form" data-competition="${esc(s.competition.id)}" data-team="${esc(b.dataset.team)}" data-excluded="${excluded}">${note(tr('Giữ nguyên các ván đã đấu; cập nhật hạng và suất chung kết. Lý do được lưu riêng cho BTC và ghi nhật ký.'))}${field(tr('Lý do'),'reason','required minlength="3" maxlength="300"')}${errors()}${submit(tr('Áp dụng và ghi nhật ký'))}</form>`);
     }
     if(['competition-edit','competition-archive','competition-restore'].includes(action)){
       const c=s.competitions.find(x=>x.id===b.dataset.id)||s.competition;
-      if(action==='competition-edit')modal('Sửa giải · '+c.title,`<form class="real-form" id="competition-edit-form" data-id="${c.id}" data-revision="${c.revision}">${field('Tên giải','title','required minlength="3" maxlength="100"','text',c.title)}${timeField(c.config.profile)}${field('Số đội tối đa','max_teams','required min="2" max="4096"','number',c.config.max_teams)}${note('Chỉ đổi thời gian ở bản nháp chưa có đội. Khi mở đăng ký, có thể sửa tên và giới hạn đội trước khi chốt lịch.')}${errors()}${submit('Lưu cấu hình')}</form>`);
-      else{const restore=action==='competition-restore';confirmAction((restore?'Khôi phục':'Xóa')+' giải '+c.title+'?',restore?'Giải trở lại danh sách, giữ nguyên trạng thái trước khi xóa.':'Chỉ xóa bản nháp / giải mở chưa có đội chọn bot, hoặc giải đã hoàn tất. Toàn bộ lịch sử và kết quả được giữ.',async()=>{await api.post('/admin/competitions/'+c.id+'/'+(restore?'restore':'archive'),{expected_revision:c.revision},keyFor(b));});}return;
+      if(action==='competition-edit')modal(tr('Sửa giải · ')+c.title,`<form class="real-form" id="competition-edit-form" data-id="${c.id}" data-revision="${c.revision}">${field(tr('Tên giải'),'title','required minlength="3" maxlength="100"','text',c.title)}${timeField(c.config.profile)}${field(tr('Số đội tối đa'),'max_teams','required min="2" max="4096"','number',c.config.max_teams)}${note(tr('Chỉ đổi thời gian ở bản nháp chưa có đội. Khi mở đăng ký, có thể sửa tên và giới hạn đội trước khi chốt lịch.'))}${errors()}${submit(tr('Lưu cấu hình'))}</form>`);
+      else{const restore=action==='competition-restore';confirmAction((restore?tr('Khôi phục'):tr('Xóa'))+tr(' giải ')+c.title+'?',restore?tr('Giải trở lại danh sách, giữ nguyên trạng thái trước khi xóa.'):tr('Chỉ xóa bản nháp / giải mở chưa có đội chọn bot, hoặc giải đã hoàn tất. Toàn bộ lịch sử và kết quả được giữ.'),async()=>{await api.post('/admin/competitions/'+c.id+'/'+(restore?'restore':'archive'),{expected_revision:c.revision},keyFor(b));});}return;
     }
     if(action==='review-registration'){
       const r=s.registrations.find(x=>x.id===b.dataset.id);
-      if(r.status!=='pending'){modal('Hồ sơ · '+r.team,`${badge(r.status)}<p>${esc(r.email)} · ${esc(r.phone||'—')}</p>${table(['Thành viên','Mã sinh viên'],r.members.map(m=>`<tr><td>${esc(m.name)}</td><td>${esc(m.student_id)}</td></tr>`))}`);return;}
-      modal('Duyệt đội · '+r.team,`<p>${esc(r.email)} · ${esc(r.phone||'Không có số điện thoại')}</p>${table(['Thành viên','Mã sinh viên'],r.members.map(m=>`<tr><td>${esc(m.name)}</td><td>${esc(m.student_id)}</td></tr>`))}<form class="real-form" id="approve-form" data-id="${r.id}">${field('Tên đăng nhập sẽ cấp','username','required pattern="[A-Za-z0-9_-]{4,30}"','text','uet-'+r.id.slice(0,8))}${field('Mật khẩu tạm (để trống cho server tạo)','temporary-password','minlength="8" maxlength="128" autocomplete="new-password"','password')}${errors()}<div class="modal-actions">${button('Từ chối hồ sơ','reject-registration',`data-id="${r.id}"`)}${submit('Duyệt & cấp tài khoản')}</div></form>`);return;
+      if(r.status!=='pending'){modal(tr('Hồ sơ · ')+r.team,`${badge(r.status)}<p>${esc(r.email)} · ${esc(r.phone||'—')}</p>${table([tr('Thành viên'),tr('Mã sinh viên')],r.members.map(m=>`<tr><td>${esc(m.name)}</td><td>${esc(m.student_id)}</td></tr>`))}`);return;}
+      modal(tr('Duyệt đội · ')+r.team,`<p>${esc(r.email)} · ${esc(r.phone||tr('Không có số điện thoại'))}</p>${table([tr('Thành viên'),tr('Mã sinh viên')],r.members.map(m=>`<tr><td>${esc(m.name)}</td><td>${esc(m.student_id)}</td></tr>`))}<form class="real-form" id="approve-form" data-id="${r.id}">${field(tr('Tên đăng nhập sẽ cấp'),'username','required pattern="[A-Za-z0-9_-]{4,30}"','text','uet-'+r.id.slice(0,8))}${field(tr('Mật khẩu tạm (để trống cho server tạo)'),'temporary-password','minlength="8" maxlength="128" autocomplete="new-password"','password')}${errors()}<div class="modal-actions">${button(tr('Từ chối hồ sơ'),'reject-registration',`data-id="${r.id}"`)}${submit(tr('Duyệt & cấp tài khoản'))}</div></form>`);return;
     }
-    if(action==='reject-registration'){confirmAction('Từ chối hồ sơ','Hồ sơ này sẽ được đánh dấu từ chối; chưa tạo tài khoản đội.',()=>api.post('/admin/registrations/'+b.dataset.id+'/reject'));return;}
+    if(action==='reject-registration'){confirmAction(tr('Từ chối hồ sơ'),tr('Hồ sơ này sẽ được đánh dấu từ chối; chưa tạo tài khoản đội.'),()=>api.post('/admin/registrations/'+b.dataset.id+'/reject'));return;}
     if(action==='reset-password'){
       const a=s.accounts.find(x=>x.id===b.dataset.id);
-      modal('Cấp lại mật khẩu · '+(a?.username||'đội'),`<p>Các phiên hiện tại sẽ bị thu hồi. Tài khoản giữ nguyên trạng thái khóa.</p><form class="real-form" id="reset-form" data-id="${b.dataset.id}">${field('Mật khẩu tạm (để trống cho server tạo)','temporary-password','minlength="8" maxlength="128" autocomplete="new-password"','password')}${errors()}${submit('Cấp lại mật khẩu')}</form>`);return;
+      modal(tr('Cấp lại mật khẩu · ')+(a?.username||tr('đội')),l10n`<p>Các phiên hiện tại sẽ bị thu hồi. Tài khoản giữ nguyên trạng thái khóa.</p><form class="real-form" id="reset-form" data-id="${b.dataset.id}">${field(tr('Mật khẩu tạm (để trống cho server tạo)'),'temporary-password','minlength="8" maxlength="128" autocomplete="new-password"','password')}${errors()}${submit(tr('Cấp lại mật khẩu'))}</form>`);return;
     }
-    if(action==='account-lock'){const locked=b.dataset.locked!=='true';confirmAction(locked?'Khóa tài khoản?':'Mở khóa tài khoản?',locked?'Đội sẽ bị đăng xuất và không thể đăng nhập cho tới khi mở khóa.':'Đội có thể đăng nhập lại với mật khẩu hiện tại.',()=>api.post('/admin/accounts/'+b.dataset.id+'/lock',{locked}));return;}
+    if(action==='account-lock'){const locked=b.dataset.locked!=='true';confirmAction(locked?tr('Khóa tài khoản?'):tr('Mở khóa tài khoản?'),locked?tr('Đội sẽ bị đăng xuất và không thể đăng nhập cho tới khi mở khóa.'):tr('Đội có thể đăng nhập lại với mật khẩu hiện tại.'),()=>api.post('/admin/accounts/'+b.dataset.id+'/lock',{locked}));return;}
     if(action==='delivered'){b.disabled=true;await api.post('/admin/accounts/'+b.dataset.id+'/delivered');await refreshAdmin();return;}
-    if(action==='copy-grader-token'){if(issuedGrader){await navigator.clipboard.writeText(issuedGrader.token);toast('Đã sao chép mã máy chấm.');}return;}
-    if(action==='revoke-grader'){if(!confirm('Thu hồi mã của máy chấm "'+b.dataset.name+'"? Máy này sẽ mất kết nối, trận đang chạy được giao lại máy khác.'))return;b.disabled=true;await api.post('/admin/graders/'+b.dataset.id+'/revoke');toast('Đã thu hồi mã máy chấm.');openRoute();return;}
-    if(action==='copy-credential'){if(issued){await navigator.clipboard.writeText('Tài khoản: '+issued.account.username+'\nMật khẩu tạm: '+issued.temporary_password);toast('Đã sao chép. Hãy phát qua kênh của ban tổ chức.');}return;}
-    if(action==='credential-delivered'){if(issued){b.disabled=true;await api.post('/admin/accounts/'+issued.account.id+'/delivered');toast('Đã đánh dấu phát tài khoản.');closeModal();await refreshAdmin();}return;}
+    if(action==='copy-grader-token'){if(issuedGrader){await navigator.clipboard.writeText(issuedGrader.token);toast(tr('Đã sao chép mã máy chấm.'));}return;}
+    if(action==='revoke-grader'){if(!confirm(tr('Thu hồi mã của máy chấm "')+b.dataset.name+tr('"? Máy này sẽ mất kết nối, trận đang chạy được giao lại máy khác.')))return;b.disabled=true;await api.post('/admin/graders/'+b.dataset.id+'/revoke');toast(tr('Đã thu hồi mã máy chấm.'));openRoute();return;}
+    if(action==='copy-credential'){if(issued){await navigator.clipboard.writeText(tr('Tài khoản: ')+issued.account.username+tr('\nMật khẩu tạm: ')+issued.temporary_password);toast(tr('Đã sao chép. Hãy phát qua kênh của ban tổ chức.'));}return;}
+    if(action==='credential-delivered'){if(issued){b.disabled=true;await api.post('/admin/accounts/'+issued.account.id+'/delivered');toast(tr('Đã đánh dấu phát tài khoản.'));closeModal();await refreshAdmin();}return;}
     if(action==='competition-action'){
       const command=b.dataset.command,c=s.competition;
-      if(command==='lock'){confirmAction('Chốt bot và tạo lịch?',`Giải “${c.title}” hiện có ${c.entries.length} đội: ${c.entries.map(x=>x.name+' ('+x.version+')').join(', ')}. Sau khi chốt, các đội không thể thay bot.`,()=>api.post('/admin/competitions/'+c.id+'/lock',{},keyFor(b)));}
+      if(command==='lock'){confirmAction(tr('Chốt bot và tạo lịch?'),l10n`Giải “${c.title}” hiện có ${c.entries.length} đội: ${c.entries.map(x=>x.name+' ('+x.version+')').join(', ')}. Sau khi chốt, các đội không thể thay bot.`,()=>api.post('/admin/competitions/'+c.id+'/lock',{},keyFor(b)));}
       else{b.disabled=true;await api.post('/admin/competitions/'+c.id+'/'+command,{},keyFor(b));openRoute();}return;
     }
-    if(action==='withdraw-entry'||action==='remove-entry'){const path=action==='withdraw-entry'?'/competitions/'+s.competition.id+'/withdraw':`/admin/competitions/${s.competition.id}/entries/${b.dataset.team}/remove`;confirmAction('Rút bot khỏi giải?','Bot này được rút trước khi chốt lịch. Đội có thể chọn bot lại khi giải còn mở đăng ký.',()=>api.post(path,{},keyFor(b)));return;}
+    if(action==='withdraw-entry'||action==='remove-entry'){const path=action==='withdraw-entry'?'/competitions/'+s.competition.id+'/withdraw':`/admin/competitions/${s.competition.id}/entries/${b.dataset.team}/remove`;confirmAction(tr('Rút bot khỏi giải?'),tr('Bot này được rút trước khi chốt lịch. Đội có thể chọn bot lại khi giải còn mở đăng ký.'),()=>api.post(path,{},keyFor(b)));return;}
     if(action==='diagnostic'){await diagnostic(b.dataset.fixture);return;}
-    if(action==='retry-fixture'){const fid=b.dataset.fixture;confirmAction('Chạy lại trận?','Tạo lần chạy mới cho trận chưa tính điểm. Lịch sử cũ được giữ lại.',()=>api.post(`/admin/competitions/${s.competition.id}/fixtures/${fid}/retry`,{},keyFor(b)));return;}
+    if(action==='retry-fixture'){const fid=b.dataset.fixture;confirmAction(tr('Chạy lại trận?'),tr('Tạo lần chạy mới cho trận chưa tính điểm. Lịch sử cũ được giữ lại.'),()=>api.post(`/admin/competitions/${s.competition.id}/fixtures/${fid}/retry`,{},keyFor(b)));return;}
     if(action==='export-standings'){
       if(!s.user){const a=document.createElement('a');a.href='/snapshots/standings/'+enc(s.competition.id)+'.csv';a.click();return;}
       const csvCell=value=>'"'+String(value??'').replace(/^[=+@\-\t\r]/,"'$&").replaceAll('"','""')+'"';
-      const rows=[['Hạng','Đội','Phiên bản','Trận','Thua','Hòa','Thắng','Điểm'],...s.standings.items.map(x=>[x.rank,x.name,x.version,x.played,x.losses,x.draws||0,x.wins,x.points])];saveBlob('standings.csv',new Blob(['\uFEFF'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));
+      const rows=[[tr('Hạng'),tr('Đội'),tr('Phiên bản'),tr('Trận'),tr('Thua'),tr('Hòa'),tr('Thắng'),tr('Điểm')],...s.standings.items.map(x=>[x.rank,x.name,x.version,x.played,x.losses,x.draws||0,x.wins,x.points])];saveBlob('standings.csv',new Blob(['\uFEFF'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));
     }
   }catch(error){b.disabled=false;handleError(error);}
 });

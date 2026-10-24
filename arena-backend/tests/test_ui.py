@@ -12,13 +12,17 @@ from test_web_api import APIHarness
 class UIIntegration(APIHarness):
     def test_ui_and_public_rules_do_not_require_session(self):
         guest = self.other_client()
+        english=guest.get('/api/v1/rules?lang=en')
+        self.assertEqual(english.status_code,200)
+        self.assertIn('10 seconds per bot',english.text)
+        self.assertEqual(guest.get('/api/v1/rules?lang=../x').status_code,422)
         page = guest.get("/")
         self.assertEqual(page.status_code, 200)
         self.assertIn('/_ui/app.js', page.text)
         self.assertNotIn('src="/app.js"', page.text)
         self.assertIn("script-src 'self'", page.headers["Content-Security-Policy"])
         self.assertNotIn("unsafe-inline", page.headers["Content-Security-Policy"])
-        for asset in ("bot-guide.js", "bot-guide.md", "bot-example.cpp", "ottv2-input.jsonl"):
+        for asset in ("i18n.js", "en.js", "bot-guide.en.md", "bot-guide.js", "bot-guide.md", "bot-example.cpp", "ottv2-input.jsonl"):
             result = guest.get("/_ui/" + asset)
             self.assertEqual(result.status_code, 200, asset)
             self.assertTrue(result.content, asset)
@@ -29,6 +33,8 @@ class UIIntegration(APIHarness):
         rules = guest.get("/api/v1/rules")
         self.assertEqual(rules.status_code, 200)
         self.assertIn("OTT", rules.text)
+        self.assertIn('## 2. Bàn cờ', rules.text)
+        self.assertIn('rules-v1', guest.get('/api/v1/experimental/guide').text)
         self.assertIn("text/plain", guest.get("/openapi.json").json()["paths"]["/api/v1/rules"]["get"]["responses"]["200"]["content"])
 
     def test_static_boundary_never_exposes_backend_or_team_source(self):
@@ -43,6 +49,29 @@ class UIIntegration(APIHarness):
         self.assertEqual(summary.json()["teams"], 1)
         self.assertEqual(summary.json()["pending_registrations"], 0)
         self.assertNotIn("password", summary.text)
+
+    def test_team_lists_do_not_decode_detailed_sample_and_build_history(self):
+        import tracemalloc
+        team,issued=self.create_team()
+        owner=issued['account']['team_id'];store=self.app.state.store
+        with store.transaction():
+            for _ in range(300):
+                saved=store.create('job',owner,dict(kind='benchmark',status='completed',submission_ids=[],
+                    report=dict(passed=True,samples=[dict(wall_ms=1,detail='x'*128)]*72,artifacts=[dict(log='PRIVATE-BUILD-'+'x'*32768)])))
+        tracemalloc.start()
+        try:
+            dashboard=team.get('/api/v1/dashboard');listing=team.get('/api/v1/jobs?limit=5&offset=2')
+            _,peak=tracemalloc.get_traced_memory()
+            self.assertEqual((dashboard.status_code,listing.status_code),(200,200))
+            self.assertEqual(dashboard.json()['counts']['benchmarks'],300)
+            self.assertEqual((listing.json()['total'],len(listing.json()['items'])),(300,5))
+            self.assertTrue(all(j['benchmark_summary']['passed'] and j['benchmark_summary']['samples']==72 for j in listing.json()['items']))
+            self.assertNotIn('PRIVATE-BUILD',listing.text+dashboard.text)
+            self.assertLess(peak,8*1024**2,'List endpoints decoded full retained reports')
+        finally:tracemalloc.stop()
+        detail=team.get('/api/v1/jobs/'+saved['id'])
+        self.assertEqual(len(detail.json()['report']['samples']),72)
+        self.assertIn('PRIVATE-BUILD',detail.text)
 
     def test_job_list_summary_does_not_include_private_report(self):
         job = {"id": "a" * 32, "kind": "benchmark", "status": "completed", "report": {"passed": True,

@@ -1,3 +1,4 @@
+import {tr,html as l10n} from './i18n.js';
 // Watch only fixture metadata. The board keeps its own move/clock SSE stream.
 export class CompetitionFollow {
   constructor(api,{competitionId,fixtureId,currentFixture,onSwitch,onExpired,onError,onState}) {
@@ -18,8 +19,8 @@ export class CompetitionFollow {
       catch(error){this.onError?.(error);}
     });
     this.feed.addEventListener('auth_expired',()=>{this.close();this.onExpired?.();});
-    this.feed.addEventListener('unavailable',()=>{this.message.textContent='Giải này không còn được công khai.';this.close();});
-    this.feed.onerror=()=>{if(!this.disposed)this.message.textContent='Đang nối lại tiến độ giải · Bàn hiện tại vẫn được giữ.';};
+    this.feed.addEventListener('unavailable',()=>{this.message.textContent=tr('Giải này không còn được công khai.');this.close();});
+    this.feed.onerror=()=>{if(!this.disposed)this.message.textContent=tr('Đang nối lại tiến độ giải · Bàn hiện tại vẫn được giữ.');};
   }
   pause(){if(this.disposed)return;this.enabled=false;this.checkbox.checked=false;this.update();}
   update(){
@@ -32,18 +33,18 @@ export class CompetitionFollow {
     const next=later.find(f=>f.status==='queued')||later.find(f=>f.status==='pending')||later.filter(f=>f.status==='completed').at(-1);
     this.review.href='#/replay/'+this.competitionId+'/'+current.id;
     this.next.hidden=!next;
-    if(next){this.next.href='#/arena/'+this.competitionId+'/'+next.id;this.next.textContent='Trận tiếp theo · #'+next.ordinal;}
+    if(next){this.next.href='#/arena/'+this.competitionId+'/'+next.id;this.next.textContent=tr('Trận tiếp theo · #')+next.ordinal;}
     if(['completed','attention'].includes(current.status)&&['queued','completed'].includes(next?.status)&&this.enabled){
       const previous=this.fixtureId;this.fixtureId=next.id;this.currentFixture=next;
       this.onSwitch(next,previous);this.update();return;
     }
-    this.message.textContent=!this.enabled?'Đã tắt tự chuyển trận · Giữ bàn hiện tại.':
-      this.state.status==='completed'?'Giải đã hoàn tất · Có thể xem lại từng trận.':
-      this.state.status==='paused'?'Giải đang tạm dừng · Chờ BTC tiếp tục.':
-      this.state.status==='locked'?'Đã có lịch · Chờ BTC bắt đầu giải.':
-      !next&&this.state.fixtures.some(f=>f.status==='attention')?'Chưa có trận tiếp theo · Có trận cần BTC xử lý.':
-      ['completed','attention'].includes(current.status)?'Trận đã kết thúc · Chờ trận kế tiếp bắt đầu.':
-      'Theo dõi giải · Tự chuyển khi trận kế tiếp bắt đầu.';
+    this.message.textContent=!this.enabled?tr('Đã tắt tự chuyển trận · Giữ bàn hiện tại.'):
+      this.state.status==='completed'?tr('Giải đã hoàn tất · Có thể xem lại từng trận.'):
+      this.state.status==='paused'?tr('Giải đang tạm dừng · Chờ BTC tiếp tục.'):
+      this.state.status==='locked'?tr('Đã có lịch · Chờ BTC bắt đầu giải.'):
+      !next&&this.state.fixtures.some(f=>f.status==='attention')?tr('Chưa có trận tiếp theo · Có trận cần BTC xử lý.'):
+      ['completed','attention'].includes(current.status)?tr('Trận đã kết thúc · Chờ trận kế tiếp bắt đầu.'):
+      tr('Theo dõi giải · Tự chuyển khi trận kế tiếp bắt đầu.');
   }
   close(){this.disposed=true;this.feed?.close();this.checkbox.removeEventListener('change',this.change);}
 }
