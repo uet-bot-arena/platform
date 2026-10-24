@@ -6,6 +6,8 @@ const paths={grid:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
   users:'M7 8a3 3 0 1 0 6 0a3 3 0 1 0-6 0M3 21v-3a7 7 0 0 1 14 0v3M17 5a3 3 0 0 1 0 6M19 15l2 6',
   upload:'M12 16V3M7 8l5-5 5 5M4 15v6h16v-6', arrow:'M4 12h16M14 6l6 6-6 6', book:'M12 6C9 3 5 3 2 4v16c4-1 7-1 10 2c3-3 6-3 10-2V4c-4-1-7-1-10 2zM12 6v16',
   shield:'M12 2l9 4v6c0 5-9 10-9 10S3 17 3 12V6zM8 12l3 3 5-6', code:'M7 6l-6 6 6 6M17 6l6 6-6 6M14 3l-4 18',
+  sun:'M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
+  moon:'M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z',
   menu:'M4 6h16M4 12h16M4 18h16', x:'M6 6l12 12M6 18L18 6', logout:'M9 4H4v16h5M14 8l4 4-4 4M8 12h12',
   play:'M8 4l12 8-12 8z', clock:'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M12 7v5l3 2', check:'M5 12l4 4L19 6', download:'M12 3v13M7 11l5 5 5-5M4 16v5h16v-5', file:'M14 2H5v20h14V7zM14 2v6h5M8 12h8M8 16h6',home:'M3 11l9-8 9 8M5 9v12h14V9M9 21v-7h6v7',bolt:'M13 2 4 14h7l-1 8 10-13h-8z',target:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8',info:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 11v6M12 7v1'};
 export const icon = name => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${paths[name]||paths.grid}"/></svg>`;
@@ -46,4 +48,5 @@ export function authFrame(content) {
 
 export const etaRange=eta=>!eta?'':eta.upper_seconds<120?l10n`còn khoảng ${Math.floor(eta.lower_seconds)}–${Math.ceil(eta.upper_seconds)} giây`:l10n`còn khoảng ${Math.ceil(eta.lower_seconds/60)}–${Math.ceil(eta.upper_seconds/60)} phút`;
 
-export function themeButton(){return button(tr("Sáng/tối"),"theme",tr('aria-label="Chuyển giữa giao diện sáng và tối"'),"small secondary");}
+// Moon shows in light mode (switch to dark), sun in dark mode; CSS picks one so no re-render is needed.
+export function themeButton(){const label=tr('aria-label="Chuyển giữa giao diện sáng và tối"');return `<button type="button" class="icon-btn theme-toggle" data-action="theme" ${label} ${label.replace('aria-label','title')}><span class="theme-moon">${icon('moon')}</span><span class="theme-sun">${icon('sun')}</span></button>`;}
