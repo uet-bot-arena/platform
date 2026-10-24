@@ -98,7 +98,7 @@ class RetentionSettings:
 
 HUB_ENV = {"data_dir": "ARENA_API_DATA", "origin": "ARENA_API_ORIGIN", "cookie_secure": "ARENA_API_COOKIE_SECURE",
            "trusted_proxies": "ARENA_TRUSTED_PROXIES", "connection_limit": "ARENA_CONNECTION_LIMIT",
-           "thread_limit": "ARENA_THREAD_LIMIT", "hash_workers": "ARENA_HASH_WORKERS", "ui_root": "ARENA_UI_ROOT",
+           "thread_limit": "ARENA_THREAD_LIMIT", "hash_workers": "ARENA_HASH_WORKERS", "read_workers": "ARENA_READ_WORKERS", "ui_root": "ARENA_UI_ROOT",
            "port": "ARENA_PORT", "bind": "ARENA_BIND", "session_seconds": "ARENA_SESSION_SECONDS"}
 
 
@@ -116,6 +116,7 @@ class Settings:
     connection_limit: int = UNSET
     thread_limit: int = UNSET
     hash_workers: int = UNSET
+    read_workers: int = UNSET
     ui_root: Path = UNSET
     email_providers: tuple = UNSET
     account_rules: AccountRules = UNSET
@@ -160,6 +161,7 @@ def load(names, path=None, env=None):
     values["connection_limit"] = hub.integer("connection_limit", 1024, 256, 16384)
     values["thread_limit"] = hub.integer("thread_limit", 256, 40, 4096)
     values["hash_workers"] = hub.integer("hash_workers", 4, 1, 32)
+    values['read_workers'] = hub.integer('read_workers',0,0,2)
     values["ui_root"] = hub.path("ui_root", str(Path(__file__).resolve().parents[2] / "uet-bot-arena" / "dist"))
     hub.finish()
     values["email_providers"] = email_providers(data)
@@ -281,6 +283,8 @@ def account_rules(data):
 
 
 def validate(settings):
+    if type(settings.read_workers) is not int or not 0<=settings.read_workers<=2:
+        raise ConfigError('hub.read_workers phải là 0..2')
     if settings.github.api_url != "https://api.github.com":
         raise ConfigError("github.api_url phải là api.github.com qua HTTPS; test dùng transport giả")
     for network in settings.trusted_proxies:

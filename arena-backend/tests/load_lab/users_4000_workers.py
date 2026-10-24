@@ -112,7 +112,7 @@ def user_worker(number,people,origin,cid,contract,start,stop,end,ready,output):
                         await page(route,person,True);nav=time.monotonic()+rng.uniform(30,90)
                         private=time.monotonic()+interval;public=time.monotonic()+10
                     if route in ('team','submissions') and now>=private:
-                        await read('/api/v1/ui/page?view='+route,person,True);private=time.monotonic()+interval
+                        await page(route,person,True);private=time.monotonic()+interval
                     if route in ('home','standings','schedule','queue') and now>=public:
                         # Same shared reads as watchElo, not the private navigation request.
                         _,files=contract[route]

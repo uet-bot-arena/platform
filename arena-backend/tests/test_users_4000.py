@@ -25,5 +25,5 @@ class LoadContract(unittest.TestCase):
         document=(Path(__file__).resolve().parents[2]/'docs/UI.md').read_text()
         contract=paths(document)
         self.assertEqual(set(contract),{'home','team','submissions','standings','schedule','queue'})
-        self.assertEqual(contract['team'],[['/ui/page?view=team'],[]])
+        self.assertEqual(contract['team'],[['/ui/personal?view=team','/ui/read?view=team'],[]])
         self.assertEqual(len(contract['standings'][1]),4)

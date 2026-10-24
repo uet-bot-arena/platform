@@ -1,13 +1,18 @@
 import {language} from './i18n.js';
 import {loadBotGuide} from './bot-guide.js';
 
+export async function privatePage(api,view){
+  const [personal,data]=await Promise.all([api.request('/ui/personal?view='+view),api.request('/ui/read?view='+view)]);
+  return {...personal,...data};
+}
+
 export async function participantData(api,user,route,ids,q){
   const data={},enc=encodeURIComponent;
   if(route==='guide')return {rules:await api.request('/rules?lang='+language()),botGuide:await loadBotGuide()};
   let view=['home','team','submissions','benchmark','practice','jobs'].includes(route)?route:null;
   if(['arena','replay'].includes(route)&&ids[0]==='practice')view='arena';
   if(user?.team_id&&view){
-    const a=performance.now(),value=await api.request('/ui/page?view='+view+(['jobs','arena'].includes(view)?'&job_id='+enc(view==='jobs'?ids[0]:ids[1]):'')),b=performance.now();
+    const a=performance.now(),value=await (['home','team','submissions'].includes(view)?privatePage(api,view):api.request('/ui/page?view='+view+(['jobs','arena'].includes(view)?'&job_id='+enc(view==='jobs'?ids[0]:ids[1]):''))),b=performance.now();
     Object.assign(data,value);
     data.initialClock={rtt:b-a,anchor:(a+b)/2,unix:(value.clock.server_received_unix_ms+value.clock.server_sent_unix_ms)/2,clockId:value.clock.clock_id};
   }else if(user&&!user.team_id&&['home','team'].includes(route))data.personal=await api.request('/users/me');
@@ -23,7 +28,7 @@ export async function participantData(api,user,route,ids,q){
   if(cid){
     const [competition,fixtures,standings]=await Promise.all([api.snapshot('competitions/'+enc(cid)+'.json'),api.snapshot('fixtures/'+enc(cid)+'.json'),api.snapshot('standings/'+enc(cid)+'.json')]);
     Object.assign(data,{competition,fixtures:fixtures.items,standings,historyTotal:fixtures.history_total});
-    if(route==='competitions'&&user?.team_id&&competition.config.format!=='elo')Object.assign(data,await api.request('/ui/page?view=competitions'));
+    if(route==='competitions'&&user?.team_id&&competition.config.format!=='elo')Object.assign(data,await privatePage(api,'competitions'));
     if(['arena','replay'].includes(route)&&ids[1]&&!data.fixtures.some(f=>f.id===ids[1]))data.fixtures.push((await api.snapshot('fixtures/'+enc(cid)+'/'+enc(ids[1])+'.json')).fixture);
   }
   data.benchmarkCompetition=route==='benchmark'?q.get('competition'):null;

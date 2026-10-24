@@ -67,7 +67,7 @@ def main():
                         page.goto(origin+'/#/home');page.wait_for_load_state('networkidle')
                         for route in ('team','submissions','standings','schedule','queue','home'):
                             expected_api,expected_files=contracts[route]
-                            path=('/api/v1'+expected_api if expected_api!='—' else '/snapshots/'+expected_files.split(', ')[0]).replace('{id}',competition['id'])
+                            path=('/api/v1'+expected_api.split(', ')[0] if expected_api!='—' else '/snapshots/'+expected_files.split(', ')[0]).replace('{id}',competition['id'])
                             calls.clear()
                             with page.expect_response(lambda r:r.url==origin+path):page.goto(origin+'/#/'+route)
                             page.wait_for_timeout(150)
@@ -78,7 +78,7 @@ def main():
                             assert sorted(files)==sorted(expected(expected_files)),(route,files)
                             assert len(api)<=2
                             report['pages'].append(dict(lang=lang,theme=theme,route=route,api=api))
-                        with page.expect_response(lambda r:r.url==origin+'/api/v1/ui/page?view=team'):page.goto(origin+'/#/team')
+                        with page.expect_response(lambda r:r.url==origin+'/api/v1/ui/read?view=team'):page.goto(origin+'/#/team')
                         expect(page.locator('#github-page')).to_be_visible()
                         page.evaluate("window.testHidden=true;Object.defineProperty(document,'hidden',{configurable:true,get:()=>window.testHidden});document.dispatchEvent(new Event('visibilitychange'))")
                         calls.clear();page.wait_for_timeout(10500 if (lang,theme)==('vi','light') else 500)

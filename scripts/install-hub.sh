@@ -17,6 +17,8 @@ done
 (( EUID == 0 )) || { echo 'Run with sudo/root.' >&2; exit 1; }
 [[ "$arena_vcpus" =~ ^[1-9][0-9]?$ ]] || { echo 'vCPUs must be 1..99.' >&2; exit 2; }
 if "$arena_remove"; then
+  systemctl disable --now uet-arena-read@4183 uet-arena-read@4184 2>/dev/null || true
+  rm -f /etc/systemd/system/uet-arena-read@.service
   systemctl disable --now uet-arena-backup.timer uet-arena-nginx.service uet-arena-hub.service uet-arena-publisher.service uet-arena-mailer.service 2>/dev/null || true
   for arena_unit in hub publisher mailer nginx backup; do
     rm -f "/etc/systemd/system/uet-arena-${arena_unit}.service"
@@ -58,6 +60,7 @@ install -d -m 755 /opt/uet-arena/app
 install -d -m 700 -o arena -g arena /var/lib/uet-arena /var/lib/uet-arena/data /etc/uet-arena
 install -d -m 700 /var/backups/uet-arena
 systemctl stop uet-arena-nginx uet-arena-publisher uet-arena-mailer uet-arena-hub 2>/dev/null || true
+systemctl stop uet-arena-read@4183 uet-arena-read@4184 2>/dev/null || true
 # Updating from the same installed tree needs no copy; rsync removes no data.
 if [[ "$arena_source" != /opt/uet-arena/app ]]; then
   for arena_dir in arena-backend uet-bot-arena docs; do
@@ -95,6 +98,7 @@ data_dir = "/var/lib/uet-arena/data"
 ui_root = "/opt/uet-arena/app/uet-bot-arena/dist"
 cookie_secure = $([[ "$arena_origin" == https:* ]] && echo true || echo false)
 hash_workers = $arena_workers
+read_workers = $((arena_vcpus >= 4 ? 2 : 0))
 trusted_proxies = ["127.0.0.1/32"]
 EOF
 fi
@@ -162,6 +166,40 @@ EOF
 done
 install -m 644 /opt/uet-arena/app/scripts/hub-nginx.conf /etc/uet-arena/nginx.conf
 install -m 644 /opt/uet-arena/app/scripts/hub-nginx-security.conf /etc/uet-arena/nginx-security.conf
+arena_read_workers="$(cd /opt/uet-arena/app/arena-backend && ARENA_CONFIG=/etc/uet-arena/config.toml ARENA_SECRETS=/etc/uet-arena/secrets.toml /opt/uet-arena/venv/bin/python -m arena_api.read_worker --nginx-dir /etc/uet-arena)"
+cat > /etc/systemd/system/uet-arena-read@.service <<'EOF'
+[Unit]
+Description=UET Bot Arena read-only API on %i
+After=uet-arena-hub.service
+[Service]
+User=arena
+Group=arena
+WorkingDirectory=/opt/uet-arena/app/arena-backend
+Environment=ARENA_CONFIG=/etc/uet-arena/config.toml
+Environment=ARENA_SECRETS=/etc/uet-arena/secrets.toml
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/uet-arena/venv/bin/python -m arena_api serve --port %i --read-only --access-log
+Restart=on-failure
+RestartSec=1
+Slice=arena.slice
+MemoryMax=384M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/var/lib/uet-arena
+UMask=0077
+[Install]
+WantedBy=multi-user.target
+EOF
+for arena_index in 0 1; do
+  arena_read_unit="uet-arena-read@$((4183+arena_index))"
+  if (( arena_index < arena_read_workers )); then
+    systemctl enable "$arena_read_unit"
+  else
+    systemctl disable "$arena_read_unit" 2>/dev/null || true
+  fi
+done
 cat > /etc/systemd/system/uet-arena-nginx.service <<'EOF'
 [Unit]
 Description=UET Bot Arena nginx (loopback static files and API proxy)
@@ -221,6 +259,10 @@ EOF
 (cd /opt/uet-arena/app/arena-backend && runuser -u arena -- env ARENA_CONFIG=/etc/uet-arena/config.toml ARENA_SECRETS=/etc/uet-arena/secrets.toml /opt/uet-arena/venv/bin/python -m arena_api migrate)
 systemctl daemon-reload
 systemctl enable --now uet-arena-hub uet-arena-publisher uet-arena-mailer uet-arena-nginx uet-arena-backup.timer
+for ((arena_index=0; arena_index<arena_read_workers; arena_index++)); do
+  systemctl start "uet-arena-read@$((4183+arena_index))"
+  systemctl is-active --quiet "uet-arena-read@$((4183+arena_index))"
+done
 for arena_component in hub publisher mailer nginx; do
   systemctl is-active --quiet "uet-arena-$arena_component" || { echo "$arena_component failed to start; inspect its journal." >&2; exit 1; }
 done

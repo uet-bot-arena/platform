@@ -174,6 +174,9 @@ def run():
     import httpx
     from users_4000_workers import fake_github,user_worker,sse_worker,grader_worker,paths,event_digest
     assert os.geteuid()==0,'Run in the installed disposable distro as root'
+    import tomllib
+    read_workers=tomllib.loads(Path('/etc/uet-arena/config.toml').read_text()).get('hub',{}).get('read_workers',0)
+    UNITS[:]=UNITS[:4]+['uet-arena-read@'+str(4183+i) for i in range(read_workers)]
     LAB.mkdir(parents=True,exist_ok=True,mode=0o700)
     ledger=LAB/'runs.json';runs=json.loads(ledger.read_text()) if ledger.exists() else []
     assert sum(r.get('valid',False) for r in runs)<3,'PLAN allows at most three valid large runs'
@@ -280,7 +283,7 @@ def run():
                 if began<=record['finished']<=finished:completed+=1
                 replay_checks.append(dict(job=record['job'],expected_count=record['count'],stored_count=len(events),expected_digest=record['digest'],stored_digest=event_digest(events),
                     sent_gzip_sha256=hashlib.sha256(record['gzip']).hexdigest(),stored_gzip_sha256=hashlib.sha256(raw[0]).hexdigest(),bytes=len(raw[0]),in_phase=began<=record['finished']<=finished))
-        result=dict(valid=all(v['percent_of_one_core']<=80 for v in generators.values()),duration_seconds=seconds,
+        result=dict(valid=all(v['percent_of_one_core']<=80 for v in generators.values()),duration_seconds=seconds,read_workers=read_workers,
             teams=1000,people=4000,warm_visible=warmed,slots=32,game_seconds=10,github_poll_seconds=60,
             http_p95_ms=percentile(latencies),http_statuses=dict(statuses),http_errors=http_errors,login_p95_ms=percentile(logins),
             slice_cpu_percent_of_4_vcpu=slice_cpu/seconds/4*100,process_cpu_seconds=dict(process_cpu),generator_cpu=generators,

@@ -4,6 +4,7 @@
 # Đường dẫn tương đối tính từ thư mục chứa file này; C:/... tự đổi thành /mnt/c/... khi chạy trong WSL.
 
 [hub]
+read_workers = 0 # 0: mọi API ở hub chính; VPS 4 vCPU có thể đặt 2 rồi chạy lại install-hub.sh.
 origin = "http://127.0.0.1:4181"      # công khai thì phải https và cookie_secure = true
 port = 4181
 bind = "127.0.0.1"

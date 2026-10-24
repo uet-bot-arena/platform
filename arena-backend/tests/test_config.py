@@ -237,6 +237,7 @@ class NoHardcodedDeploymentValues(unittest.TestCase):
         "https://git-lfs.github.com/spec/v1",  # Git LFS pointer format
         "https://github.com/apps/uet-bot-arena/installations/new",  # App identity from PLAN_M1
         "https://github.com/uet-bot-arena/ott-bot-starter",  # approved public template
+        "http://arena_read",  # named nginx upstream, generated with loopback servers only
     }
 
     def sources(self):
@@ -251,7 +252,7 @@ class NoHardcodedDeploymentValues(unittest.TestCase):
             text = path.read_text(encoding="utf-8", errors="replace")
             for url in re.findall(r"https?://[A-Za-z0-9.\-]+(?::\d+)?[^\s'\"`)]*", text):
                 host = re.match(r"https?://([^/:]+)", url).group(1)
-                if host in ("127.0.0.1", "localhost") or url.rstrip("/") in self.ALLOWED_URLS or "{" in url:
+                if host in ("127.0.0.1", "localhost") or url.rstrip("/;") in self.ALLOWED_URLS or "{" in url:
                     continue
                 if path.parent.name == "scripts" and path.name in ("install-dev-tools.sh", "build-rootfs.sh", "install-grader.sh", "install-grader.ps1", "install-hub.sh", "fetch-toolchain.py"):
                     continue  # pinned download sources with SHA-256 checks

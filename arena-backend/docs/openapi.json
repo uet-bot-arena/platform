@@ -2373,6 +2373,182 @@
         ]
       }
     },
+    "/api/v1/ui/page": {
+      "get": {
+        "tags": [
+          "arena"
+        ],
+        "summary": "Dữ liệu riêng của một trang đội; một request, giữ quyền của API đội",
+        "operationId": "page_data_api_v1_ui_page_get",
+        "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "home",
+                "team",
+                "submissions",
+                "benchmark",
+                "practice",
+                "competitions",
+                "jobs",
+                "arena"
+              ],
+              "type": "string",
+              "default": "home",
+              "title": "View"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ui/personal": {
+      "get": {
+        "tags": [
+          "arena"
+        ],
+        "summary": "Hồ sơ/đội trên process chính, gồm chốt hạn lập đội",
+        "operationId": "page_personal_api_v1_ui_personal_get",
+        "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "home",
+                "team",
+                "submissions",
+                "competitions"
+              ],
+              "type": "string",
+              "default": "home",
+              "title": "View"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ui/read": {
+      "get": {
+        "tags": [
+          "arena"
+        ],
+        "summary": "Dữ liệu trang đội chỉ đọc, dùng chung bộ lọc quyền",
+        "operationId": "page_read_api_v1_ui_read_get",
+        "parameters": [
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "home",
+                "team",
+                "submissions",
+                "competitions"
+              ],
+              "type": "string",
+              "default": "home",
+              "title": "View"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/health/live": {
       "get": {
         "tags": [

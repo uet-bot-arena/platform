@@ -1,4 +1,4 @@
-import {participantData} from './page-data.js';
+import {participantData,privatePage} from './page-data.js';
 import {visiblePoll,githubPollMs} from './polling.js';
 import {tr,html as l10n,language,setLanguage} from './i18n.js';
 import {startAnnouncements} from './announcements.js';
@@ -178,7 +178,7 @@ function watchGitHub(id){
   githubPoll?.close();
   if(!s.user?.team_id||!['team','submissions'].includes(s.route)||id!==generation)return;
   githubPoll=visiblePoll(async()=>{
-    const next=await api.request('/ui/page?view='+s.route);
+    const next=await privatePage(api,s.route);
     if(id===generation){Object.assign(s,next);patchPage();}
   },()=>githubPollMs(s.github),{onError:handleError});
 }

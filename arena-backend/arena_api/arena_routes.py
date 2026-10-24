@@ -22,12 +22,28 @@ router = APIRouter(prefix="/api/v1", tags=["arena"])
 @router.get('/ui/page', summary='Dữ liệu riêng của một trang đội; một request, giữ quyền của API đội')
 def page_data(request: Request, view: Literal['home','team','submissions','benchmark','practice','competitions','jobs','arena']='home',
               job_id: str | None = None, auth=Depends(team_principal)):
+    return page_bundle(request,view,job_id,auth)
+
+
+@router.get('/ui/personal', summary='Hồ sơ/đội trên process chính, gồm chốt hạn lập đội')
+def page_personal(request: Request, view: Literal['home','team','submissions','competitions']='home', auth=Depends(team_principal)):
+    return page_bundle(request,view,None,auth,section='personal')
+
+
+@router.get('/ui/read', summary='Dữ liệu trang đội chỉ đọc, dùng chung bộ lọc quyền')
+def page_read(request: Request, view: Literal['home','team','submissions','competitions']='home', auth=Depends(team_principal)):
+    return page_bundle(request,view,None,auth,section='data')
+
+
+def page_bundle(request,view,job_id,auth,section='all'):
     state=request.app.state;team_id=auth['user']['team_id'];data={}
     received=time.time_ns()/1_000_000
-    if view in ('home','team','submissions','competitions'):
+    if section!='data' and view in ('home','team','submissions','competitions'):
         data['personal']={'profile':state.people.profile(auth['user']['id']),
             'team':state.teams.current(auth['user']['id']),'policy':state.teams.policy()}
         data['team']=data['personal']['team']
+    if section=='personal':
+        return JSONResponse(data)
     if view in ('team','submissions'):
         data['github']=state.github.view(team_id)
     if view=='team':data['teamElo']=state.competitions.elo.team_view(team_id)

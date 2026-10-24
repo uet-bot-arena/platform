@@ -22,6 +22,7 @@ def main():
     serve = sub.add_parser("serve")
     serve.add_argument("--port", type=int, help="Ghi đè hub.port trong file cấu hình")
     serve.add_argument('--access-log', action='store_true', help='Ghi request/status vào journald để đếm tải; không ghi body/header')
+    serve.add_argument('--read-only',action='store_true',help='Chỉ GET allowlist, SQLite mode=ro, không chạy việc nền')
     args = parser.parse_args()
     if getattr(args, "port", None):
         # The app factory builds its own Settings; pass the override through the environment.
@@ -32,7 +33,7 @@ def main():
         parser.exit(2, f"Lỗi cấu hình: {exc}\n")
     if args.action == "serve":
         import uvicorn
-        uvicorn.run("arena_api.app:create_app", factory=True, host=settings.bind, port=settings.port, workers=1,
+        uvicorn.run("arena_api.read_worker:create_app" if args.read_only else "arena_api.app:create_app", factory=True, host=settings.bind, port=settings.port, workers=1,
                     access_log=args.access_log, proxy_headers=False, limit_concurrency=settings.connection_limit,
                     timeout_keep_alive=5, timeout_graceful_shutdown=400)
         return
