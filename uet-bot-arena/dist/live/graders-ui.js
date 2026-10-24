@@ -56,7 +56,7 @@ export function graderMessage(item,pkg,origin){
 export function packagePanel(pkg,origin){
   if(!validPackage(pkg))return '';
   const url=`${origin}/downloads/${pkg.file}`;
-  return panel(tr('Gói cài máy chấm Windows'),l10n`<p>Ai có link đều tải được: gói chỉ có code máy chấm, không có mã hay mật khẩu. Máy chỉ nhận việc khi có mã do BTC tạo ở trên, gửi riêng cho từng người.</p><p><strong>Tải về:</strong> <a href="${esc(url)}" download>${esc(pkg.file)}</a></p><p><strong>SHA-256:</strong> <span class="mono">${esc(pkg.sha256)}</span></p><p><strong>Phiên bản máy chấm:</strong> ${esc(pkg.grader_version||'—')}</p><p>Khối lệnh cài trên Windows (PowerShell):</p><pre class="report-json">${esc(installCommand(pkg,origin))}</pre>`);
+  return panel(tr('Gói cài máy chấm Windows'),l10n`<div class="grader-package"><p>Ai có link đều tải được: gói chỉ có code máy chấm, không có mã hay mật khẩu. Máy chỉ nhận việc khi có mã do BTC tạo ở trên, gửi riêng cho từng người.</p><p><strong>Tải về:</strong> <a href="${esc(url)}" download>${esc(pkg.file)}</a></p><p><strong>SHA-256:</strong> <span class="mono">${esc(pkg.sha256)}</span></p><p><strong>Phiên bản máy chấm:</strong> ${esc(pkg.grader_version||'—')}</p><p>Khối lệnh cài trên Windows (PowerShell):</p><pre class="report-json">${esc(installCommand(pkg,origin))}</pre></div>`);
 }
 
 export function graderTokenModal(item,pkg=null,origin=''){

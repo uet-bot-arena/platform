@@ -563,3 +563,9 @@ body:has(.real-auth) #announcements-banner { margin-left: 0; }
 :root[data-theme="dark"] .theme-toggle:hover { background: #232931; }
 :root[data-theme="dark"] .form-error { color: #f3b9ae; background: #2a1d1b; border-color: #5c3a33; }
 :root[data-theme="dark"] .info-note { border-left-color: #3a434d; }
+
+/* Grader install package panel on the BTC graders page. */
+.grader-package p { margin: 8px 0; }
+.grader-package a { color: var(--green); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.grader-package .mono { overflow-wrap: anywhere; }
+.grader-package pre { white-space: pre-wrap; overflow-wrap: anywhere; }
