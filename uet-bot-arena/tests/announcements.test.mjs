@@ -5,10 +5,10 @@ import {announcementsPage} from '../dist/live/notices-ui.js';
 
 test('banner uses text nodes, preserves unchanged links and refreshes within one minute',async()=>{
  class Element {children=[];hidden=true;append(...nodes){this.children.push(...nodes);}replaceChildren(){this.children=[];}}
- const target=new Element(),old={document:globalThis.document,setInterval:globalThis.setInterval,addEventListener:globalThis.addEventListener};let interval;
+ const target=new Element(),old={document:globalThis.document,setTimeout:globalThis.setTimeout,addEventListener:globalThis.addEventListener};let interval;
  const payload='<img src=x onerror=alert(1)>';
  let data={items:[{id:'notice',revision:1,title:payload,body:payload}]};
- Object.assign(globalThis,{document:{getElementById:()=>target,createElement:()=>new Element(),addEventListener(){}},setInterval:(fn,ms)=>interval=ms,addEventListener(){}});
+ Object.assign(globalThis,{document:{getElementById:()=>target,createElement:()=>new Element(),addEventListener(){}},setTimeout:(fn,ms)=>interval=ms,addEventListener(){}});
  try{
   const refresh=startAnnouncements({snapshot:async name=>{assert.equal(name,'announcements.json');return data;}});
   await new Promise(setImmediate);

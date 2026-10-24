@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import time
 import zipfile
+from typing import Literal
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from starlette.responses import StreamingResponse, JSONResponse
 from arena import engine
@@ -16,6 +17,44 @@ from arena_api.schemas import Benchmark, Match, TeamView
 
 ROOT = Path(__file__).resolve().parents[1]
 router = APIRouter(prefix="/api/v1", tags=["arena"])
+
+
+@router.get('/ui/page', summary='Dữ liệu riêng của một trang đội; một request, giữ quyền của API đội')
+def page_data(request: Request, view: Literal['home','team','submissions','benchmark','practice','competitions','jobs','arena']='home',
+              job_id: str | None = None, auth=Depends(team_principal)):
+    state=request.app.state;team_id=auth['user']['team_id'];data={}
+    received=time.time_ns()/1_000_000
+    if view in ('home','team','submissions','competitions'):
+        data['personal']={'profile':state.people.profile(auth['user']['id']),
+            'team':state.teams.current(auth['user']['id']),'policy':state.teams.policy()}
+        data['team']=data['personal']['team']
+    if view in ('team','submissions'):
+        data['github']=state.github.view(team_id)
+    if view=='team':data['teamElo']=state.competitions.elo.team_view(team_id)
+    if view in ('home','benchmark','practice','competitions','arena'):
+        data['submissions']=[state.service.public_submission(s) for s in state.store.list('submission',team_id)]
+    if view in ('home','benchmark','practice','competitions'):
+        jobs=state.store.list('job',team_id,summary=True)
+        data['jobs']=[public_job(j) for j in jobs]
+        if view=='home':
+            data['dashboard']={'counts':{'submissions':len(data['submissions']),
+                'benchmarks':sum(j['kind']=='benchmark' for j in jobs),'matches':sum(j['kind']=='match' for j in jobs),
+                'active_jobs':sum(j['status'] not in TERMINAL for j in jobs)}}
+    if view in ('benchmark','practice'):data['rulesetCatalog']=state.rulesets.listing(False)
+    if view=='practice':
+        from arena_api.sample_bots import public
+        data['sampleBots']=[public(x) for x in state.store.list('sample_bot') if x.get('builtin') and x['enabled']]
+    if view in ('jobs','arena'):
+        if not job_id:raise Fault('invalid_request','Cần mã tác vụ')
+        job=state.store.get(job_id,team_id,'job')
+        data['job']=dict(public_job(job,full=True),queue_position=state.service.pending.position(job_id),eta=state.service.job_eta(job))
+        if view=='arena':
+            events=[];cursor=0
+            while batch:=state.store.events(job_id,cursor):
+                events.extend(private_event(job,e) for e in batch);cursor=batch[-1]['seq']
+            data['initialHistory']=dict(items=events,**({'replay_pruned':True} if job.get('replay_pruned') else {}))
+    data['clock']={'clock_id':state.clock_id,'server_received_unix_ms':received,'server_sent_unix_ms':time.time_ns()/1_000_000}
+    return JSONResponse(data)
 
 
 PRIVATE_SAMPLE = "Chẩn đoán của bot mẫu BTC được giữ kín"

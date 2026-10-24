@@ -1,6 +1,7 @@
 import {tr,html as l10n,language} from './i18n.js';
 // Same-origin session only. No password, session or CSRF in browser storage.
 import {snapshotPath,publicRequest,PublicFeed} from './public-client.js';
+import {VisibleSource} from './polling.js';
 const responseBody=response=>(response.headers.get('Content-Type')||'').includes('json')?response.json():response.text();
 export class APIError extends Error {
   constructor(response, result) {
@@ -23,8 +24,9 @@ export class APIError extends Error {
 
 export class ArenaAPI {
   csrf = null;
+  admin = false;
   async request(path, {method='GET', body, headers={}, signal}={}) {
-    if(method==='GET'&&!this.csrf&&(snapshotPath(path)||path.split('?')[0].endsWith('/watch')))return publicRequest(this,path);
+    if(method==='GET'&&!this.admin&&(snapshotPath(path)||path.split('?')[0].endsWith('/watch')))return publicRequest(this,path);
     if (method !== 'GET' && this.csrf) headers = {...headers, 'X-CSRF-Token':this.csrf};
     if (body !== undefined && !(body instanceof Blob)) {
       headers = {...headers, 'Content-Type':'application/json'}; body = JSON.stringify(body);
@@ -39,6 +41,7 @@ export class ArenaAPI {
   }
   post(path, body={}, key) { return this.request(path, {method:'POST', body, headers:key?{'Idempotency-Key':key}:{}}); }
   async all(path) {
+    if(!this.admin&&snapshotPath(path))return (await publicRequest(this,path)).items;
     const items=[]; let offset=0;
     while(true) {
       const result=await this.request(path+(path.includes('?')?'&':'?')+`limit=100&offset=${offset}`);
@@ -64,7 +67,7 @@ export class ArenaAPI {
     }
     return this.featuredValue.value;
   }
-  stream(path) { return !this.csrf&&path.startsWith('/competitions/')?new PublicFeed(this,path):new EventSource('/api/v1'+path); }
+  stream(path) { return !this.admin&&path.startsWith('/competitions/')?new PublicFeed(this,path):new VisibleSource('/api/v1'+path); }
 }
 
 export function saveBlob(name, blob) {

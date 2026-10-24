@@ -4,15 +4,16 @@ import {ArenaAPI} from '../dist/live/client.js';
 import {PublicFeed,publicRequest,snapshotPath} from '../dist/live/public-client.js';
 import {page} from '../dist/live/pages.js';
 
-test('guests use public files; signed-in and private reads keep authenticated API',async()=>{
+test('participants share public files; organiser and private reads keep authenticated API',async()=>{
  const original=globalThis.fetch,calls=[];
  globalThis.fetch=async(url,options)=>{calls.push([url,options]);return new Response(JSON.stringify({items:[]}),{headers:{'Content-Type':'application/json'}});};
  try{
   const api=new ArenaAPI();await api.request('/competitions');
   assert.equal(calls[0][0],'/snapshots/competitions.json');assert.equal(calls[0][1].credentials,'omit');
   api.csrf='test-only';await api.request('/competitions');
-  assert.equal(calls[1][0],'/api/v1/competitions');
-  api.csrf=null;await api.request('/jobs');assert.equal(calls[2][0],'/api/v1/jobs');
+  assert.equal(calls[1][0],'/snapshots/competitions.json');
+  api.admin=true;await api.request('/competitions');assert.equal(calls[2][0],'/api/v1/competitions');api.admin=false;
+  api.csrf=null;await api.request('/jobs');assert.equal(calls[3][0],'/api/v1/jobs');
  }finally{globalThis.fetch=original;}
 });
 

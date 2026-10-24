@@ -1,3 +1,5 @@
+import {participantData} from './page-data.js';
+import {visiblePoll,githubPollMs} from './polling.js';
 import {tr,html as l10n,language,setLanguage} from './i18n.js';
 import {startAnnouncements} from './announcements.js';
 import {readTournamentOptions} from './tournament-options.js';
@@ -15,7 +17,7 @@ import {publicRoute} from './access.js';
 import {readRuleForm,ruleEditor,rulePreviewMarkup,botRulesetField,botRulesetSelection,ruleFingerprint} from './experimental-ui.js';
 
 const api=new ArenaAPI(),app=document.getElementById('app'),modalRoot=document.getElementById('modal-root');
-const defaults=()=>({announcements:[],adminAnnouncements:[],duplicates:[],queue:null,rankingLookup:null,historyTotal:null,teamElo:null,github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
+const defaults=()=>({initialHistory:null,initialClock:null,announcements:[],adminAnnouncements:[],duplicates:[],queue:null,rankingLookup:null,historyTotal:null,teamElo:null,github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
 const s={...defaults(),user:null,emailRequest:null,emailAddress:'',route:'home',ids:[],loading:false,adminTab:'accounts',registrationStatus:'pending',adminVisibility:'active',adminSearch:'',adminPage:1,opsTab:'jobs',opsPage:1,opsSearch:'',opsStatus:'',opsKind:'',opsTeam:''};
 let emailPoll,githubPoll;
 let generation=0,board,competitionFeed,jobFeed,toastTimer,modalFocus,returnTo='home',issued=null,issuedGrader=null,refreshingGeneration=null;
@@ -27,12 +29,12 @@ const terminal=status=>['completed','failed','aborted'].includes(status);
 const uuid=()=>crypto.randomUUID();
 const enc=encodeURIComponent;
 function toast(message){const el=document.getElementById('toast');el.className='toast show';el.textContent=message;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),6000);}
-function clearView(){clearTimeout(eloPoll);clearTimeout(emailPoll);competitionFeed?.close();competitionFeed=null;board?.close();board=null;jobFeed?.close();jobFeed=null;closeModal();}
+function clearView(){eloPoll?.close();githubPoll?.close();emailPoll?.close();competitionFeed?.close();competitionFeed=null;board?.close();board=null;jobFeed?.close();jobFeed=null;closeModal();}
 function render(){app.innerHTML=page(s);const title={home:'UET Bot Arena',login:tr('Đăng nhập'),register:tr('Đăng ký đội'),recover:tr('Cấp lại mật khẩu'),'change-password':tr('Đổi mật khẩu')}[s.route]||document.querySelector('#main h1')?.textContent||'UET Bot Arena';document.title=title==='UET Bot Arena'?title:title+' · UET Bot Arena';mobileSidebar();}
 function mobileSidebar(){const sidebar=document.querySelector('.sidebar');if(sidebar)sidebar.inert=matchMedia('(max-width:760px)').matches&&!s.menuOpen;}
 matchMedia('(max-width:760px)').addEventListener('change',mobileSidebar);
 function go(route){if(location.hash==='#/'+route)openRoute();else location.hash='/'+route;}
-function clearAccount(){Object.assign(s,defaults(),{user:null,emailRequest:null,emailAddress:'',emailPurpose:'verify',passwordFinished:false,inviteCode:''});api.csrf=null;issued=null;}
+function clearAccount(){Object.assign(s,defaults(),{user:null,emailRequest:null,emailAddress:'',emailPurpose:'verify',passwordFinished:false,inviteCode:''});api.csrf=null;api.admin=false;issued=null;}
 function expired(){clearAccount();toast(tr('Phiên đã hết hạn. Hãy đăng nhập lại.'));go('login');}
 async function refreshPerson(){
   const session=await api.request('/auth/me');s.user=session.user;authChanged();go('team');
@@ -40,6 +42,8 @@ async function refreshPerson(){
 function handleError(e){if(e.status===401&&s.user)expired();else if(e.code==='password_change_required')go('change-password');else toast(e.message);}
 function parseRoute(){const raw=location.hash.replace(/^#\/?/,'')||'home',[path,query='']=raw.split('?'),parts=path.split('/');return{route:parts[0],ids:parts.slice(1),query:new URLSearchParams(query),raw};}
 async function loadData(route,ids,q){
+  api.admin=s.user?.role==='admin';
+  if(!api.admin)return participantData(api,s.user,route,ids,q);
   const data={};
   if(s.user&&s.user.role!=='admin'&&['home','team','submissions','competitions'].includes(route))data.personal=await api.request('/users/me');
   if(route==='team'&&s.user?.team_id)data.teamElo=await api.request('/team/elo');
@@ -127,7 +131,7 @@ async function openRoute(){
       app.innerHTML=shell(s,boardPage(options));mobileSidebar();document.title=options.title+' · UET Bot Arena';
       const mountBoard=(current,reset=false)=>{
         board?.close();
-        board=new MatchBoard(api,{path:practice?'/jobs/'+s.job.id+'/events':'/competitions/'+s.competition.id+'/fixtures/'+current.id+'/events',official:!practice,terminal:practice?terminal(s.job.status):['completed','attention'].includes(current.status),onExpired:expired,onError:handleError,onReview:()=>competitionFeed?.pause()});
+        board=new MatchBoard(api,{path:practice?'/jobs/'+s.job.id+'/events':'/competitions/'+s.competition.id+'/fixtures/'+current.id+'/events',official:!practice,initialHistory:practice?s.initialHistory:null,initialClock:practice?s.initialClock:null,terminal:practice?terminal(s.job.status):['completed','attention'].includes(current.status),onExpired:expired,onError:handleError,onReview:()=>competitionFeed?.pause()});
         if(reset)board.reset(undefined);
         board.start();
       };
@@ -151,25 +155,41 @@ async function openRoute(){
 }
 let eloPoll;
 function watchElo(id){
-  clearTimeout(eloPoll);
-  if(id===generation&&s.route==='queue'){eloPoll=setTimeout(async()=>{try{const queue=await api.snapshot('queue.json');if(id===generation){s.queue=queue;patchPage();watchElo(id);}}catch(e){if(id===generation){handleError(e);watchElo(id);}}},5000);return;}
-  if(id!==generation||!['competitions','standings'].includes(s.route)||s.competition?.config.format!=='elo')return;
-  eloPoll=setTimeout(async()=>{try{
-    const cid=s.competition.id;
-    const [competition,standings]=await Promise.all([api.request('/competitions/'+cid),api.request('/competitions/'+cid+'/standings')]);
-    if(id===generation){Object.assign(s,{competition,standings});patchPage();watchElo(id);}
-  }catch(e){if(id===generation){handleError(e);watchElo(id);}}},3000);
+  eloPoll?.close();
+  if(id!==generation)return;
+  const cid=s.competition?.id,common=['home','competitions','schedule','live','standings','queue','announcements'].includes(s.route);
+  if(!common)return;
+  eloPoll=visiblePoll(async()=>{
+    if(id!==generation)return;
+    const data={};
+    if(s.route==='queue')data.queue=await api.snapshot('queue.json');
+    else if(s.route==='announcements')data.announcements=(await api.snapshot('announcements.json')).items;
+    else{
+      data.competitions=await api.all('/competitions');
+      if(cid){
+        const [competition,standings,fixtures]=await Promise.all([api.request('/competitions/'+cid),api.request('/competitions/'+cid+'/standings'),api.request('/competitions/'+cid+'/fixtures')]);
+        Object.assign(data,{competition,standings,fixtures:fixtures.items,historyTotal:fixtures.history_total});
+      }
+    }
+    if(id===generation){Object.assign(s,data);patchPage();}
+  },10000,{onError:handleError});
 }
 function watchGitHub(id){
-  clearTimeout(githubPoll);
+  githubPoll?.close();
   if(!s.user?.team_id||!['team','submissions'].includes(s.route)||id!==generation)return;
-  githubPoll=setTimeout(async()=>{try{const [next,elo]=await Promise.all([api.request('/teams/me/github'),s.route==='team'?api.request('/team/elo'):Promise.resolve(null)]);if(id===generation){s.github=next;if(elo)s.teamElo=elo;patchPage();watchGitHub(id);}}catch(e){if(id===generation){handleError(e);watchGitHub(id);}}},3000);
+  githubPoll=visiblePoll(async()=>{
+    const next=await api.request('/ui/page?view='+s.route);
+    if(id===generation){Object.assign(s,next);patchPage();}
+  },()=>githubPollMs(s.github),{onError:handleError});
 }
 function watchEmail(id){
-  clearTimeout(emailPoll);
+  emailPoll?.close();
   const r=s.emailRequest;
   if(id!==generation||!['register','recover','verify-email'].includes(s.route)||!r||r.verified_ms||r.status==='dropped'||r.status==='sent'&&!r.resend_after_seconds)return;
-  emailPoll=setTimeout(async()=>{try{const next=await api.request('/auth/email/requests/'+r.id);if(id===generation&&s.emailRequest?.id===r.id&&!s.emailRequest.verified_ms){s.emailRequest=next;patchPage();watchEmail(id);}}catch(e){handleError(e);}},3000);
+  emailPoll=visiblePoll(async()=>{
+    const next=await api.request('/auth/email/requests/'+r.id);
+    if(id===generation&&s.emailRequest?.id===r.id&&!s.emailRequest.verified_ms){s.emailRequest=next;patchPage();if(next.verified_ms)emailPoll.close();}
+  },3000,{onError:handleError});
 }
 function connectionStatus(offline){const el=document.querySelector('.connection-label'),text=offline?tr('Đang nối lại máy chủ'):tr('Kết nối máy chủ');if(el&&el.textContent!==text){el.innerHTML='<i></i>'+text;el.classList.toggle('offline',offline);}}
 function patchPage(){
@@ -455,7 +475,7 @@ document.addEventListener('click',async e=>{
     if(action==='diagnostic'){await diagnostic(b.dataset.fixture);return;}
     if(action==='retry-fixture'){const fid=b.dataset.fixture;confirmAction(tr('Chạy lại trận?'),tr('Tạo lần chạy mới cho trận chưa tính điểm. Lịch sử cũ được giữ lại.'),()=>api.post(`/admin/competitions/${s.competition.id}/fixtures/${fid}/retry`,{},keyFor(b)));return;}
     if(action==='export-standings'){
-      if(!s.user){const a=document.createElement('a');a.href='/snapshots/standings/'+enc(s.competition.id)+'.csv';a.click();return;}
+      if(s.user?.role!=='admin'){const a=document.createElement('a');a.href='/snapshots/standings/'+enc(s.competition.id)+'.csv';a.click();return;}
       const csvCell=value=>'"'+String(value??'').replace(/^[=+@\-\t\r]/,"'$&").replaceAll('"','""')+'"';
       const rows=[[tr('Hạng'),tr('Đội'),tr('Phiên bản'),tr('Trận'),tr('Thua'),tr('Hòa'),tr('Thắng'),tr('Điểm')],...s.standings.items.map(x=>[x.rank,x.name,x.version,x.played,x.losses,x.draws||0,x.wins,x.points])];saveBlob('standings.csv',new Blob(['\uFEFF'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));
     }

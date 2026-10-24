@@ -1,4 +1,5 @@
-// Guest views share cacheable files. Authenticated private streams keep SSE.
+import {visiblePoll} from './polling.js';
+// Shared views use cacheable files for every participant. Private feeds keep SSE.
 export function snapshotPath(path){
   const u=new URL(path,'file:///'),p=u.pathname;
   let m;
@@ -32,11 +33,11 @@ export async function publicRequest(api,path){
 export class PublicFeed {
   constructor(api,path){
     this.api=api;this.path=path;this.listeners=new Map();this.closed=false;this.seq=Number(new URL(path,'file:///').searchParams.get('after')||0);
-    queueMicrotask(()=>this.tick());
+    this.poll=visiblePoll(()=>this.tick(),10000,{immediate:true});
   }
   addEventListener(type,listener){if(!this.listeners.has(type))this.listeners.set(type,[]);this.listeners.get(type).push(listener);}
   emit(type,data){if(!this.closed)for(const listener of this.listeners.get(type)||[])listener({data:JSON.stringify(data)});}
-  close(){this.closed=true;clearTimeout(this.timer);}
+  close(){this.closed=true;this.poll?.close();}
   async tick(){
     try{
       const featured=await this.api.featured();
@@ -60,6 +61,5 @@ export class PublicFeed {
       if(error.status===404){this.emit('unavailable',{});this.close();return;}
       if(!this.closed)this.onerror?.(error);
     }
-    if(!this.closed)this.timer=setTimeout(()=>this.tick(),2000);
   }
 }

@@ -1,3 +1,4 @@
+import {visiblePoll} from './polling.js';
 import {tr,html as l10n} from './i18n.js';
 import {esc,button,head,panel,note,badge,link,icon} from './view.js';
 import {resultLabel,sideName} from './result.js';
@@ -63,8 +64,8 @@ export function boardPage({title,red,blue,back,admin=false,officialLive=false,pr
 // Event snapshots are immutable. The board square elements remain mounted for the
 // lifetime of the view; only each square's piece/label/highlight is patched.
 export class MatchBoard {
-  constructor(api,{path,official=false,terminal=false,onExpired,onError,onReview}) {
-    Object.assign(this,{api,path,official,terminal,onExpired,onError,onReview});
+  constructor(api,{path,official=false,terminal=false,initialHistory=null,initialClock=null,onExpired,onError,onReview}) {
+    Object.assign(this,{api,path,official,terminal,initialHistory,onExpired,onError,onReview});
     this.states=[];this.index=-1;this.seq=0;this.attempt=undefined;this.follow=true;this.disposed=false;
     this.cells=[...document.querySelectorAll('#live-board .board-square')];
     this.$=id=>document.getElementById(id);
@@ -72,13 +73,14 @@ export class MatchBoard {
     this.$('replay-slider').addEventListener('input',e=>this.seek(Number(e.target.value)),{signal:this.listeners.signal});
     this.$('follow-live').addEventListener('change',e=>{this.follow=e.target.checked;if(this.follow)this.show(this.states.length-1);else this.onReview?.();},{signal:this.listeners.signal});
     this.tick=setInterval(()=>this.clock(),100);
-    this.syncClock();this.resync=setInterval(()=>this.syncClock(),30000);
+    if(initialClock)this.clockMap=initialClock;else if(!terminal)this.syncClock();
+    this.resync=visiblePoll(()=>this.terminal?Promise.resolve():this.syncClock(),30000);
   }
   async start(){try{await this.history();if(!this.disposed&&!this.terminal)this.connect();}catch(e){if(!this.disposed){this.message(e.message);this.onError?.(e);}}}
   message(text){if(!this.disposed)this.$('stream-message').textContent=text;}
   async syncClock(){
     let best;
-    try{for(let i=0;i<3;i++){const a=performance.now(),t=await this.api.request('/time'),b=performance.now(),rtt=b-a;if(!best||rtt<best.rtt)best={rtt,anchor:(a+b)/2,unix:(t.server_received_unix_ms+t.server_sent_unix_ms)/2,clockId:t.clock_id};}
+    try{for(let i=0;i<1;i++){const a=performance.now(),t=await this.api.request('/time'),b=performance.now(),rtt=b-a;if(!best||rtt<best.rtt)best={rtt,anchor:(a+b)/2,unix:(t.server_received_unix_ms+t.server_sent_unix_ms)/2,clockId:t.clock_id};}
       if(this.disposed)return;this.clockMap=best;this.clock();
     }catch{if(!this.disposed)this.$('clock-note').textContent=tr('Chưa đồng bộ đồng hồ hiển thị; worker vẫn quyết định thời hạn mỗi lượt.');}
   }
@@ -92,12 +94,13 @@ export class MatchBoard {
   async history(){
     // The official cursor also advances over private events filtered by API.
     for(let pages=0;pages<20;pages++){
-      const requested=this.seq,h=await this.api.request(this.path+'?after='+requested);if(this.disposed)return;
+      const requested=this.seq,preloaded=this.initialHistory,h=preloaded||await this.api.request(this.path+'?after='+requested);this.initialHistory=null;if(this.disposed)return;
       if(this.official&&h.attempt_id!==this.attempt){this.reset(h.attempt_id);if(requested>0)continue;}
       if(h.replay_pruned){this.terminal=true;this.$('match-status').innerHTML=badge('completed');this.$('match-result').textContent=tr('Kết quả vẫn được giữ trong lịch đấu.');this.message(tr('Replay đã quá hạn lưu; hub giữ các ván ladder và luyện tập gần nhất của mỗi đội.'));return;}
       const before=this.seq;
       for(const event of h.items)this.consume(event);
       this.seq=Math.max(this.seq,h.next_after||0);
+      if(preloaded)return;
       if(this.seq===before||(!this.official&&h.items.length<1000))break;
     }
     this.message(this.terminal?tr('Đã tải diễn biến. Bạn có thể xem lại từng nước.'):tr('Đang theo dõi nước đi mới.'));
@@ -196,5 +199,5 @@ export class MatchBoard {
     }
     if(this.clockMap)this.$('clock-note').textContent=bank?tr('Thời gian còn lại cho cả trận · Chỉ trừ khi đến lượt · Không cộng giây.'):tr('Đồng hồ mỗi lượt của trận theo cấu hình cũ.');
   }
-  close(){this.disposed=true;this.listeners.abort();this.feed?.close();clearInterval(this.tick);clearInterval(this.resync);this.stopPlay();}
+  close(){this.disposed=true;this.listeners.abort();this.feed?.close();clearInterval(this.tick);this.resync.close();this.stopPlay();}
 }

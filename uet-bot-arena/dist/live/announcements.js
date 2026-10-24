@@ -1,4 +1,5 @@
 import {tr,html as l10n} from './i18n.js';
+import {visiblePoll} from './polling.js';
 // The banner survives page/board rendering and never interprets notice HTML.
 export function startAnnouncements(api){
   const target=document.getElementById('announcements-banner');
@@ -18,8 +19,5 @@ export function startAnnouncements(api){
     }catch{/* Keep the last public notice while reconnecting. */}
     finally{busy=false;}
   }
-  refresh();setInterval(refresh,30000);
-  addEventListener('focus',refresh);
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
-  return refresh;
+  return visiblePoll(refresh,10000,{immediate:true}).refresh;
 }
