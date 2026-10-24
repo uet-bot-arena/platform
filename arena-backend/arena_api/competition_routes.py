@@ -1,3 +1,4 @@
+from starlette.responses import JSONResponse
 import asyncio
 import json
 import time
@@ -91,7 +92,7 @@ def attempt(ident: str, fixture_id: str, number: int, request: Request, auth=Dep
 
 @router.get("/competitions", summary="Danh sách giải công khai; khách xem không cần đăng nhập")
 def listing(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0, le=2147483647), admin=Depends(spectator_admin)):
-    return request.app.state.competitions.listing(admin, limit, offset)
+    return JSONResponse(request.app.state.competitions.listing(admin, limit, offset))
 
 
 @router.get("/competitions/{ident}", summary="Cấu hình, đội dự giải, trạng thái lịch đấu; không trả thông tin liên hệ/source")
@@ -163,6 +164,14 @@ def watch(ident: str, request: Request, admin=Depends(spectator_admin)):
                              headers={'X-Accel-Buffering': 'no', 'Cache-Control': 'no-cache'})
 
 
+@router.get('/competitions/{ident}/fixtures/{fixture_id}/live-interest',summary='Khách báo đang xem; nội dung ván vẫn đọc từ file tĩnh')
+def live_interest(ident: str,fixture_id: str,request: Request,admin=Depends(spectator_admin)):
+    fixture=request.app.state.competitions.live_fixture(ident,fixture_id,admin)
+    if fixture.get('current_job_id'):
+        request.app.state.broadcast.interest(fixture['current_job_id'])
+    return {'ok':True}
+
+
 @router.get("/competitions/{ident}/fixtures/{fixture_id}/events", summary="Board live/replay JSON hoặc SSE đã lọc log và metric riêng; cursor theo attempt")
 def events(ident: str, fixture_id: str, request: Request, after: int = Query(0, ge=0, le=9223372036854775807),
            last_event_id: str | None = Header(None), admin=Depends(spectator_admin)):
@@ -201,12 +210,11 @@ def events(ident: str, fixture_id: str, request: Request, after: int = Query(0, 
                 yield 'event: attempt_changed\ndata: {}\n\n'
                 return
             if job_id:
-                def batch():
+                def load(cursor):
                     safe, next_cursor = competitions.safe_events(job_id, cursor)
-                    payload = ''.join(f"id: {job_id}:{event['seq']}\nevent: arena\ndata: {json.dumps(event, separators=(',', ':'))}\n\n" for event in safe)
-                    done = request.app.state.store.get(job_id)["status"] in TERMINAL and not request.app.state.store.events(job_id, next_cursor)
-                    return payload, next_cursor, done
-                payload, next_cursor, done = await request.app.state.broadcast.get_async(("events", job_id, cursor), batch)
+                    done = request.app.state.store.get(job_id,hydrate=False)['status'] in TERMINAL and not request.app.state.store.events(job_id, next_cursor)
+                    return safe, next_cursor, done
+                payload, next_cursor, done = await request.app.state.broadcast.event_chunk(job_id,cursor,load)
                 if payload:
                     yield payload
                 cursor = next_cursor
@@ -214,7 +222,7 @@ def events(ident: str, fixture_id: str, request: Request, after: int = Query(0, 
                     return
             yield ": heartbeat\n\n"
             await asyncio.sleep(1)
-    return StreamingResponse(request.app.state.broadcast.limited(account,stream()), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"})
+    return StreamingResponse(request.app.state.broadcast.limited(account,stream(),job=job_id), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"})
 
 
 @router.get('/competitions/{ident}/elo/export',summary='Kết quả theo mã ván để tính lại Elo và điểm vòng tròn; không chứa source')
@@ -227,7 +235,7 @@ def elo_export(ident: str,request: Request,stage: str=Query('official',pattern='
 @router.get('/team/elo',summary='SHA đang đấu, bản dự kiến đợt sau và ván/Elo của chính đội')
 def team_elo(request: Request,auth=Depends(team_principal)):
     with request.app.state.store.lock:
-        return request.app.state.competitions.elo.team_view(auth['user']['team_id'])
+        return JSONResponse(request.app.state.competitions.elo.team_view(auth['user']['team_id']))
 
 
 

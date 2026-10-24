@@ -5,6 +5,8 @@ submit a report guarded by a fencing token; the hub replays the moves before acc
 (arena.verify). A lease that is not renewed expires: the job goes back to the queue, or an
 official fixture gets a new attempt (Competitions.reconcile).
 """
+import gzip
+import io
 import hashlib
 import json
 import os
@@ -14,13 +16,14 @@ import secrets
 import threading
 import time
 import uuid
+import zlib
 
 from arena import engine, experimental, basic_rules
 from arena.adjudication import CURRENT
 from arena.job_queue import DurableJobQueue, MAX_RUNNING_PER_TEAM
 from arena.archive import unpack
 from arena.config import benchmark_profile, profile, request_profile, stored_profile, scale_profile
-from arena.protocol import Fault
+from arena.protocol import Fault, strict_json
 from arena.runner import TERMINAL, digest, engine_for, fixtures, summary  # noqa: F401 (re-exported)
 from arena.verify import verify
 
@@ -69,6 +72,7 @@ class Service:
         self.rulesets = None
         self.max_submissions_per_hour = 30
         self.competitions = None
+        self.event_flush_ms = lambda job:150
         self.grader = grader or GraderDefaults()
         # Anchor lease timestamps once: wall-clock corrections must not shorten a live lease.
         self.lease_epoch_ms = now_ms() - time.monotonic_ns() // 1_000_000
@@ -354,8 +358,10 @@ class Service:
             grader = dict(zip([c[0] for c in cursor.description], row))
             if grader["revoked_ms"] is not None:
                 raise Fault("unauthorized", "Grader token revoked")
-            with self.store.db:
-                self.store.db.execute("UPDATE graders SET last_seen_ms=? WHERE id=?", (now_ms(), grader["id"]))
+            now=now_ms()
+            if grader['last_seen_ms'] is None or now<grader['last_seen_ms'] or now-grader['last_seen_ms']>=1000:
+                with self.store.db:
+                    self.store.db.execute("UPDATE graders SET last_seen_ms=? WHERE id=?", (now, grader["id"]))
         return grader
 
     def hello(self, grader, info):
@@ -403,7 +409,9 @@ class Service:
                                     leases=job.get("leases", 0) + 1)
             self.store.event(ident, "leased", {"grader": grader["name"], "platform": grader["platform"], "fencing": fencing})
             submissions = [self.lease_submission(job, index, ident_, grader) for index, ident_ in enumerate(job["submission_ids"])]
-        return {"lease_id": lease_id, "fencing": fencing, "expires_ms": expires, "heartbeat_seconds": self.grader.heartbeat_seconds,
+            replay_base=self.store.db.execute("SELECT MAX(seq) FROM events WHERE job=?",(ident,)).fetchone()[0]
+        return {"lease_id": lease_id, "fencing": fencing, "expires_ms": expires, "heartbeat_seconds": self.grader.heartbeat_seconds, "event_flush_ms": 150 if job["kind"]!="match" else self.event_flush_ms(ident), "replay_gzip": job["kind"]=="match",
+                "replay_base": replay_base, "event_epoch_ms": now_ms(),
                 "job": {k: v for k, v in job.items() if k not in ("report", "error")}, "submissions": submissions}
 
     def lease_submission(self, job, index, ident, grader):
@@ -437,13 +445,15 @@ class Service:
             raise Fault("stale_lease", "Lease is no longer held by this grader; stop the job")
         return row[0]
 
-    def heartbeat(self, grader, lease_id, fencing):
+    def heartbeat(self, grader, lease_id, fencing, phase=None):
+        if phase is not None and phase not in ('building','validating','benchmarking','playing'):
+            raise Fault('invalid_request','Unknown phase')
         with self.store.lock, self.store.db:
             job_id = self.active_lease(grader, lease_id, fencing)
             expires = self.lease_now_ms() + self.grader.lease_seconds * 1000
             self.store.db.execute("UPDATE grader_leases SET expires_ms=? WHERE id=?", (expires, lease_id))
-            self.store.update(job_id, lease_until_ms=expires, heartbeat_ms=self.lease_now_ms())
-        return {"ok": True, "expires_ms": expires}
+            self.store.update(job_id, lease_until_ms=expires, heartbeat_ms=self.lease_now_ms(), **({"status":phase} if phase else {}))
+        return {"ok": True, "expires_ms": expires, "event_flush_ms": 150 if self.store.get(job_id,hydrate=False)["kind"]!="match" else self.event_flush_ms(job_id)}
 
     def post_events(self, grader, lease_id, fencing, events):
         job_id = self.active_lease(grader, lease_id, fencing)
@@ -452,15 +462,13 @@ class Service:
         for item in events:
             if not isinstance(item, dict) or item.get("type") not in EVENT_TYPES or not isinstance(item.get("data"), dict):
                 raise Fault("invalid_request", "Unknown or malformed event")
-        with self.store.lock:
-            self.active_lease(grader, lease_id, fencing)
-            for item in events:
-                if item["type"] == "phase":
-                    phase = item["data"].get("phase")
-                    if phase not in ("building", "validating", "benchmarking", "playing"):
-                        raise Fault("invalid_request", "Unknown phase")
-                    self.store.update(job_id, status=phase)
-                self.store.event(job_id, item["type"], item["data"])
+        phases=[item['data'].get('phase') for item in events if item['type']=='phase']
+        if any(phase not in ('building','validating','benchmarking','playing') for phase in phases):
+            raise Fault('invalid_request','Unknown phase')
+        with self.store.transaction():
+            self.active_lease(grader,lease_id,fencing)
+            if phases:self.store.update(job_id,status=phases[-1])
+            self.store.event_batch(job_id,events)
         return {"ok": True, "accepted": len(events)}
 
     def store_artifact(self, grader, lease_id, fencing, submission_id, sha256, data):
@@ -559,7 +567,32 @@ class Service:
                 return self.submission_archive(item)
         raise Fault("not_found", "Source not part of an active lease")
 
-    def submit_result(self, grader, lease_id, fencing, status, report, error):
+    def submit_replay(self, grader, lease_id, fencing, compressed):
+        job_id = self.active_lease(grader,lease_id,fencing)
+        if self.store.get(job_id,hydrate=False)['kind']!='match':
+            raise Fault('invalid_request','Compressed replay is for matches')
+        try:
+            if len(compressed)>8*1024**2:raise ValueError('Replay too large')
+            with gzip.GzipFile(fileobj=io.BytesIO(compressed)) as stream:
+                raw=stream.read(32*1024**2+1)
+            if len(raw)>32*1024**2:raise ValueError('Replay too large')
+            value=strict_json(raw)
+            events=value['events']
+            if not isinstance(events,list) or len(events)>30000:raise ValueError('Invalid events')
+            with self.store.lock:
+                base=self.store.db.execute("SELECT MAX(seq) FROM events WHERE job=? AND json_extract(data,'$.type')='leased'",(job_id,)).fetchone()[0]
+            for index,event in enumerate(events,1):
+                if (type(event.get('seq')) is not int or event['seq']!=base+index or event.get('type') not in EVENT_TYPES
+                        or not isinstance(event.get('data'),dict) or type(event.get('server_unix_ms')) is not int):
+                    raise ValueError('Invalid replay event')
+                if event['type']=='phase' and event['data'].get('phase') not in ('building','validating','benchmarking','playing'):
+                    raise ValueError('Invalid phase')
+            status,report,error=value['status'],value.get('report'),value.get('error')
+        except (ValueError,KeyError,TypeError,AttributeError,OSError,EOFError,zlib.error) as exc:
+            raise Fault('invalid_request','Malformed or oversized compressed replay') from exc
+        return self.submit_result(grader,lease_id,fencing,status,report,error,replay=(compressed,base,len(events)))
+
+    def submit_result(self, grader, lease_id, fencing, status, report, error, replay=None):
         job_id = self.active_lease(grader, lease_id, fencing)
         if status not in TERMINAL:
             raise Fault("invalid_request", "status must be completed, failed or aborted")
@@ -578,6 +611,11 @@ class Service:
         with self.store.lock, self.store.db:
             # Verification runs outside the lock: expiry/revocation may win meanwhile.
             self.active_lease(grader, lease_id, fencing)
+            if replay is not None:
+                compressed,base,count=replay
+                self.store.db.execute('INSERT OR REPLACE INTO replay_archives VALUES(?,?)',(job_id,compressed))
+                self.store.db.execute('DELETE FROM events WHERE job=? AND seq>?',(job_id,base))
+                self.store.update(job_id,replay_last_seq=base+count)
             ended = self.lease_now_ms()
             created = self.store.db.execute("SELECT created_ms FROM grader_leases WHERE id=?", (lease_id,)).fetchone()[0]
             self.store.db.execute("UPDATE grader_leases SET status='completed',ended_ms=? WHERE id=?", (ended, lease_id))

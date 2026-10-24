@@ -103,7 +103,7 @@ class Store:
             if archive:
                 data = json.loads(gzip.decompress(archive[0]))
                 if isinstance(data, dict):
-                    item['report'] = {**item['report'], **data.get('report', {})}
+                    item['report'] = {**item['report'], **{k:v for k,v in data.get('report', {}).items() if k in REPLAY_REPORT_FIELDS}}
         return item
 
     def update(self, ident, **fields):
@@ -146,7 +146,8 @@ class Store:
 
     def event_batch(self, job, items):
         with self.transaction():
-            first=self.db.execute("SELECT COALESCE(MAX(seq),0)+1 FROM events WHERE job=?",(job,)).fetchone()[0]
+            first=self.db.execute("SELECT MAX(COALESCE((SELECT MAX(seq) FROM events WHERE job=?),0),"
+                "COALESCE((SELECT json_extract(data,'$.replay_last_seq') FROM documents WHERE id=?),0))+1",(job,job)).fetchone()[0]
             now=time.time_ns()//1_000_000
             events=[dict(seq=first+i,type=item['type'],server_unix_ms=now,data=item['data']) for i,item in enumerate(items)]
             self.db.executemany("INSERT INTO events VALUES(?,?,?)",((job,e['seq'],json.dumps(e)) for e in events))
@@ -155,16 +156,20 @@ class Store:
     def events(self, job, after=0):
         with self.lock:
             rows = self.db.execute("SELECT data FROM events WHERE job=? AND seq>? ORDER BY seq LIMIT 1000", (job, after)).fetchall()
-            archive = self.db.execute("SELECT data FROM replay_archives WHERE job=?", (job,)).fetchone() if not rows else None
+            metadata = self.db.execute("SELECT json_extract(data,'$.replay_last_seq') FROM documents WHERE id=?",(job,)).fetchone()
+            end = metadata[0] if metadata else None
+            archive = self.db.execute("SELECT data FROM replay_archives WHERE job=?", (job,)).fetchone() if (end is not None and after<end) or not rows else None
+        values = [json.loads(row[0]) for row in rows]
         if archive:
-            values = json.loads(gzip.decompress(archive[0]))
-            if isinstance(values, dict):
-                values = values['events']
-            return [e for e in values if e['seq'] > after][:1000]
-        return [json.loads(row[0]) for row in rows]
+            stored = json.loads(gzip.decompress(archive[0]))
+            stored = stored['events'] if isinstance(stored,dict) else stored
+            values += [e for e in stored if e['seq']>after]
+        return sorted(values,key=lambda e:e['seq'])[:1000]
 
     def archive_events(self, job):
         with self.transaction():
+            if self.get(job,hydrate=False).get('replay_last_seq') is not None:
+                return  # The grader's gzip block is already durable; keep its exact bytes.
             rows = self.db.execute('SELECT data FROM events WHERE job=? ORDER BY seq', (job,)).fetchall()
             if rows:
                 report = self.get(job, hydrate=False).get('report') or {}

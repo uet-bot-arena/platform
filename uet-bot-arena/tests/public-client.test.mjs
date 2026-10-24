@@ -50,3 +50,23 @@ test('large board offers a separate team lookup and public queue reveals no grad
  const queue=page({...base,route:'queue',queue:{waiting:{official:3,checks:4,practice:5},running:0,slots:0,generated_ms:1}});
  assert.match(queue,/Đang chờ kiểm tra/);assert.doesNotMatch(queue,/máy chấm.*tắt|ETA/i);
 });
+
+
+test('featured summary fetches full static history without dropping intermediate replay moves',async()=>{
+ const events=[1,2,3].map(seq=>({seq,type:'state',data:{}}));let reads=0;
+ const api={featured:async()=>({boards:[{competition_id:'cup',fixture_id:'f',attempt_id:'a',summary_only:true,next_after:3,items:[events[2]]}]}),snapshot:async()=>{reads++;return {attempt_id:'a',next_after:3,items:events};}};
+ const feed=new PublicFeed(api,'/competitions/cup/fixtures/f/events'),seen=[];
+ feed.addEventListener('arena',e=>seen.push(JSON.parse(e.data).seq));
+ await new Promise(setImmediate);clearTimeout(feed.timer);
+ assert.deepEqual(seen,[1,2,3]);assert.equal(reads,1);
+ await feed.tick();clearTimeout(feed.timer);assert.deepEqual(seen,[1,2,3]);assert.equal(reads,1);feed.close();
+});
+
+
+test('guest watching a non-featured active board signals interest without SSE',async()=>{
+  const calls=[];
+  const api={featured:async()=>({boards:[]}),snapshot:async()=>({fixture:{status:'queued'},items:[],attempt_id:'job',next_after:0}),request:async path=>{calls.push(path);return {ok:true};}};
+  const feed=new PublicFeed(api,'/competitions/c/fixtures/f/events');
+  await new Promise(resolve=>setTimeout(resolve,20));feed.close();
+  assert.deepEqual(calls,['/competitions/c/fixtures/f/live-interest']);
+});

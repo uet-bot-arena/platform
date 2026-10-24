@@ -5,7 +5,7 @@ from arena.protocol import Fault
 COOKIE = "arena_web_session"
 
 # These GET operations share the same filtered view for teams and guests.
-SPECTATOR_PATHS = {"/api/v1/competitions/{ident}/elo/export", "/api/v1/competitions", "/api/v1/competitions/{ident}",
+SPECTATOR_PATHS = {"/api/v1/competitions/{ident}/fixtures/{fixture_id}/live-interest", "/api/v1/competitions/{ident}/elo/export", "/api/v1/competitions", "/api/v1/competitions/{ident}",
                    "/api/v1/competitions/{ident}/fixtures", "/api/v1/competitions/{ident}/standings",
                    "/api/v1/competitions/{ident}/watch",
                    "/api/v1/competitions/{ident}/fixtures/{fixture_id}/events"}

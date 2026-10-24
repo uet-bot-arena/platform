@@ -1,0 +1,8 @@
+{
+  "policy": "Highest event density among completed 10-second games with at least10moves and no bot/startup fault in season1",
+  "candidates": 140,
+  "job_id": "02719a0390e54c2d87169ea96e8a23f2",
+  "events": 178,
+  "span_ms": 1648,
+  "moves": 87
+}

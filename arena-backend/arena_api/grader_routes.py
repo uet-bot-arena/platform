@@ -29,6 +29,10 @@ class Fenced(Model):
     fencing: int = Field(ge=1)
 
 
+class Heartbeat(Fenced):
+    phase: Literal['building','validating','benchmarking','playing'] | None = None
+
+
 class Events(Fenced):
     events: list[dict] = Field(max_length=600)
 
@@ -73,8 +77,8 @@ async def lease(body: LeaseRequest, request: Request, who=Depends(grader)):
 
 
 @router.post("/grader/leases/{lease_id}/heartbeat", summary="Gia hạn lease (gọi mỗi 5 s)")
-def heartbeat(lease_id: str, body: Fenced, request: Request, who=Depends(grader)):
-    return request.app.state.service.heartbeat(who, lease_id, body.fencing)
+def heartbeat(lease_id: str, body: Heartbeat, request: Request, who=Depends(grader)):
+    return request.app.state.service.heartbeat(who, lease_id, body.fencing, body.phase)
 
 
 @router.post("/grader/leases/{lease_id}/events", summary="Gửi event theo lô để live và replay vẫn chạy")
@@ -85,6 +89,12 @@ def events(lease_id: str, body: Events, request: Request, who=Depends(grader)):
 @router.post("/grader/leases/{lease_id}/result", summary="Nộp kết quả kèm fencing token; hub chạy lại nước đi để kiểm")
 def result(lease_id: str, body: Result, request: Request, who=Depends(grader)):
     return request.app.state.service.submit_result(who, lease_id, body.fencing, body.status, body.report, body.error)
+
+
+@router.post('/grader/leases/{lease_id}/result-replay',summary='Kết quả và replay gzip; lưu nguyên khối, vẫn kiểm fencing và kết quả')
+async def result_replay(lease_id: str, request: Request, x_fencing: int = Header(ge=1), who=Depends(grader)):
+    raw=await request.body()
+    return await run_in_threadpool(request.app.state.service.submit_replay,who,lease_id,x_fencing,raw)
 
 
 @router.post("/grader/leases/{lease_id}/release", summary="Trả lại lease khi máy chấm dừng giữa chừng")

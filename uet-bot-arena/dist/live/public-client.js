@@ -45,8 +45,12 @@ export class PublicFeed {
       if(new URL(this.path,'file:///').pathname.endsWith('/watch'))this.emit('competition',await publicRequest(this.api,this.path));
       else{
         const m=this.path.match(/^\/competitions\/([\w-]+)\/fixtures\/([\w-]+)\/events/);
-        const h=featured.boards.find(x=>x.competition_id===m[1]&&x.fixture_id===m[2])||await publicRequest(this.api,this.path);
+        let h=featured.boards.find(x=>x.competition_id===m[1]&&x.fixture_id===m[2])||await publicRequest(this.api,this.path);
+        if(h.summary_only&&(h.attempt_id!==this.attempt||h.next_after>this.seq))h=await publicRequest(this.api,this.path);
         if(this.closed)return;
+        if(h.fixture&&h.fixture.status!=='completed'&&(!this.interestAt||Date.now()-this.interestAt>=5000)){
+          await this.api.request(`/competitions/${m[1]}/fixtures/${m[2]}/live-interest`);this.interestAt=Date.now();
+        }
         if(this.attempt!==undefined&&this.attempt!==h.attempt_id){this.emit('attempt_changed',{});return;}
         this.attempt=h.attempt_id;this.emit('attempt',{attempt_id:h.attempt_id});
         for(const event of h.items)if(event.seq>this.seq)this.emit('arena',event);

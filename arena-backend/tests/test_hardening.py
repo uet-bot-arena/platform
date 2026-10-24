@@ -72,6 +72,14 @@ class Hardening(unittest.TestCase):
             self.assertFalse(feeds.watched('game'))
         asyncio.run(check())
 
+    def test_guest_interest_expires_and_is_bounded(self):
+        feeds=Snapshots(capacity=2)
+        with patch('arena_api.broadcast.monotonic',return_value=1):
+            feeds.interest('a');feeds.interest('b');feeds.interest('c')
+            self.assertFalse(feeds.watched('a'));self.assertTrue(feeds.watched('c'))
+        with patch('arena_api.broadcast.monotonic',return_value=14):
+            self.assertFalse(feeds.watched('c'))
+
     def test_restart_memory_does_not_grow_with_completed_report_history(self):
         import tracemalloc
         with tempfile.TemporaryDirectory() as tmp:

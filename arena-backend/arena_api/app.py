@@ -39,6 +39,8 @@ def body_limit(method, path):
         return 10 * MIB, True
     if method == "PUT" and path.startswith(GRADER_PREFIX + "artifacts/"):
         return 17 * MIB, True  # compiled bot (<= 16 MiB)
+    if path.startswith(GRADER_PREFIX) and path.endswith("/result-replay"):
+        return 8 * MIB, True
     if path.startswith(GRADER_PREFIX):
         return 8 * MIB, False  # match reports and event batches
     if path == "/api/v1/github/webhook":
@@ -158,6 +160,15 @@ def create_app(settings=None, start_worker=True):
             app.state.github = github
             from arena_api.broadcast import Snapshots
             app.state.broadcast = Snapshots()
+            def featured_jobs():
+                import gzip
+                path=(settings.publisher.output_dir or settings.data/'snapshots')/'featured.json.gz'
+                try:
+                    value=json.loads(gzip.decompress(path.read_bytes()))
+                    if time.time_ns()//1_000_000-value.get('generated_ms',0)>10000:return set()
+                    return {board.get('attempt_id') for board in value.get('boards',[])}
+                except (OSError,ValueError,EOFError):return set()
+            service.event_flush_ms=lambda job:150 if (app.state.broadcast.watched(job) or job in app.state.broadcast.get('featured-jobs',featured_jobs)) else 0
             from arena_api.operations import Operations
             app.state.operations = Operations(store, app.state.accounts, service, competitions)
             from arena_api.retention import Retention
@@ -265,7 +276,7 @@ def create_app(settings=None, start_worker=True):
         for path, methods in app.openapi()["paths"].items():
             for method, operation in methods.items():
                 rows.append(f'<tr><td><b>{html.escape(method.upper())}</b></td><td><code>{html.escape(path)}</code></td><td>{html.escape(operation.get("summary", ""))}</td></tr>')
-        return HTMLResponse('<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>UET Bot Arena · Backend API</title><link rel="stylesheet" href="/docs.css"><main><p class="eyebrow">UET BOT ARENA / BACKEND 0.6</p><h1>API cho đội thi và ban tổ chức.</h1><p>Đăng ký → admin duyệt → nộp bot → benchmark → chốt version → giải vòng tròn hai lượt → bảng xếp hạng.</p><aside>Bot chạy trên máy chấm từ xa trong sandbox native; bảng xếp hạng chỉ tính trận chính thức hợp lệ. Trận lỗi hạ tầng chờ admin xử lý.</aside><p><a href="/openapi.json">Tải OpenAPI JSON</a> · <a href="/api/v1/health/live">Liveness</a> · <a href="/api/v1/health/ready">Worker readiness</a></p><h2>Endpoints</h2><div class="table"><table><thead><tr><th>METHOD</th><th>PATH</th><th>CHỨC NĂNG</th></tr></thead><tbody>' + ''.join(rows) + '</tbody></table></div><p>Mutation sau đăng nhập cần cookie HttpOnly và X-CSRF-Token từ /auth/me. Hướng dẫn bootstrap admin, API và vận hành có trong docs/BACKEND.md của dự án.</p></main></html>')
+        return HTMLResponse('<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>UET Bot Arena · Backend API</title><link rel="stylesheet" href="/docs.css"><main><p class="eyebrow">UET BOT ARENA / BACKEND 0.6</p><h1>API cho đội thi và ban tổ chức.</h1><p>Xác minh email trường → lập đội bốn người → nộp GitHub → Kiểm tra → ladder → chốt hạn → vòng chung/vòng tròn → chung kết.</p><aside>Bot chạy trên máy chấm từ xa trong sandbox native; bảng xếp hạng chỉ tính trận chính thức hợp lệ. Trận lỗi hạ tầng tự chạy lại trong giới hạn; quá giới hạn cần BTC xử lý.</aside><p><a href="/openapi.json">Tải OpenAPI JSON</a> · <a href="/api/v1/health/live">Liveness</a> · <a href="/api/v1/health/ready">Độ sẵn sàng của hub</a></p><h2>Endpoints</h2><div class="table"><table><thead><tr><th>METHOD</th><th>PATH</th><th>CHỨC NĂNG</th></tr></thead><tbody>' + ''.join(rows) + '</tbody></table></div><p>Mutation sau đăng nhập cần cookie HttpOnly và X-CSRF-Token từ /auth/me. Hướng dẫn bootstrap admin, API và vận hành có trong docs/BACKEND.md của dự án.</p></main></html>')
 
     @app.get("/docs.css", include_in_schema=False)
     def docs_css():

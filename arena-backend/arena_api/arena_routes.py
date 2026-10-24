@@ -6,7 +6,7 @@ from pathlib import Path
 import time
 import zipfile
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
-from starlette.responses import StreamingResponse
+from starlette.responses import StreamingResponse, JSONResponse
 from arena import engine
 from arena.config import profile, match_profile
 from arena.protocol import Fault
@@ -101,11 +101,11 @@ def team(request: Request, auth=Depends(team_principal)):
 @router.get("/dashboard", summary="Thống kê thật từ submissions/jobs của đội")
 def dashboard(request: Request, auth=Depends(team_principal)):
     store, team_id = request.app.state.store, auth["user"]["team_id"]
-    jobs = store.list("job", team_id)
-    return {"team": request.app.state.accounts.team(team_id), "counts": {"submissions": len(store.list("submission", team_id)),
+    jobs = store.list("job", team_id, summary=True)
+    return JSONResponse({"team": request.app.state.accounts.team(team_id), "counts": {"submissions": len(store.list("submission", team_id)),
             "benchmarks": sum(j["kind"] == "benchmark" for j in jobs), "matches": sum(j["kind"] == "match" for j in jobs),
             "active_jobs": sum(j["status"] not in TERMINAL for j in jobs)}, "recent_jobs": [public_job(j) for j in jobs[:10]],
-            "official_standings_available": True, "competitions_url": "/api/v1/competitions"}
+            "official_standings_available": True, "competitions_url": "/api/v1/competitions"})
 
 
 @router.get("/starter.zip", summary="Tải SDK C++17 OTTv2 protocol v2")
@@ -123,7 +123,7 @@ def starter(runtime: str = Query("cpp17", pattern="^(cpp17|c11|python3)$"), auth
 def submissions(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0, le=2147483647), auth=Depends(team_principal)):
     service = request.app.state.service
     items = request.app.state.store.list("submission", auth["user"]["team_id"])
-    return {"items": [service.public_submission(s) for s in items[offset:offset + limit]], "total": len(items), "limit": limit, "offset": offset}
+    return JSONResponse({"items": [service.public_submission(s) for s in items[offset:offset + limit]], "total": len(items), "limit": limit, "offset": offset})
 
 
 @router.post("/submissions", include_in_schema=False)
@@ -160,8 +160,8 @@ def match(body: Match, request: Request, idempotency_key: str = Header(), auth=D
 
 @router.get("/jobs", summary="Jobs của đội, phân trang")
 def jobs(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0, le=2147483647), auth=Depends(team_principal)):
-    items = request.app.state.store.list("job", auth["user"]["team_id"])
-    return {"items": [public_job(j) for j in items[offset:offset + limit]], "total": len(items), "limit": limit, "offset": offset}
+    items = request.app.state.store.list("job", auth["user"]["team_id"], summary=True)
+    return JSONResponse({"items": [public_job(j) for j in items[offset:offset + limit]], "total": len(items), "limit": limit, "offset": offset})
 
 
 @router.get("/jobs/{ident}", summary="Chi tiết job gồm báo cáo nếu có")
@@ -219,4 +219,4 @@ def events(ident: str, request: Request, after: int = Query(0, ge=0, le=92233720
                 return
             yield ": heartbeat\n\n"
             await asyncio.sleep(1)
-    return StreamingResponse(request.app.state.broadcast.limited(auth["user"]["id"],stream()), media_type="text/event-stream", headers={"X-Accel-Buffering": "no", "Cache-Control":"no-cache"})
+    return StreamingResponse(request.app.state.broadcast.limited(auth["user"]["id"],stream(),job=ident), media_type="text/event-stream", headers={"X-Accel-Buffering": "no", "Cache-Control":"no-cache"})

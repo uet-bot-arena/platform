@@ -12,6 +12,7 @@ Ctrl+C once: finish the running jobs, then exit. Twice: hand the leases back and
 Only the standard library is needed, so a Windows grader needs no pip packages.
 """
 import argparse
+import gzip
 import getpass
 import json
 import logging
@@ -33,7 +34,7 @@ from arena.config import runtime_flags
 from arena.protocol import Fault
 from arena.runner import TERMINAL, Runner
 
-VERSION = "0.7.0-m1"
+VERSION = "0.8.0-m1"
 log = logging.getLogger("arena.grader")
 
 
@@ -91,7 +92,14 @@ class GraderRunner(Runner):
         self.client = grader.client
         self.submissions = {s["id"]: s for s in lease["submissions"]}
         self.buffer, self.buffer_lock = [], threading.Lock()
+        self.event_flush_seconds = .15 if lease.get('event_flush_ms',150) else 0
+        self.replay = [] if lease.get('replay_gzip') else None
+        self.event_epoch_ms=lease.get('event_epoch_ms',time.time_ns()//1_000_000)
+        self.event_started_ns=time.monotonic_ns()
+        self.flush_wake = threading.Event()
+        self.heartbeat_wake = threading.Event()
         self.report, self.status, self.error = None, None, None
+        self.current_phase = None
         self.state_published = False
         self.built = {}  # submission id -> (folder, manifest): one build per submission per job
         self.lost = threading.Event()
@@ -106,10 +114,16 @@ class GraderRunner(Runner):
     def record(self, job_id, kind, data):
         if kind in TERMINAL:
             return  # sent with the result
+        if kind == "phase":
+            self.current_phase = data.get("phase")
+            if self.replay is not None:self.heartbeat_wake.set()
         if kind == "state":
             self.state_published = True
         with self.buffer_lock:
-            self.buffer.append({"type": kind, "data": json.loads(json.dumps(data))})
+            value={"type": kind, "data": json.loads(json.dumps(data))}
+            self.buffer.append(value)
+            if self.replay is not None:
+                self.replay.append(dict(value,seq=self.lease['replay_base']+len(self.replay)+1,server_unix_ms=self.event_epoch_ms+(time.monotonic_ns()-self.event_started_ns)//1_000_000))
 
     def save(self, job_id, **fields):
         if "report" in fields:
@@ -190,17 +204,19 @@ class GraderRunner(Runner):
     def flush_loop(self):
         while not self.lost.is_set() and not getattr(self, "finished", False):
             try:
-                self.flush()
+                if self.event_flush_seconds:self.flush()
             except HubError:
                 pass
             except (LeaseLost, Revoked):
                 self.abandon()
                 return
-            time.sleep(0.15)
+            self.flush_wake.wait(.15)
+            self.flush_wake.clear()
 
     def abandon(self):
         """Lease lost: kill the bots now; no result will be sent."""
         self.lost.set()
+        self.heartbeat_wake.set()
         self.stop.set()
         for worker in list(self.workers):
             try:
@@ -210,7 +226,10 @@ class GraderRunner(Runner):
 
     def finish(self):
         self.finished = True
-        self.flusher.join(2)
+        self.flush_wake.set()
+        self.flusher.join()
+        if self.replay is not None:
+            return not self.lost.is_set()
         for attempt in range(20):
             try:
                 self.flush()
@@ -401,15 +420,20 @@ class Grader:
             self.done += 1
         finally:
             runner.lost.set()  # stops heartbeat and flusher
+            runner.heartbeat_wake.set()
             with self.active_lock:
                 self.active.pop(lease["lease_id"], None)
 
     def post_result(self, runner, status):
         body = {"fencing": runner.lease["fencing"], "status": status, "report": runner.report,
                 "error": runner.error if status == "failed" else None}
+        compressed = None
+        if runner.lease.get('replay_gzip'):
+            compressed=gzip.compress(json.dumps(dict(body,events=runner.replay),separators=(',',':'),allow_nan=False).encode(),mtime=0)
         for attempt in range(30):
             try:
-                answer = runner.client.call("POST", runner.path("result"), body)
+                answer = (runner.client.call("POST",runner.path('result-replay'),data=compressed,headers={'X-Fencing':str(runner.lease['fencing'])})
+                          if compressed is not None else runner.client.call("POST", runner.path("result"), body))
                 log.info("Kết quả %s: %s", runner.lease["job"]["id"][:8], answer.get("status"))
                 return answer
             except HubError:
@@ -420,9 +444,16 @@ class Grader:
 
     def heartbeat_loop(self, runner):
         every = self.settings["heartbeat_seconds"]
-        while not runner.lost.wait(every):
+        while not runner.lost.is_set():
+            runner.heartbeat_wake.wait(every)
+            runner.heartbeat_wake.clear()
+            if runner.lost.is_set():return
             try:
-                runner.client.call("POST", runner.path("heartbeat"), {"fencing": runner.lease["fencing"]}, timeout=every * 2)
+                body={"fencing": runner.lease["fencing"]}
+                if runner.replay is not None and runner.current_phase in ('building','validating','benchmarking','playing') and not runner.event_flush_seconds:body['phase']=runner.current_phase
+                reply=runner.client.call("POST", runner.path("heartbeat"), body, timeout=every * 2)
+                runner.event_flush_seconds=.15 if reply.get('event_flush_ms',150) else 0
+                runner.flush_wake.set()
             except HubError:
                 continue  # the lease survives a short outage (lease_seconds > 2 heartbeats)
             except LeaseLost:

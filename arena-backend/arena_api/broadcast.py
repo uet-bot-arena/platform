@@ -19,6 +19,7 @@ class Snapshots:
         self.async_lock = asyncio.Lock()
         self.max_streams = max_streams
         self.streams = {}
+        self.interests = OrderedDict()
         self.stream_lock = threading.Lock()
 
     async def get_async(self, key, produce, ttl=None):
@@ -70,9 +71,15 @@ class Snapshots:
         key = ('session', hashlib.sha256(cookie.encode()).hexdigest())
         return await self.get_async(key, lambda: accounts.principal(cookie), ttl=14)  # plus the one-second heartbeat: revocation within 15 seconds
 
+    def interest(self, job):
+        with self.stream_lock:
+            self.interests[job]=monotonic()+12
+            self.interests.move_to_end(job)
+            while len(self.interests)>self.capacity:self.interests.popitem(last=False)
+
     def watched(self, job):
         with self.stream_lock:
-            return any(value[1]>monotonic() and value[2]==job for value in self.streams.values())
+            return self.interests.get(job,0)>monotonic() or any(value[1]>monotonic() and value[2]==job for value in self.streams.values())
 
     def limited(self, account, stream, job=None):
         now = monotonic()

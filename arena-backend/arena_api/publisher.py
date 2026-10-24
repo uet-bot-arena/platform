@@ -1,3 +1,4 @@
+from collections import OrderedDict
 """Separate read-only SQLite process; public, atomic gzip files are the guest API."""
 import argparse
 import csv
@@ -47,7 +48,7 @@ def public_competition(value):
 def atomic_gzip(path, value):
     """The name and bytes change together; ETag is derived from the served bytes."""
     raw = value if isinstance(value, bytes) else json.dumps(value, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode()
-    data = gzip.compress(raw, mtime=0)
+    data = gzip.compress(raw, compresslevel=1, mtime=0)
     if path.exists() and path.read_bytes() == data:
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -81,6 +82,7 @@ class Publisher:
         store.db.execute('PRAGMA query_only=ON')
         store.db.execute('PRAGMA busy_timeout=5000')
         self.store, self.db = store, store.db
+        self.fixture_cache = OrderedDict()
         accounts = Accounts.__new__(Accounts)
         accounts.db, accounts.store = self.db, store
         service = Service.__new__(Service)
@@ -116,21 +118,33 @@ class Publisher:
         ident, cid = row['id'], row['competition_id']
         if not IDENT.fullmatch(ident) or not IDENT.fullmatch(cid):
             raise ValueError('Invalid persisted fixture ID')
-        events, cursor = [], 0
-        while row.get('current_job_id'):
-            values, after = self.comp.safe_events(row['current_job_id'], cursor)
-            events.extend(values)
-            if after == cursor:
-                break
-            cursor = after
-        public = self.comp.fixture_view(row)
-        if row.get('phase'):
-            public['phase'] = row['phase']
-        value = dict(fixture=public, attempt_id=row.get('current_job_id'), items=events, next_after=cursor)
-        if row.get('current_job_id') and self.store.get(row['current_job_id'],hydrate=False).get('replay_pruned'):
-            value['replay_pruned'] = True
-        self.write(f'fixtures/{cid}/{ident}.json', value)
-        return value
+        job=row.get('current_job_id')
+        metadata=self.store.get(job,hydrate=False) if job else {}
+        pruned=bool(metadata.get('replay_pruned'))
+        cached=self.fixture_cache.pop(ident,None)
+        if not cached or cached['job']!=job or pruned:
+            cached=dict(job=job,cursor=0,frames=[],latest={},bytes=0)
+        while job and not pruned:
+            values,after=self.comp.safe_events(job,cached['cursor'])
+            for event in values:
+                frame=json.dumps(event,ensure_ascii=False,separators=(',',':'),allow_nan=False).encode()
+                cached['frames'].append(frame);cached['bytes']+=len(frame)
+                cached['latest'][event['type']]=event
+            if after==cached['cursor']:break
+            cached['cursor']=after
+        public=self.comp.fixture_view(row)
+        if row.get('phase'):public['phase']=row['phase']
+        value=dict(fixture=public,attempt_id=job,next_after=cached['cursor'])
+        if pruned:value['replay_pruned']=True
+        # Encode each event only once; the full immutable prefix is reused.
+        header=json.dumps(value,ensure_ascii=False,separators=(',',':'),allow_nan=False).encode()
+        raw=header[:-1]+b',"items":['+b','.join(cached['frames'])+b']}'
+        self.write(f'fixtures/{cid}/{ident}.json',raw)
+        if job and metadata.get('status') not in ('completed','failed','aborted') and not pruned:
+            self.fixture_cache[ident]=cached
+            while sum(item['bytes'] for item in self.fixture_cache.values())>192*1024**2:
+                self.fixture_cache.popitem(last=False)
+        return dict(value,items=sorted(cached['latest'].values(),key=lambda e:e['seq']),summary_only=True)
 
     def fixture_row(self, ident):
         row = self.comp.one('SELECT * FROM competition_fixtures WHERE id=?', (ident,))
@@ -200,15 +214,15 @@ class Publisher:
             for ident in visible-self.visible:
                 fixture_ids.update(r['id'] for r in self.comp.rows('SELECT id FROM competition_fixtures WHERE competition_id=?',(ident,)))
                 fixture_ids.update(r['id'] for r in self.comp.rows('SELECT g.id FROM elo_games g JOIN elo_rounds r ON r.id=g.round_id WHERE r.competition_id=?',(ident,)))
-            active = self.comp.rows("SELECT id FROM competition_fixtures WHERE status='queued'")
-            active += self.comp.rows("SELECT id FROM elo_games WHERE status='queued'")
+            active = self.comp.rows("SELECT f.id FROM competition_fixtures f JOIN documents d ON d.id=f.current_job_id WHERE json_extract(d.data,'$.status') IN ('starting','building','playing')")
+            active += self.comp.rows("SELECT g.id FROM elo_games g JOIN documents d ON d.id=g.current_job_id WHERE json_extract(d.data,'$.status') IN ('starting','building','playing')")
             fixture_ids.update(r['id'] for r in active)
             boards = []
             for ident in sorted(fixture_ids):
                 row = self.fixture_row(ident)
                 if row and row['competition_id'] in visible:
                     value = self.fixture(row)
-                    boards.append(dict(competition_id=row['competition_id'], fixture_id=row['id'], **value))
+                    boards.append(dict(competition_id=row['competition_id'],fixture_id=row['id'],**value))
             items = []
             for ident in sorted(changed & visible):
                 self.schedule(ident)
@@ -228,7 +242,8 @@ class Publisher:
             self.write('queue.json',dict(waiting=dict(official=queue.get(0,0),checks=queue.get(1,0),practice=queue.get(2,0)),
                 running=self.comp.one("SELECT COUNT(*) AS n FROM grader_leases WHERE status='active'")['n'],
                 slots=sum(g['slots'] or 0 for g in graders), generated_ms=time.time_ns()//1_000_000))
-            self.write('featured.json',dict(boards=boards,generated_ms=time.time_ns()//1_000_000))
+            boards.sort(key=lambda b:(b['fixture']['status']=='completed',b['fixture_id']))
+            self.write('featured.json',dict(boards=boards[:4],generated_ms=time.time_ns()//1_000_000))
             from arena_api.announcements import public as public_notice
             notices=[public_notice(json.loads(r[0])) for r in self.db.execute("SELECT data FROM documents WHERE kind='announcement' AND json_extract(data,'$.archived_ms') IS NULL ORDER BY rowid DESC")]
             self.write('announcements.json',dict(items=notices))

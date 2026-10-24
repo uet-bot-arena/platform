@@ -163,6 +163,77 @@ class GraderAPI(APIHarness):
         self.assertEqual(response.status_code, 202, response.text)
         return response.json()
 
+    def test_guest_open_and_featured_board_enable_live_heartbeat(self):
+        import gzip
+        comp,_,_,_=self.prepared()
+        self.post(self.client,f"/admin/competitions/{comp['id']}/start")
+        machine,_=self.machine('live machine','windows',WINDOWS)
+        lease=self.lease(machine);job=lease['job'];fixture=job['official']['fixture_id']
+        self.assertEqual(lease['event_flush_ms'],0)
+        guest=self.other_client()
+        response=guest.get(f"/api/v1/competitions/{comp['id']}/fixtures/{fixture}/live-interest")
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(self.service.heartbeat(self.service.authenticate(machine.headers['Authorization'][7:]),lease['lease_id'],lease['fencing'])['event_flush_ms'],150)
+        self.app.state.broadcast.interests.clear()
+        path=self.settings.data/'snapshots'/'featured.json.gz';path.parent.mkdir(exist_ok=True)
+        path.write_bytes(gzip.compress(json.dumps(dict(boards=[dict(attempt_id=job['id'])],generated_ms=int(time.time()*1000))).encode()))
+        self.app.state.broadcast.items.pop('featured-jobs',None)
+        self.assertEqual(self.service.event_flush_ms(job['id']),150)
+        path.write_bytes(gzip.compress(json.dumps(dict(boards=[dict(attempt_id=job['id'])],generated_ms=0)).encode()))
+        self.app.state.broadcast.items.pop('featured-jobs',None)
+        self.assertEqual(self.service.event_flush_ms(job['id']),0)
+
+    def test_unwatched_heartbeat_reports_phase_without_materializing_moves(self):
+        team,issued=self.create_team();self.practice(team,issued['account']['team_id'])
+        machine,_=self.machine();lease=self.lease(machine);job=lease['job']
+        before=len(self.store.events(job['id']))
+        path=f"/api/v1/grader/leases/{lease['lease_id']}/heartbeat"
+        response=machine.post(path,json=dict(fencing=lease['fencing'],phase='playing'))
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(self.store.get(job['id'])['status'],'playing')
+        self.assertEqual(len(self.store.events(job['id'])),before)
+        self.assertEqual(machine.post(path,json=dict(fencing=lease['fencing'],phase='completed')).status_code,422)
+
+    def test_compressed_result_preserves_bytes_verifies_moves_and_reads_all_cursors(self):
+        import gzip
+        team,issued=self.create_team();self.practice(team,issued['account']['team_id'])
+        machine,_=self.machine();lease=self.lease(machine);job=lease['job']
+        events=[dict(seq=lease['replay_base']+i+1,type='state',server_unix_ms=i,data={'state':engine.initial_state()}) for i in range(1005)]
+        report=play_out(job)
+        raw=gzip.compress(json.dumps(dict(status='completed',report=report,events=events)).encode(),mtime=0)
+        path=f"/api/v1/grader/leases/{lease['lease_id']}/result-replay"
+        response=machine.post(path,content=raw,headers={'Content-Type':'application/octet-stream','X-Fencing':str(lease['fencing'])})
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json()['status'],'completed')
+        self.assertEqual(self.store.db.execute('SELECT data FROM replay_archives WHERE job=?',(job['id'],)).fetchone()[0],raw)
+        values=[];after=0
+        while True:
+            part=self.store.events(job['id'],after)
+            if not part:break
+            values+=part;after=part[-1]['seq']
+        self.assertEqual([e for e in values if e['type']=='state'],events)
+        self.assertEqual(values[-1]['type'],'completed')
+        self.assertEqual(len({e['seq'] for e in values}),len(values))
+        self.assertEqual(self.store.get(job['id'])['report']['moves'],report['moves'])
+        self.assertEqual(machine.post(path,content=raw,headers={'Content-Type':'application/octet-stream','X-Fencing':str(lease['fencing'])}).status_code,409)
+
+    def test_compressed_replay_rejects_bad_gzip_bombs_sequences_and_forged_results(self):
+        import gzip
+        team,issued=self.create_team();self.practice(team,issued['account']['team_id'])
+        machine,_=self.machine();lease=self.lease(machine);job=lease['job']
+        path=f"/api/v1/grader/leases/{lease['lease_id']}/result-replay"
+        headers={'Content-Type':'application/octet-stream','X-Fencing':str(lease['fencing'])}
+        for raw in (b'bad',gzip.compress(b'x'*(32*1024**2+1)),gzip.compress(json.dumps(dict(status='completed',events=[dict(seq=999,type='state',server_unix_ms=0,data={})])).encode())):
+            response=machine.post(path,content=raw,headers=headers)
+            self.assertEqual(response.status_code,400,response.text)
+            self.assertEqual(self.store.get(job['id'])['status'],'starting')
+        report=play_out(job);report['moves'][0]['action']={'from':'a1','to':'i9'}
+        raw=gzip.compress(json.dumps(dict(status='completed',report=report,events=[])).encode())
+        response=machine.post(path,content=raw,headers=headers)
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json()['status'],'failed')
+        self.assertEqual(response.json()['error']['code'],'result_mismatch')
+
     def test_tokens_are_shown_once_hashed_and_never_listed(self):
         created = self.post(self.client, "/admin/graders", {"name": "Máy 1"}, expected=201)
         self.assertTrue(created["token"].startswith("uag_"))
@@ -347,9 +418,17 @@ class GraderAPI(APIHarness):
         machine, _ = self.machine()
         leased = self.lease(machine)
         path = f"/api/v1/grader/leases/{leased['lease_id']}/events"
+        commits=[]
+        self.store.db.set_trace_callback(lambda sql: commits.append(sql) if sql=='COMMIT' else None)
         ok = machine.post(path, json={"fencing": leased["fencing"], "events": [
             {"type": "phase", "data": {"phase": "playing"}}, {"type": "state", "data": {"state": engine.initial_state(), "counts": {}}}]})
+        self.store.db.set_trace_callback(None)
         self.assertEqual(ok.status_code, 200, ok.text)
+        self.assertEqual(len(commits),1)  # last-seen is fresh; one atomic event batch
+        before=self.store.events(leased['job']['id'])
+        rejected=machine.post(path,json=dict(fencing=leased['fencing'],events=[dict(type='phase',data=dict(phase='building')),dict(type='phase',data=dict(phase='completed'))]))
+        self.assertEqual(rejected.status_code,400)
+        self.assertEqual(self.store.events(leased['job']['id']),before)
         self.assertEqual(self.store.get(leased["job"]["id"])["status"], "playing")
         for bad in ({"type": "completed", "data": {}}, {"type": "phase", "data": {"phase": "completed"}}, {"type": "x", "data": {}}):
             self.assertEqual(machine.post(path, json={"fencing": leased["fencing"], "events": [bad]}).status_code, 400)
@@ -565,6 +644,48 @@ class GraderLifecycle(unittest.TestCase):
         self.grader.settings = {"heartbeat_seconds":5}  # Negotiated before run_lease in production.
         self.lease = {"lease_id": "lease-test", "fencing": 7, "job": {"id": "job-test", "kind": "match"}}
 
+    def test_unwatched_match_sends_no_events_and_switch_flushes_full_prefix(self):
+        from arena.grader import GraderRunner
+        lease=dict(self.lease,replay_gzip=True,replay_base=2,event_flush_ms=0,submissions=[],event_epoch_ms=1000)
+        runner=GraderRunner(self.grader,FakeBackend(),lease,threading.Event())
+        try:
+            with patch('arena.grader.time.time_ns',return_value=999999999999999999):
+                runner.phase({'id':'job-test'},'playing')
+            self.assertLess(runner.replay[0]['server_unix_ms'],2000)
+            runner.record('job-test','state',{'state':engine.initial_state()})
+            time.sleep(.2)
+            self.grader.client.call.assert_not_called()
+            runner.event_flush_seconds=.15;runner.flush_wake.set()
+            deadline=time.monotonic()+2
+            while not self.grader.client.call.called and time.monotonic()<deadline:time.sleep(.01)
+            self.assertEqual(len(self.grader.client.call.call_args.args[2]['events']),2)
+            self.assertTrue(runner.finish())
+            self.assertEqual([e['seq'] for e in runner.replay],[3,4])
+            self.grader.post_result(runner,'aborted')
+            import gzip
+            call=self.grader.client.call.call_args
+            self.assertTrue(call.args[1].endswith('/result-replay'))
+            self.assertEqual(json.loads(gzip.decompress(call.kwargs['data']))['events'],runner.replay)
+        finally:
+            runner.lost.set();runner.finished=True;runner.flush_wake.set();runner.flusher.join()
+
+    def test_phase_change_wakes_heartbeat_before_a_short_game_finishes(self):
+        from arena.grader import GraderRunner
+        lease=dict(self.lease,replay_gzip=True,replay_base=2,event_flush_ms=0,submissions=[])
+        runner=GraderRunner(self.grader,FakeBackend(),lease,threading.Event())
+        self.grader.client.call.return_value={'event_flush_ms':0}
+        beat=threading.Thread(target=self.grader.heartbeat_loop,args=(runner,));beat.start()
+        try:
+            runner.phase({'id':'job-test'},'playing')
+            deadline=time.monotonic()+2
+            while not self.grader.client.call.called and time.monotonic()<deadline:time.sleep(.01)
+            call=self.grader.client.call.call_args
+            self.assertTrue(call.args[1].endswith('/heartbeat'))
+            self.assertEqual(call.args[2]['phase'],'playing')
+            self.assertTrue(runner.finish())
+        finally:
+            runner.lost.set();runner.heartbeat_wake.set();runner.flush_wake.set();beat.join(2);runner.flusher.join(2)
+
     def test_release_all_stops_bots_and_returns_fenced_leases(self):
         runner = Mock(lease=self.lease)
         self.grader.active["lease-test"] = runner
@@ -585,6 +706,7 @@ class GraderLifecycle(unittest.TestCase):
     def test_first_stop_finishes_the_running_match_and_posts_its_result(self):
         runner = Mock()
         runner.lost = threading.Event()
+        runner.heartbeat_wake = threading.Event()
         runner.lease, runner.report, runner.error = self.lease, {"result": "test"}, None
         runner.client = self.grader.client
         runner.run.side_effect = lambda *_args, **_kw: (self.grader.stopping.set() or "completed")

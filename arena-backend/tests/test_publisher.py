@@ -45,7 +45,8 @@ class PublisherTests(APIHarness):
                 self.store.db.execute('INSERT INTO competition_entries VALUES(?,?,?,?,?,?)',(self.ident,team,job['id'],job['id'],json.dumps({'version':'fixture-v1'}),1))
             self.store.db.execute("INSERT INTO competition_fixtures(id,competition_id,ordinal,red_team_id,blue_team_id,status,current_job_id,result) VALUES(?,?,1,'team-a','team-b','completed',?,?)",(fixture,self.ident,job['id'],json.dumps(dict(winner='red',reason='base_capture'))))
         self.store.event(job['id'],'build',{'stderr':sentinel})
-        self.store.event(job['id'],'state',{'state':engine.initial_state(),'stderr':sentinel})
+        for n in range(6):
+            self.store.event(job['id'],'state',{'state':dict(engine.initial_state(),ply=n),'stderr':sentinel})
         self.store.event(job['id'],'completed',{'result':{'winner':'red','reason':'base_capture'},'private':sentinel})
         with self.assertRaises(sqlite3.OperationalError):
             publisher.db.execute("UPDATE competitions SET title='must not write'")
@@ -64,7 +65,11 @@ class PublisherTests(APIHarness):
         self.assertEqual(guest.get('/snapshots/.cursor').status_code,404)
         self.assertEqual(guest.get('/snapshots/../arena.sqlite').status_code,404)
         board=self.read(f'fixtures/{self.ident}/{fixture}.json')
-        self.assertEqual([e['type'] for e in board['items']],['state','completed'])
+        self.assertEqual([e['type'] for e in board['items']],['state']*6+['completed'])
+        featured=self.read('featured.json')['boards'][0]
+        self.assertTrue(featured['summary_only'])
+        self.assertEqual([e['type'] for e in featured['items']],['state','completed'])
+        self.assertEqual(featured['items'][0]['data']['state']['ply'],5)
         with self.store.transaction():
             self.store.db.execute('UPDATE competitions SET archived_ms=123 WHERE id=?',(self.ident,))
         publisher.publish()
@@ -74,7 +79,7 @@ class PublisherTests(APIHarness):
             self.store.db.execute('UPDATE competitions SET archived_ms=NULL WHERE id=?',(self.ident,))
         publisher.publish()
         self.assertEqual(guest.get(f'/snapshots/fixtures/{self.ident}/{fixture}.json').status_code,200)
-        self.assertEqual(len(self.read(f'fixtures/{self.ident}/{fixture}.json')['items']),2)
+        self.assertEqual(len(self.read(f'fixtures/{self.ident}/{fixture}.json')['items']),7)
 
     def test_fixture_window_keeps_all_unfinished_games_and_only_recent_completed_games(self):
         source=self.store.create('submission','fixture',dict(version='unit-fixture'))
@@ -88,6 +93,22 @@ class PublisherTests(APIHarness):
             self.store.db.executemany('INSERT INTO competition_fixtures(id,competition_id,ordinal,red_team_id,blue_team_id,status,current_job_id) VALUES(?,?,?,?,?,?,?)',
                 ((f'window-{n}',self.ident,n,a,b,'queued' if n==1 else 'pending' if n<=1100 else 'completed',active['id'] if n==1 else None) for n,(a,b) in enumerate(pairs,1)))
         publisher=self.publisher();publisher.schedule(self.ident)
+        from unittest.mock import patch
+        for n in range(20):self.store.event(active['id'],'state',dict(state=dict(engine.initial_state(),ply=n)))
+        row=publisher.fixture_row('window-1')
+        publisher.fixture(row)
+        self.store.event(active['id'],'state',dict(state=dict(engine.initial_state(),ply=20)))
+        with patch.object(publisher.comp,'safe_events',wraps=publisher.comp.safe_events) as read:
+            featured=publisher.fixture(row)
+            self.assertNotIn(0,[call.args[1] for call in read.call_args_list])
+        self.assertEqual(len(self.read(f'fixtures/{self.ident}/window-1.json')['items']),21)
+        self.assertEqual(len(featured['items']),1)
+        self.assertEqual(featured['items'][0]['data']['state']['ply'],20)
+        self.store.update(active['id'],replay_pruned=True)
+        with self.store.transaction():self.store.db.execute('DELETE FROM events WHERE job=?',(active['id'],))
+        publisher.fixture(row)
+        self.assertEqual(self.read(f'fixtures/{self.ident}/window-1.json')['items'],[])
+
         value=self.read(f'fixtures/{self.ident}.json')
         self.assertEqual((len(value['items']),value['history_total']),(2100,2300))
         self.assertEqual(value['items'][0]['id'],'window-1')

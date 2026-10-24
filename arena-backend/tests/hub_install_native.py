@@ -25,6 +25,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     saved = output / 'native-fixture.json'
     cluster = Cluster()
+    cluster.results["mode"]="hub-install"
     cluster.admin.close()
     cluster.origin = args.origin
     cluster.admin = httpx.Client(base_url=args.origin, timeout=60)

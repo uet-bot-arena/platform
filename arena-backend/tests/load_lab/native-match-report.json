@@ -1,0 +1,2031 @@
+{
+  "job_id": "02719a0390e54c2d87169ea96e8a23f2",
+  "kind": "match",
+  "engine_id": "ottv2-v1",
+  "engine_sha256": "c821e4637d85f3eae639524ac372718159adf292d0603afaaa0deb97ef9de862",
+  "platform": "windows",
+  "runtime_id": "sha256:33cef41caa2dda811ede86ad8355d599d1a2b78c82dae939a4c365995090f8bc",
+  "backend": "windows",
+  "profile": {
+    "id": "ottv2-bank-10s-v2",
+    "turn_ms": 10000,
+    "match_ms": 10000,
+    "grace_ms": 3000,
+    "startup_ms": 2000,
+    "build_ms": 30000,
+    "memory_mib": 256,
+    "build_memory_mib": 1024,
+    "cpu_count": 1,
+    "max_plies": 512,
+    "job_wall_ms": 1200000,
+    "max_line_bytes": 65536,
+    "max_stderr_bytes": 262144,
+    "max_zip_bytes": 10485760,
+    "max_source_bytes": 20971520
+  },
+  "artifacts": [
+    {
+      "runtime": "cpp17",
+      "source": {
+        "zip_sha256": "c133f7f74e239935b43277e259887ca7283acadb49c986435ab8ba9574ada445",
+        "files": {
+          "bot.cpp": "274f8ce18d9d9da2a42921f51654d07cfa887e266966142cb23709d4efd5034f",
+          "json.hpp": "9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6"
+        },
+        "uncompressed_bytes": 922649
+      },
+      "flags": [
+        "-std=c++17",
+        "-O2",
+        "-pipe",
+        "-Wall",
+        "-Wextra"
+      ],
+      "sdk_sha256": "490c778a9ced1efb72e5fca9eb14fc0aac67a3532bcc289363494f39f1841408",
+      "platform": "windows",
+      "runtime_id": "sha256:33cef41caa2dda811ede86ad8355d599d1a2b78c82dae939a4c365995090f8bc",
+      "backend": "windows",
+      "artifact_sha256": "67e4120a8784f3d24703c57c43d8c11c23f46eeddad6bfb5a0b0fd02c47be8f1",
+      "cache_hit": true
+    },
+    {
+      "runtime": "cpp17",
+      "source": {
+        "zip_sha256": "7962b9f1a4e2ab76faee333241bbeae4eec0daad31fe80599ece4fe071f592d2",
+        "files": {
+          "bot.cpp": "f9bd68082cb40d11b758221bd82a7637a4ef00037989fcb2de7c2dc5b99361f3",
+          "json.hpp": "9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6"
+        },
+        "uncompressed_bytes": 922649
+      },
+      "flags": [
+        "-std=c++17",
+        "-O2",
+        "-pipe",
+        "-Wall",
+        "-Wextra"
+      ],
+      "sdk_sha256": "490c778a9ced1efb72e5fca9eb14fc0aac67a3532bcc289363494f39f1841408",
+      "platform": "windows",
+      "runtime_id": "sha256:33cef41caa2dda811ede86ad8355d599d1a2b78c82dae939a4c365995090f8bc",
+      "backend": "windows",
+      "artifact_sha256": "afd8af58f2a1e1b579eff9dc4f69c7972fab7dd66739e9dc963cd89caf00620d",
+      "cache_hit": true
+    }
+  ],
+  "clock_authority": "trusted-worker-monotonic",
+  "eligible_for_tournament": true,
+  "adjudication": {
+    "id": "ottv2-match-v2",
+    "repetition_count": 3,
+    "limit_result": "draw",
+    "startup_failure": "technical_loss"
+  },
+  "memory_scope": "whole sandbox, including trusted Python supervisor",
+  "cpu_scope": "whole sandbox CPU delta; diagnostic, wall deadline decides timeout",
+  "result": {
+    "winner": "red",
+    "reason": "base_capture"
+  },
+  "clocks": {
+    "red": 9773.8091,
+    "blue": 9892.0324
+  },
+  "turn_wall_ms": {
+    "samples": 87,
+    "median_ms": 0.8111,
+    "p95_ms": 8.3207,
+    "max_ms": 159.5363
+  },
+  "final_state": {
+    "board": [
+      [
+        null,
+        null,
+        null,
+        {
+          "side": "blue",
+          "kind": "paper"
+        },
+        null,
+        {
+          "side": "blue",
+          "kind": "scissors"
+        },
+        null,
+        null,
+        {
+          "side": "red",
+          "kind": "paper"
+        }
+      ],
+      [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        null,
+        null,
+        {
+          "side": "blue",
+          "kind": "rock"
+        },
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        null,
+        {
+          "side": "red",
+          "kind": "rock"
+        },
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        null,
+        null,
+        null,
+        {
+          "side": "red",
+          "kind": "scissors"
+        },
+        null,
+        {
+          "side": "red",
+          "kind": "paper"
+        },
+        null,
+        {
+          "side": "red",
+          "kind": "rock"
+        },
+        null
+      ]
+    ],
+    "to_move": "blue",
+    "ply": 87,
+    "result": {
+      "winner": "red",
+      "reason": "base_capture"
+    }
+  },
+  "samples": [
+    {
+      "side": "red",
+      "turn_id": "1",
+      "wall_ms": 0.9171,
+      "remaining_ms": 9999.0829,
+      "started_mono_ns": "174752561650100",
+      "received_mono_ns": "174752562567200",
+      "deadline_mono_ns": "174762561650100",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 15.625,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "2",
+      "wall_ms": 1.0061,
+      "remaining_ms": 9998.9939,
+      "started_mono_ns": "174752565810400",
+      "received_mono_ns": "174752566816500",
+      "deadline_mono_ns": "174762565810400",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "3",
+      "wall_ms": 1.0226,
+      "remaining_ms": 9998.0603,
+      "started_mono_ns": "174752569824500",
+      "received_mono_ns": "174752570847100",
+      "deadline_mono_ns": "174762568907400",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "4",
+      "wall_ms": 0.8335,
+      "remaining_ms": 9998.1604,
+      "started_mono_ns": "174752574404400",
+      "received_mono_ns": "174752575237900",
+      "deadline_mono_ns": "174762573398300",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "5",
+      "wall_ms": 0.7849,
+      "remaining_ms": 9997.2754,
+      "started_mono_ns": "174752585414900",
+      "received_mono_ns": "174752586199800",
+      "deadline_mono_ns": "174762583475200",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "6",
+      "wall_ms": 0.8412,
+      "remaining_ms": 9997.3192,
+      "started_mono_ns": "174752589951900",
+      "received_mono_ns": "174752590793100",
+      "deadline_mono_ns": "174762588112300",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "7",
+      "wall_ms": 0.8103,
+      "remaining_ms": 9996.4651,
+      "started_mono_ns": "174752593652200",
+      "received_mono_ns": "174752594462500",
+      "deadline_mono_ns": "174762590927600",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "8",
+      "wall_ms": 0.7306,
+      "remaining_ms": 9996.5886,
+      "started_mono_ns": "174752597657500",
+      "received_mono_ns": "174752598388100",
+      "deadline_mono_ns": "174762594976700",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "9",
+      "wall_ms": 1.007,
+      "remaining_ms": 9995.4581,
+      "started_mono_ns": "174752601727600",
+      "received_mono_ns": "174752602734600",
+      "deadline_mono_ns": "174762598192700",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "10",
+      "wall_ms": 0.683,
+      "remaining_ms": 9995.9056,
+      "started_mono_ns": "174752605838500",
+      "received_mono_ns": "174752606521500",
+      "deadline_mono_ns": "174762602427100",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "11",
+      "wall_ms": 0.7863,
+      "remaining_ms": 9994.6718,
+      "started_mono_ns": "174752609505200",
+      "received_mono_ns": "174752610291500",
+      "deadline_mono_ns": "174762604963300",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "12",
+      "wall_ms": 0.6953,
+      "remaining_ms": 9995.2103,
+      "started_mono_ns": "174752613406500",
+      "received_mono_ns": "174752614101800",
+      "deadline_mono_ns": "174762609312100",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "13",
+      "wall_ms": 0.7923,
+      "remaining_ms": 9993.8795,
+      "started_mono_ns": "174752616839900",
+      "received_mono_ns": "174752617632200",
+      "deadline_mono_ns": "174762611511700",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "14",
+      "wall_ms": 0.806,
+      "remaining_ms": 9994.4043,
+      "started_mono_ns": "174752620632500",
+      "received_mono_ns": "174752621438500",
+      "deadline_mono_ns": "174762615842800",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "15",
+      "wall_ms": 0.8372,
+      "remaining_ms": 9993.0423,
+      "started_mono_ns": "174752624299200",
+      "received_mono_ns": "174752625136400",
+      "deadline_mono_ns": "174762618178700",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 15.625,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "16",
+      "wall_ms": 0.7599,
+      "remaining_ms": 9993.6444,
+      "started_mono_ns": "174752627949800",
+      "received_mono_ns": "174752628709700",
+      "deadline_mono_ns": "174762622354100",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "17",
+      "wall_ms": 6.6783,
+      "remaining_ms": 9986.364,
+      "started_mono_ns": "174752631329800",
+      "received_mono_ns": "174752638008100",
+      "deadline_mono_ns": "174762624372100",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "18",
+      "wall_ms": 0.8543,
+      "remaining_ms": 9992.7901,
+      "started_mono_ns": "174752641335900",
+      "received_mono_ns": "174752642190200",
+      "deadline_mono_ns": "174762634980300",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "19",
+      "wall_ms": 0.8719,
+      "remaining_ms": 9985.4921,
+      "started_mono_ns": "174752644741700",
+      "received_mono_ns": "174752645613600",
+      "deadline_mono_ns": "174762631105700",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "20",
+      "wall_ms": 0.7771,
+      "remaining_ms": 9992.013,
+      "started_mono_ns": "174752648289400",
+      "received_mono_ns": "174752649066500",
+      "deadline_mono_ns": "174762641079500",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "21",
+      "wall_ms": 0.8335,
+      "remaining_ms": 9984.6586,
+      "started_mono_ns": "174752651850800",
+      "received_mono_ns": "174752652684300",
+      "deadline_mono_ns": "174762637342900",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "22",
+      "wall_ms": 0.8203,
+      "remaining_ms": 9991.1927,
+      "started_mono_ns": "174752655267000",
+      "received_mono_ns": "174752656087300",
+      "deadline_mono_ns": "174762647280000",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "23",
+      "wall_ms": 0.8316,
+      "remaining_ms": 9983.827,
+      "started_mono_ns": "174752659037700",
+      "received_mono_ns": "174752659869300",
+      "deadline_mono_ns": "174762643696300",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "24",
+      "wall_ms": 0.7566,
+      "remaining_ms": 9990.4361,
+      "started_mono_ns": "174752662774800",
+      "received_mono_ns": "174752663531400",
+      "deadline_mono_ns": "174762653967500",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "25",
+      "wall_ms": 0.8531,
+      "remaining_ms": 9982.9739,
+      "started_mono_ns": "174752666302000",
+      "received_mono_ns": "174752667155100",
+      "deadline_mono_ns": "174762650129000",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "26",
+      "wall_ms": 0.8616,
+      "remaining_ms": 9989.5745,
+      "started_mono_ns": "174752670055900",
+      "received_mono_ns": "174752670917500",
+      "deadline_mono_ns": "174762660492000",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "27",
+      "wall_ms": 0.8253,
+      "remaining_ms": 9982.1486,
+      "started_mono_ns": "174752673523600",
+      "received_mono_ns": "174752674348900",
+      "deadline_mono_ns": "174762656497500",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "28",
+      "wall_ms": 0.8967,
+      "remaining_ms": 9988.6778,
+      "started_mono_ns": "174752677350400",
+      "received_mono_ns": "174752678247100",
+      "deadline_mono_ns": "174762666924900",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "29",
+      "wall_ms": 0.8832,
+      "remaining_ms": 9981.2654,
+      "started_mono_ns": "174752681234100",
+      "received_mono_ns": "174752682117300",
+      "deadline_mono_ns": "174762663382700",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "30",
+      "wall_ms": 0.8416,
+      "remaining_ms": 9987.8362,
+      "started_mono_ns": "174752685478400",
+      "received_mono_ns": "174752686320000",
+      "deadline_mono_ns": "174762674156200",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "31",
+      "wall_ms": 0.8069,
+      "remaining_ms": 9980.4585,
+      "started_mono_ns": "174752689272400",
+      "received_mono_ns": "174752690079300",
+      "deadline_mono_ns": "174762670537800",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "32",
+      "wall_ms": 0.8507,
+      "remaining_ms": 9986.9855,
+      "started_mono_ns": "174752692798700",
+      "received_mono_ns": "174752693649400",
+      "deadline_mono_ns": "174762680634900",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "33",
+      "wall_ms": 0.9164,
+      "remaining_ms": 9979.5421,
+      "started_mono_ns": "174752696587000",
+      "received_mono_ns": "174752697503400",
+      "deadline_mono_ns": "174762677045500",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "34",
+      "wall_ms": 0.8133,
+      "remaining_ms": 9986.1722,
+      "started_mono_ns": "174752700222400",
+      "received_mono_ns": "174752701035700",
+      "deadline_mono_ns": "174762687207900",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "35",
+      "wall_ms": 0.7391,
+      "remaining_ms": 9978.803,
+      "started_mono_ns": "174752703550000",
+      "received_mono_ns": "174752704289100",
+      "deadline_mono_ns": "174762683092100",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "36",
+      "wall_ms": 0.818,
+      "remaining_ms": 9985.3542,
+      "started_mono_ns": "174752706888800",
+      "received_mono_ns": "174752707706800",
+      "deadline_mono_ns": "174762693061000",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "37",
+      "wall_ms": 0.9518,
+      "remaining_ms": 9977.8512,
+      "started_mono_ns": "174752710982500",
+      "received_mono_ns": "174752711934300",
+      "deadline_mono_ns": "174762689785500",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "38",
+      "wall_ms": 0.9798,
+      "remaining_ms": 9984.3744,
+      "started_mono_ns": "174752715451300",
+      "received_mono_ns": "174752716431100",
+      "deadline_mono_ns": "174762700805500",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "39",
+      "wall_ms": 0.7909,
+      "remaining_ms": 9977.0603,
+      "started_mono_ns": "174752721918000",
+      "received_mono_ns": "174752722708900",
+      "deadline_mono_ns": "174762699769200",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "40",
+      "wall_ms": 0.7877,
+      "remaining_ms": 9983.5867,
+      "started_mono_ns": "174752725165400",
+      "received_mono_ns": "174752725953100",
+      "deadline_mono_ns": "174762709539800",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "41",
+      "wall_ms": 0.8071,
+      "remaining_ms": 9976.2532,
+      "started_mono_ns": "174752728426600",
+      "received_mono_ns": "174752729233700",
+      "deadline_mono_ns": "174762705486900",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "42",
+      "wall_ms": 0.7104,
+      "remaining_ms": 9982.8763,
+      "started_mono_ns": "174752731991700",
+      "received_mono_ns": "174752732702100",
+      "deadline_mono_ns": "174762715578400",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "43",
+      "wall_ms": 0.8094,
+      "remaining_ms": 9975.4438,
+      "started_mono_ns": "174752735604000",
+      "received_mono_ns": "174752736413400",
+      "deadline_mono_ns": "174762711857200",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "44",
+      "wall_ms": 1.2591,
+      "remaining_ms": 9981.6172,
+      "started_mono_ns": "174752739192100",
+      "received_mono_ns": "174752740451200",
+      "deadline_mono_ns": "174762722068400",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "45",
+      "wall_ms": 0.7646,
+      "remaining_ms": 9974.6792,
+      "started_mono_ns": "174752742941900",
+      "received_mono_ns": "174752743706500",
+      "deadline_mono_ns": "174762718385700",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "46",
+      "wall_ms": 0.7426,
+      "remaining_ms": 9980.8746,
+      "started_mono_ns": "174752746250700",
+      "received_mono_ns": "174752746993300",
+      "deadline_mono_ns": "174762727867900",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "47",
+      "wall_ms": 0.7059,
+      "remaining_ms": 9973.9733,
+      "started_mono_ns": "174752750070600",
+      "received_mono_ns": "174752750776500",
+      "deadline_mono_ns": "174762724749800",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "48",
+      "wall_ms": 0.6671,
+      "remaining_ms": 9980.2075,
+      "started_mono_ns": "174752753348900",
+      "received_mono_ns": "174752754016000",
+      "deadline_mono_ns": "174762734223500",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "49",
+      "wall_ms": 0.7176,
+      "remaining_ms": 9973.2557,
+      "started_mono_ns": "174752756531600",
+      "received_mono_ns": "174752757249200",
+      "deadline_mono_ns": "174762730504900",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "50",
+      "wall_ms": 0.6656,
+      "remaining_ms": 9979.5419,
+      "started_mono_ns": "174752759716900",
+      "received_mono_ns": "174752760382500",
+      "deadline_mono_ns": "174762739924400",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "51",
+      "wall_ms": 0.8111,
+      "remaining_ms": 9972.4446,
+      "started_mono_ns": "174752763248300",
+      "received_mono_ns": "174752764059400",
+      "deadline_mono_ns": "174762736504000",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "52",
+      "wall_ms": 68.3857,
+      "remaining_ms": 9911.1562,
+      "started_mono_ns": "174752766811300",
+      "received_mono_ns": "174752835197000",
+      "deadline_mono_ns": "174762746353200",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "53",
+      "wall_ms": 159.5363,
+      "remaining_ms": 9812.9083,
+      "started_mono_ns": "174752837740700",
+      "received_mono_ns": "174752997277000",
+      "deadline_mono_ns": "174762810185300",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "54",
+      "wall_ms": 6.8326,
+      "remaining_ms": 9904.3236,
+      "started_mono_ns": "174753000060100",
+      "received_mono_ns": "174753006892700",
+      "deadline_mono_ns": "174762911216300",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "55",
+      "wall_ms": 8.9717,
+      "remaining_ms": 9803.9366,
+      "started_mono_ns": "174753009545900",
+      "received_mono_ns": "174753018517600",
+      "deadline_mono_ns": "174762822454200",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "56",
+      "wall_ms": 0.7589,
+      "remaining_ms": 9903.5647,
+      "started_mono_ns": "174753022157700",
+      "received_mono_ns": "174753022916600",
+      "deadline_mono_ns": "174762926481300",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "57",
+      "wall_ms": 0.8479,
+      "remaining_ms": 9803.0887,
+      "started_mono_ns": "174753025605900",
+      "received_mono_ns": "174753026453800",
+      "deadline_mono_ns": "174762829542500",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "58",
+      "wall_ms": 0.6775,
+      "remaining_ms": 9902.8872,
+      "started_mono_ns": "174753029345200",
+      "received_mono_ns": "174753030022700",
+      "deadline_mono_ns": "174762932909900",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "59",
+      "wall_ms": 0.6893,
+      "remaining_ms": 9802.3994,
+      "started_mono_ns": "174753033181400",
+      "received_mono_ns": "174753033870700",
+      "deadline_mono_ns": "174762836270100",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "60",
+      "wall_ms": 0.8249,
+      "remaining_ms": 9902.0623,
+      "started_mono_ns": "174753036701600",
+      "received_mono_ns": "174753037526500",
+      "deadline_mono_ns": "174762939588800",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "61",
+      "wall_ms": 0.7944,
+      "remaining_ms": 9801.605,
+      "started_mono_ns": "174753040287400",
+      "received_mono_ns": "174753041081800",
+      "deadline_mono_ns": "174762842686800",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "62",
+      "wall_ms": 0.6771,
+      "remaining_ms": 9901.3852,
+      "started_mono_ns": "174753043538900",
+      "received_mono_ns": "174753044216000",
+      "deadline_mono_ns": "174762945601200",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "63",
+      "wall_ms": 0.7352,
+      "remaining_ms": 9800.8698,
+      "started_mono_ns": "174753046936500",
+      "received_mono_ns": "174753047671700",
+      "deadline_mono_ns": "174762848541500",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "64",
+      "wall_ms": 0.8335,
+      "remaining_ms": 9900.5517,
+      "started_mono_ns": "174753050546600",
+      "received_mono_ns": "174753051380100",
+      "deadline_mono_ns": "174762951931800",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "65",
+      "wall_ms": 10.94,
+      "remaining_ms": 9789.9298,
+      "started_mono_ns": "174753054689700",
+      "received_mono_ns": "174753065629700",
+      "deadline_mono_ns": "174762855559500",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "66",
+      "wall_ms": 0.6941,
+      "remaining_ms": 9899.8576,
+      "started_mono_ns": "174753068510200",
+      "received_mono_ns": "174753069204300",
+      "deadline_mono_ns": "174762969061900",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "67",
+      "wall_ms": 0.8278,
+      "remaining_ms": 9789.102,
+      "started_mono_ns": "174753072105000",
+      "received_mono_ns": "174753072932800",
+      "deadline_mono_ns": "174762862034800",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "68",
+      "wall_ms": 0.742,
+      "remaining_ms": 9899.1156,
+      "started_mono_ns": "174753075519100",
+      "received_mono_ns": "174753076261100",
+      "deadline_mono_ns": "174762975376700",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "69",
+      "wall_ms": 8.3207,
+      "remaining_ms": 9780.7813,
+      "started_mono_ns": "174753079201100",
+      "received_mono_ns": "174753087521800",
+      "deadline_mono_ns": "174762868303100",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "70",
+      "wall_ms": 0.8367,
+      "remaining_ms": 9898.2789,
+      "started_mono_ns": "174753090164500",
+      "received_mono_ns": "174753091001200",
+      "deadline_mono_ns": "174762989280100",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "71",
+      "wall_ms": 0.8385,
+      "remaining_ms": 9779.9428,
+      "started_mono_ns": "174753093813300",
+      "received_mono_ns": "174753094651800",
+      "deadline_mono_ns": "174762874594600",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "72",
+      "wall_ms": 0.6849,
+      "remaining_ms": 9897.594,
+      "started_mono_ns": "174753097443700",
+      "received_mono_ns": "174753098128600",
+      "deadline_mono_ns": "174762995722600",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "73",
+      "wall_ms": 0.69,
+      "remaining_ms": 9779.2528,
+      "started_mono_ns": "174753101112400",
+      "received_mono_ns": "174753101802400",
+      "deadline_mono_ns": "174762881055200",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "74",
+      "wall_ms": 0.84,
+      "remaining_ms": 9896.754,
+      "started_mono_ns": "174753104956100",
+      "received_mono_ns": "174753105796100",
+      "deadline_mono_ns": "174763002550100",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "75",
+      "wall_ms": 0.6986,
+      "remaining_ms": 9778.5542,
+      "started_mono_ns": "174753108694100",
+      "received_mono_ns": "174753109392700",
+      "deadline_mono_ns": "174762887946900",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 15.625,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "76",
+      "wall_ms": 0.7595,
+      "remaining_ms": 9895.9945,
+      "started_mono_ns": "174753112142900",
+      "received_mono_ns": "174753112902400",
+      "deadline_mono_ns": "174763008896900",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "77",
+      "wall_ms": 0.9888,
+      "remaining_ms": 9777.5654,
+      "started_mono_ns": "174753116448500",
+      "received_mono_ns": "174753117437300",
+      "deadline_mono_ns": "174762895002700",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "78",
+      "wall_ms": 0.8425,
+      "remaining_ms": 9895.152,
+      "started_mono_ns": "174753120506900",
+      "received_mono_ns": "174753121349400",
+      "deadline_mono_ns": "174763016501400",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "79",
+      "wall_ms": 0.7735,
+      "remaining_ms": 9776.7919,
+      "started_mono_ns": "174753124450200",
+      "received_mono_ns": "174753125223700",
+      "deadline_mono_ns": "174762902015600",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 15.625,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "80",
+      "wall_ms": 0.6848,
+      "remaining_ms": 9894.4672,
+      "started_mono_ns": "174753127994700",
+      "received_mono_ns": "174753128679500",
+      "deadline_mono_ns": "174763023146700",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "81",
+      "wall_ms": 0.8063,
+      "remaining_ms": 9775.9856,
+      "started_mono_ns": "174753131478200",
+      "received_mono_ns": "174753132284500",
+      "deadline_mono_ns": "174762908270100",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "82",
+      "wall_ms": 0.8583,
+      "remaining_ms": 9893.6089,
+      "started_mono_ns": "174753135033800",
+      "received_mono_ns": "174753135892100",
+      "deadline_mono_ns": "174763029501000",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "83",
+      "wall_ms": 0.6904,
+      "remaining_ms": 9775.2952,
+      "started_mono_ns": "174753138670000",
+      "received_mono_ns": "174753139360400",
+      "deadline_mono_ns": "174762914655600",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "84",
+      "wall_ms": 0.7358,
+      "remaining_ms": 9892.8731,
+      "started_mono_ns": "174753141894200",
+      "received_mono_ns": "174753142630000",
+      "deadline_mono_ns": "174763035503100",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "85",
+      "wall_ms": 0.7263,
+      "remaining_ms": 9774.5689,
+      "started_mono_ns": "174753145215000",
+      "received_mono_ns": "174753145941300",
+      "deadline_mono_ns": "174762920510200",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "turn_id": "86",
+      "wall_ms": 0.8407,
+      "remaining_ms": 9892.0324,
+      "started_mono_ns": "174753148891100",
+      "received_mono_ns": "174753149731800",
+      "deadline_mono_ns": "174763041764200",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "red",
+      "turn_id": "87",
+      "wall_ms": 0.7598,
+      "remaining_ms": 9773.8091,
+      "started_mono_ns": "174753153117600",
+      "received_mono_ns": "174753153877400",
+      "deadline_mono_ns": "174762927686500",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 0.0,
+      "memory_peak_bytes": 1208320
+    }
+  ],
+  "startup": [
+    {
+      "side": "red",
+      "message": {
+        "match_id": "02719a0390e54c2d87169ea96e8a23f2",
+        "protocol_version": 2,
+        "type": "ready"
+      },
+      "wall_ms": 26.3481,
+      "started_mono_ns": "174751987842000",
+      "received_mono_ns": "174752014190100",
+      "deadline_mono_ns": "174753987842000",
+      "clock_id": "c5b3305e-9b43-4fa7-a06a-042522630f4e",
+      "cgroup_cpu_ms": 15.625,
+      "memory_peak_bytes": 1208320
+    },
+    {
+      "side": "blue",
+      "message": {
+        "match_id": "02719a0390e54c2d87169ea96e8a23f2",
+        "protocol_version": 2,
+        "type": "ready"
+      },
+      "wall_ms": 27.5621,
+      "started_mono_ns": "174752531002900",
+      "received_mono_ns": "174752558565000",
+      "deadline_mono_ns": "174754531002900",
+      "clock_id": "3dc5afe3-521d-4649-8bef-ec119cbffab3",
+      "cgroup_cpu_ms": 31.25,
+      "memory_peak_bytes": 1208320
+    }
+  ],
+  "sandbox_metrics": [
+    {
+      "exit_code": 3221225786,
+      "stderr": "",
+      "stderr_bytes": 0,
+      "cgroup": {
+        "cpu_usage_usec": 78125,
+        "memory_peak_bytes": 1208320,
+        "memory_events": {}
+      }
+    },
+    {
+      "exit_code": 3221225786,
+      "stderr": "",
+      "stderr_bytes": 0,
+      "cgroup": {
+        "cpu_usage_usec": 31250,
+        "memory_peak_bytes": 1208320,
+        "memory_events": {}
+      }
+    }
+  ],
+  "moves": [
+    {
+      "side": "red",
+      "turn_id": "1",
+      "action": {
+        "from": "e2",
+        "to": "e3"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "2",
+      "action": {
+        "from": "c8",
+        "to": "d7"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "3",
+      "action": {
+        "from": "e3",
+        "to": "d4"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "4",
+      "action": {
+        "from": "d7",
+        "to": "d6"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "5",
+      "action": {
+        "from": "d4",
+        "to": "c4"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "6",
+      "action": {
+        "from": "d6",
+        "to": "e5"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "7",
+      "action": {
+        "from": "c4",
+        "to": "d5"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "8",
+      "action": {
+        "from": "e5",
+        "to": "d4"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "9",
+      "action": {
+        "from": "d5",
+        "to": "d4"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "10",
+      "action": {
+        "from": "b9",
+        "to": "b8"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "11",
+      "action": {
+        "from": "d4",
+        "to": "e5"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "12",
+      "action": {
+        "from": "b8",
+        "to": "a7"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "13",
+      "action": {
+        "from": "e5",
+        "to": "f5"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "14",
+      "action": {
+        "from": "e8",
+        "to": "f7"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "15",
+      "action": {
+        "from": "f5",
+        "to": "f6"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "16",
+      "action": {
+        "from": "a7",
+        "to": "b6"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "17",
+      "action": {
+        "from": "f6",
+        "to": "g7"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "18",
+      "action": {
+        "from": "g8",
+        "to": "g7"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "19",
+      "action": {
+        "from": "c2",
+        "to": "d3"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "20",
+      "action": {
+        "from": "b6",
+        "to": "b5"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "21",
+      "action": {
+        "from": "d3",
+        "to": "d4"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "22",
+      "action": {
+        "from": "b5",
+        "to": "c4"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "23",
+      "action": {
+        "from": "d4",
+        "to": "c4"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "24",
+      "action": {
+        "from": "g7",
+        "to": "f6"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "25",
+      "action": {
+        "from": "c4",
+        "to": "d4"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "26",
+      "action": {
+        "from": "f6",
+        "to": "e5"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "27",
+      "action": {
+        "from": "d4",
+        "to": "d5"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "28",
+      "action": {
+        "from": "e5",
+        "to": "d4"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "29",
+      "action": {
+        "from": "d5",
+        "to": "e6"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "30",
+      "action": {
+        "from": "d4",
+        "to": "c4"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "31",
+      "action": {
+        "from": "e6",
+        "to": "f7"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "32",
+      "action": {
+        "from": "c4",
+        "to": "c5"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "33",
+      "action": {
+        "from": "f7",
+        "to": "g6"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "34",
+      "action": {
+        "from": "c5",
+        "to": "b4"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "35",
+      "action": {
+        "from": "g6",
+        "to": "g7"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "36",
+      "action": {
+        "from": "b4",
+        "to": "a3"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "37",
+      "action": {
+        "from": "a2",
+        "to": "a3"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "38",
+      "action": {
+        "from": "a8",
+        "to": "a7"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "39",
+      "action": {
+        "from": "g7",
+        "to": "h8"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "40",
+      "action": {
+        "from": "i8",
+        "to": "h8"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "41",
+      "action": {
+        "from": "g2",
+        "to": "h3"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "42",
+      "action": {
+        "from": "a7",
+        "to": "a6"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "43",
+      "action": {
+        "from": "h3",
+        "to": "h4"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "44",
+      "action": {
+        "from": "a6",
+        "to": "a5"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "45",
+      "action": {
+        "from": "h4",
+        "to": "g5"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "46",
+      "action": {
+        "from": "a5",
+        "to": "a4"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "47",
+      "action": {
+        "from": "a3",
+        "to": "a4"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "48",
+      "action": {
+        "from": "h8",
+        "to": "g7"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "49",
+      "action": {
+        "from": "g5",
+        "to": "f6"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "50",
+      "action": {
+        "from": "g7",
+        "to": "f7"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "51",
+      "action": {
+        "from": "f6",
+        "to": "e6"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "52",
+      "action": {
+        "from": "f7",
+        "to": "f6"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "53",
+      "action": {
+        "from": "e6",
+        "to": "e7"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "54",
+      "action": {
+        "from": "f6",
+        "to": "e5"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "55",
+      "action": {
+        "from": "e7",
+        "to": "f7"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "56",
+      "action": {
+        "from": "e5",
+        "to": "d4"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "57",
+      "action": {
+        "from": "f7",
+        "to": "g8"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "58",
+      "action": {
+        "from": "h9",
+        "to": "g8"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "59",
+      "action": {
+        "from": "a4",
+        "to": "b4"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "60",
+      "action": {
+        "from": "d4",
+        "to": "c4"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "61",
+      "action": {
+        "from": "b4",
+        "to": "c5"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "62",
+      "action": {
+        "from": "c4",
+        "to": "d4"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "63",
+      "action": {
+        "from": "c5",
+        "to": "c6"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "64",
+      "action": {
+        "from": "d4",
+        "to": "c3"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "65",
+      "action": {
+        "from": "i2",
+        "to": "i3"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "66",
+      "action": {
+        "from": "c3",
+        "to": "b2"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "67",
+      "action": {
+        "from": "b1",
+        "to": "b2"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "68",
+      "action": {
+        "from": "g8",
+        "to": "g7"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "69",
+      "action": {
+        "from": "c6",
+        "to": "c5"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "70",
+      "action": {
+        "from": "g7",
+        "to": "f6"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "71",
+      "action": {
+        "from": "c5",
+        "to": "d6"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "72",
+      "action": {
+        "from": "f6",
+        "to": "f7"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "73",
+      "action": {
+        "from": "d6",
+        "to": "e6"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "74",
+      "action": {
+        "from": "f7",
+        "to": "e6"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "75",
+      "action": {
+        "from": "i3",
+        "to": "h4"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "76",
+      "action": {
+        "from": "e6",
+        "to": "d5"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "77",
+      "action": {
+        "from": "h4",
+        "to": "h5"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "78",
+      "action": {
+        "from": "d5",
+        "to": "c4"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "79",
+      "action": {
+        "from": "h5",
+        "to": "h6"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "80",
+      "action": {
+        "from": "c4",
+        "to": "b3"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "81",
+      "action": {
+        "from": "h6",
+        "to": "g7"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "82",
+      "action": {
+        "from": "b3",
+        "to": "c3"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "83",
+      "action": {
+        "from": "g7",
+        "to": "h7"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "84",
+      "action": {
+        "from": "c3",
+        "to": "b3"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "85",
+      "action": {
+        "from": "h7",
+        "to": "h8"
+      }
+    },
+    {
+      "side": "blue",
+      "turn_id": "86",
+      "action": {
+        "from": "b3",
+        "to": "c3"
+      }
+    },
+    {
+      "side": "red",
+      "turn_id": "87",
+      "action": {
+        "from": "h8",
+        "to": "i9"
+      }
+    }
+  ]
+}
