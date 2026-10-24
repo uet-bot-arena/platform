@@ -13,6 +13,7 @@ import json
 import math
 import multiprocessing as mp
 import os
+import queue
 from pathlib import Path
 import secrets
 import shutil
@@ -215,7 +216,16 @@ def run():
         sse=spawn(sse_worker,ORIGIN,cid,fixture,meta['people'],start,stop,end,ready,output)
         warmed={}
         for _ in range(3):
-            name,count=ready.get(timeout=120);warmed[name]=count
+            deadline=time.monotonic()+120
+            while True:
+                failed=[p.pid for p in children if p.exitcode not in (None,0)]
+                assert not failed,('Generator failed during warm-up',failed)
+                try:
+                    name,count=ready.get(timeout=min(1,max(.01,deadline-time.monotonic())));break
+                except queue.Empty:
+                    assert time.monotonic()<deadline,('Warm-up timed out',warmed)
+            warmed[name]=count
+            print('WARM ready:',name,count,flush=True)
         assert warmed.get('sse')==100
         deadline=time.monotonic()+120
         while True:

@@ -1,6 +1,7 @@
 """The five independent D0 generators; none runs inside arena.slice."""
 import asyncio
 from collections import Counter
+from contextlib import AsyncExitStack
 import gzip
 import hashlib
 import json
@@ -55,14 +56,23 @@ def user_worker(number,people,origin,cid,contract,start,stop,end,ready,output):
     import httpx
     async def run():
         latencies=[];login=[];statuses=Counter();errors=[]
-        async with httpx.AsyncClient(timeout=30,limits=httpx.Limits(max_connections=512,max_keepalive_connections=512)) as client:
+        # httpcore probes sniffio on each I/O; keep the optional package pinned in dev requirements.
+        import sniffio
+        assert sniffio.current_async_library()=='asyncio'
+        async with AsyncExitStack() as stack:
+            # Small independent pools avoid httpcore scanning hundreds of idle sockets per request.
+            clients=[await stack.enter_async_context(httpx.AsyncClient(timeout=30,verify=False,
+                limits=httpx.Limits(max_connections=2,max_keepalive_connections=2))) for _ in range(256)]
+            client=await stack.enter_async_context(httpx.AsyncClient(timeout=30,verify=False))
             async def read(path,person,measured):
                 began=time.monotonic()
                 try:
                     headers={'Cookie':person['cookie'],'X-Forwarded-For':person['ip']}
                     etags=person.setdefault('etags',{})
                     if path.startswith('/snapshots/') and path in etags:headers['If-None-Match']=etags[path]
-                    response=await client.get(origin+path,headers=headers)
+                    async with clients[person['index']%256].stream('GET',origin+path,headers=headers) as response:
+                        # Measure through the complete wire body; browser gzip decoding is outside hub latency.
+                        async for _ in response.aiter_raw():pass
                     if path.startswith('/snapshots/') and 'etag' in response.headers:etags[path]=response.headers['etag']
                     if not measured:assert response.status_code in (200,304),(path,response.status_code)
                     if measured:
@@ -82,8 +92,11 @@ def user_worker(number,people,origin,cid,contract,start,stop,end,ready,output):
                 rng=random.Random(20261024+number*2000+i)
                 if person['index']%3:
                     visible.append((person,rng,rng.choices(routes,weights)[0]))
-            await asyncio.gather(*(page(route,person,False) for person,_,route in visible),
-                *(read('/snapshots/announcements.json',person,False) for person,_,_ in visible))
+            # Warm pages in bounded batches; thousands of pool waiters distort the generator.
+            for offset in range(0,len(visible),32):
+                batch=visible[offset:offset+32]
+                await asyncio.gather(*(page(route,person,False) for person,_,route in batch),
+                    *(read('/snapshots/announcements.json',person,False) for person,_,_ in batch))
             ready.put(('users-'+str(number),len(visible)))
             await asyncio.to_thread(start.wait)
             cpu=time.process_time();began=time.monotonic()
@@ -125,7 +138,8 @@ def user_worker(number,people,origin,cid,contract,start,stop,end,ready,output):
             await asyncio.gather(*tasks)
             output.put(dict(name='users-'+str(number),cpu_seconds=time.process_time()-cpu,seconds=time.monotonic()-began,
                 latencies=latencies,login_latencies=login,statuses=dict(statuses),errors=errors))
-    asyncio.run(run())
+    import uvloop
+    with asyncio.Runner(loop_factory=uvloop.new_event_loop) as runner:runner.run(run())
     stop.wait()  # Keep /proc CPU counters available until the coordinator samples the phase end.
 
 
@@ -158,7 +172,10 @@ def sse_worker(origin,cid,fixture,people,start,stop,end,ready,output):
                         elif not stop.is_set():raise
                     await asyncio.sleep(.05)
             tasks=[asyncio.create_task(watch(i)) for i in range(100)]
-            while len(opened)<100:await asyncio.sleep(.05)
+            while len(opened)<100:
+                for task in tasks:
+                    if task.done():task.result()
+                await asyncio.sleep(.05)
             ready.put(('sse',100))
             await asyncio.to_thread(start.wait)
             cpu[0]=time.process_time();began[0]=time.monotonic()

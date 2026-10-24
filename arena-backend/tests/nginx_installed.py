@@ -99,6 +99,8 @@ def main():
     for name in ('uet-arena-hub','uet-arena-publisher','uet-arena-mailer','uet-arena-nginx'):
         slice_name=subprocess.check_output(['systemctl','show',name,'-p','Slice','--value'],text=True).strip()
         check(slice_name=='arena.slice','Shared slice: '+name)
+    fd_limit=int(subprocess.check_output(['systemctl','show','uet-arena-nginx','-p','LimitNOFILESoft','--value'],text=True))
+    check(fd_limit>=8192,'nginx has descriptors for client sockets, upstreams and snapshot files')
     subprocess.run(['systemctl','stop','uet-arena-publisher','uet-arena-mailer','uet-arena-hub'],check=True)
     try:
         check(get('/')[0]==200 and b'/_ui/app.js' in get('/')[2],'HTML served with hub stopped')

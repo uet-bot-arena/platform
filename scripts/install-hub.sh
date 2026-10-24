@@ -174,6 +174,7 @@ RuntimeDirectory=uet-arena-nginx
 RuntimeDirectoryMode=0700
 ExecStartPre=/usr/sbin/nginx -t -c /etc/uet-arena/nginx.conf
 ExecStart=/usr/sbin/nginx -c /etc/uet-arena/nginx.conf -g 'daemon off;'
+LimitNOFILE=16384
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=2
