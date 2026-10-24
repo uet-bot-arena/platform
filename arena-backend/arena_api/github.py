@@ -8,6 +8,7 @@ import logging
 import re
 import sqlite3
 import threading
+import time
 
 from arena.protocol import Fault, strict_json
 from arena.adjudication import BOT_FAULTS
@@ -30,6 +31,7 @@ class GitHub:
         self.thread = threading.Thread(target=self.loop, name="github-intake", daemon=True)
         self.tick_lock = threading.Lock()
         self.restore_lock = threading.Lock()
+        self.open_checks_ms = {}
         service.restore_source = self.restore_source
         # HTTP waits overlap; bounded intake keeps worst-case archive RAM below 4 x 64 MiB.
         self.pollers = ThreadPoolExecutor(max_workers=32, thread_name_prefix="github-poll") if concurrent else None
@@ -381,9 +383,14 @@ class GitHub:
         for competition in self.rows("SELECT * FROM competitions WHERE status='open' AND archived_ms IS NULL AND submission_deadline IS NOT NULL"):
             ident, deadline = competition["id"], competition["submission_deadline"]
             if self.clock() < deadline:
+                key = (ident, deadline)
+                now = time.monotonic()
+                if key in self.open_checks_ms and now-self.open_checks_ms[key] < 60:
+                    continue
                 # Opening a competition also checks already received bots on its pinned runtime.
                 for row in self.rows("SELECT g.team_id,g.sha FROM github_repositories r JOIN github_observations o ON o.id=(SELECT MAX(x.id) FROM github_observations x WHERE x.team_id=r.team_id) JOIN github_commits g ON g.team_id=o.team_id AND g.sha=o.sha WHERE g.submission_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM github_checks c WHERE c.team_id=g.team_id AND c.sha=g.sha AND c.purpose=?)", (ident,)):
                     self.ensure_check(row["team_id"], row["sha"], ident)
+                self.open_checks_ms[key] = now
                 continue
             for repo in self.rows("SELECT r.* FROM github_repositories r JOIN teams t ON t.id=r.team_id WHERE t.archived_ms IS NULL AND t.season_id=?", (self.teams.season,)):
                 choice = self.one("SELECT * FROM github_deadlines WHERE competition_id=? AND team_id=?", (ident, repo["team_id"]))

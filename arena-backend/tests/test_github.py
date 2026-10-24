@@ -234,6 +234,28 @@ class GitHubTransport(TestCase):
 
 
 class GitHubAPI(APIHarness):
+    def test_open_competition_backfill_once_per_deadline_and_60_seconds(self):
+        from types import SimpleNamespace
+        self.attach();sha=self.push();self.complete(sha)
+        ident=self.competition(self.clock+100_000)
+        elapsed=[1000.0]
+        with patch('arena_api.github.time',SimpleNamespace(monotonic=lambda:elapsed[0])), patch.object(self.g,'rows',wraps=self.g.rows) as rows:
+            self.g.tick()
+            self.assertIsNotNone(self.g.one('SELECT 1 FROM github_checks WHERE team_id=? AND sha=? AND purpose=?',(self.team_id,sha,ident)))
+            for _ in range(9):self.g.tick()
+            def backfills():
+                return sum('SELECT g.team_id,g.sha FROM github_repositories' in call.args[0] for call in rows.call_args_list)
+            self.assertEqual(backfills(),1)
+            self.g.execute('UPDATE competitions SET submission_deadline=submission_deadline+1 WHERE id=?',(ident,))
+            self.g.tick();self.assertEqual(backfills(),2)
+            elapsed[0]+=59
+            self.g.tick();self.assertEqual(backfills(),2)
+            elapsed[0]+=1
+            self.g.tick();self.assertEqual(backfills(),3)
+            newest=self.push(2)
+            self.assertIsNotNone(self.g.one('SELECT 1 FROM github_checks WHERE team_id=? AND sha=? AND purpose=?',(self.team_id,newest,ident)))
+            self.assertEqual(backfills(),3,'Receive must create checks without waiting for backfill')
+
     def test_team_github_view_does_not_decode_retained_private_reports(self):
         import tracemalloc
         self.attach();sha=self.push();self.complete(sha)
