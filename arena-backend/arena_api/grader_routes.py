@@ -91,7 +91,8 @@ def result(lease_id: str, body: Result, request: Request, who=Depends(grader)):
     return request.app.state.service.submit_result(who, lease_id, body.fencing, body.status, body.report, body.error)
 
 
-@router.post('/grader/leases/{lease_id}/result-replay',summary='Kết quả và replay gzip; lưu nguyên khối, vẫn kiểm fencing và kết quả')
+@router.post('/grader/leases/{lease_id}/result-replay',summary='Kết quả và replay gzip; lưu nguyên khối, vẫn kiểm fencing và kết quả',
+    openapi_extra={'requestBody':{'required':True,'content':{'application/octet-stream':{'schema':{'type':'string','format':'binary'}}}}})
 async def result_replay(lease_id: str, request: Request, x_fencing: int = Header(ge=1), who=Depends(grader)):
     raw=await request.body()
     return await run_in_threadpool(request.app.state.service.submit_replay,who,lease_id,x_fencing,raw)

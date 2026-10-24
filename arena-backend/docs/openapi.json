@@ -4204,6 +4204,61 @@
         ]
       }
     },
+    "/api/v1/competitions/{ident}/fixtures/{fixture_id}/live-interest": {
+      "get": {
+        "tags": [
+          "competitions"
+        ],
+        "summary": "Khách báo đang xem; nội dung ván vẫn đọc từ file tĩnh",
+        "operationId": "live_interest_api_v1_competitions__ident__fixtures__fixture_id__live_interest_get",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          },
+          {
+            "name": "fixture_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Fixture Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/competitions/{ident}/fixtures/{fixture_id}/events": {
       "get": {
         "tags": [
@@ -4513,6 +4568,22 @@
         ],
         "summary": "Văn bản luật OTTv2 chính thức đã cung cấp",
         "operationId": "rules_api_v1_rules_get",
+        "parameters": [
+          {
+            "name": "lang",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "vi",
+                "en"
+              ],
+              "type": "string",
+              "default": "vi",
+              "title": "Lang"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -4520,6 +4591,16 @@
               "text/plain": {
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -5402,7 +5483,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Fenced"
+                "$ref": "#/components/schemas/Heartbeat"
               }
             }
           }
@@ -5533,6 +5614,72 @@
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
                 }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "graderToken": []
+          }
+        ]
+      }
+    },
+    "/api/v1/grader/leases/{lease_id}/result-replay": {
+      "post": {
+        "tags": [
+          "graders"
+        ],
+        "summary": "Kết quả và replay gzip; lưu nguyên khối, vẫn kiểm fencing và kết quả",
+        "operationId": "result_replay_api_v1_grader_leases__lease_id__result_replay_post",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lease Id"
+            }
+          },
+          {
+            "name": "x-fencing",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "X-Fencing"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
               }
             }
           }
@@ -6691,6 +6838,7 @@
           "official": {
             "$ref": "#/components/schemas/OfficialOptions",
             "default": {
+              "match_ms": 10000,
               "general_rounds": 20,
               "group_size": 64,
               "finalists": 16,
@@ -7142,21 +7290,6 @@
         ],
         "title": "Events"
       },
-      "Fenced": {
-        "properties": {
-          "fencing": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Fencing"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "fencing"
-        ],
-        "title": "Fenced"
-      },
       "Finish": {
         "properties": {
           "request_id": {
@@ -7238,6 +7371,38 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "Heartbeat": {
+        "properties": {
+          "fencing": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Fencing"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "building",
+                  "validating",
+                  "benchmarking",
+                  "playing"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "fencing"
+        ],
+        "title": "Heartbeat"
       },
       "Hello": {
         "properties": {
@@ -7611,6 +7776,16 @@
       },
       "OfficialOptions": {
         "properties": {
+          "match_ms": {
+            "type": "integer",
+            "enum": [
+              10000,
+              60000,
+              300000
+            ],
+            "title": "Match Ms",
+            "default": 10000
+          },
           "general_rounds": {
             "type": "integer",
             "maximum": 64.0,
