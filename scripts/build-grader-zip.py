@@ -63,6 +63,7 @@ def build(source, out, keep=3):
         for name in members(source):
             info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
             info.external_attr = 0o644 << 16
+            info.create_system = 3  # Unix on every builder, so Windows and Linux give the same bytes
             info.compress_type = zipfile.ZIP_DEFLATED
             bundle.writestr(info, (source / name).read_bytes())
     data = buffer.getvalue()

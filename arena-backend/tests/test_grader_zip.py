@@ -35,7 +35,9 @@ class GraderZipTest(unittest.TestCase):
         data = (self.tmp / "a" / first["file"]).read_bytes()
         self.assertEqual(hashlib.sha256(data).hexdigest(), first["sha256"])
         self.assertEqual(json.loads((self.tmp / "a/grader-latest.json").read_text()), first)
-        names = zipfile.ZipFile(self.tmp / "a" / first["file"]).namelist()
+        infos = zipfile.ZipFile(self.tmp / "a" / first["file"]).infolist()
+        self.assertEqual({(i.create_system, i.date_time, i.external_attr >> 16) for i in infos}, {(3, (1980, 1, 1, 0, 0, 0), 0o644)})
+        names = [i.filename for i in infos]
         self.assertIn("scripts/install-grader.ps1", names)
         self.assertIn("arena-backend/arena/grader.py", names)
         self.assertIn("arena-backend/sdk/bot.cpp", names)
