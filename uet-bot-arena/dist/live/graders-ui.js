@@ -21,14 +21,20 @@ export function gradersPage(s){
   const summary=`<div class="admin-kpis">${stat(tr('Máy online'),online.length)}${stat(tr('Slot chấm'),slots)}${stat(tr('Trận chính thức chờ'),queue.official??0)}${stat(tr('Luyện tập, kiểm tra chờ'),queue.practice??0)}</div>`;
   const create=panel(tr('Thêm máy chấm'),`<form class="real-form" id="grader-form">${field(tr('Tên máy (ví dụ: PC phòng 301)'),'name','required maxlength="60"')}${note(tr('Mã máy chấm chỉ hiện một lần sau khi tạo. Dán mã vào cửa sổ cài máy chấm; hệ thống chỉ lưu bản băm.'))}${errors()}${submit(tr('Tạo mã máy chấm'))}</form>`);
   const list=panel(tr('Danh sách máy chấm'),items.length?table([tr('Tên'),tr('Trạng thái'),tr('Nền tảng'),'Slot',tr('Đang chấm'),tr('Đã chấm'),'runtime_id',tr('Phiên bản'),tr('Thấy lần cuối'),''],graderRows(items)):empty(tr('Chưa có máy chấm nào.'),tr('Tạo mã ở trên rồi chạy máy chấm trên máy Windows hoặc Linux.')),button(tr('Cập nhật'),'refresh','','small secondary'));
-  const howto=panel(tr('Chạy máy chấm'),l10n`<p>Windows (không cần quyền admin, không cần WSL):</p><pre class="report-json">python -m arena.sandbox.toolchain install
+  // Source-checkout commands only when this hub publishes no install package (local development).
+  const howto=validPackage(s.graderPackage)?'':panel(tr('Chạy máy chấm từ mã nguồn'),l10n`<p>Hub này chưa phát gói cài. Chạy từ thư mục arena-backend của repo, đã cài venv.</p><p>Windows (không cần quyền admin, không cần WSL):</p><pre class="report-json">python -m arena.sandbox.toolchain install
 python -m arena.grader --hub ${esc(s.origin||location.origin)} --slots 2 --backend windows</pre><p>Linux hoặc WSL2:</p><pre class="report-json">python3 -m arena.grader --hub ${esc(s.origin||location.origin)} --slots 2 --backend bwrap</pre><p>Lần chạy đầu, máy chấm hỏi mã bằng lời nhắc ẩn rồi lưu vào file chỉ tài khoản đó đọc được. Không dán mã vào dòng lệnh hay đường dẫn.</p>`);
   return head(tr('Máy chấm.'),tr('Máy chấm tự kéo việc về và chạy bot trong sandbox; hub không chạy bot. Trận tính điểm chỉ giao cho máy cùng nền tảng của giải.'))+summary+list+create+packagePanel(s.graderPackage,s.origin||location.origin)+howto;
 }
 
 // Grader install package published by install-hub.sh at /downloads/ (manifest grader-latest.json).
-const PACKAGE=/^uet-arena-grader-[0-9a-f]{12}\.zip$/;
+const PACKAGE=/^uet-arena-grader-[0-9a-f]{12}\.zip$/,ROOTFS=/^rootfs-([0-9a-f]{64})\.tar\.zst$/;
 export const validPackage=pkg=>pkg&&PACKAGE.test(pkg.file||'')&&/^[0-9a-f]{64}$/.test(pkg.sha256||'')?pkg:null;
+// Linux graders also download the sandbox toolchain (rootfs); its file name carries its full SHA-256.
+export const linuxRootfs=pkg=>{
+  const rootfs=validPackage(pkg)?.linux_rootfs,match=ROOTFS.exec(rootfs?.file||'');
+  return match&&rootfs.sha256===match[1]?rootfs:null;
+};
 
 // One PowerShell block: download, verify SHA-256, unpack, install. Plain text for chat apps.
 export function installCommand(pkg,origin){
@@ -41,7 +47,26 @@ export function installCommand(pkg,origin){
     `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\install-grader.ps1 -HubUrl ${origin} -Slots 2`].join('\n');
 }
 
-export function graderMessage(item,pkg,origin){
+// Linux/WSL2: one && chain, so a failed download or SHA-256 check stops everything after it.
+export function linuxInstallCommand(pkg,origin){
+  const rootfs=linuxRootfs(pkg);
+  return [`cd ~ && curl -fLO ${origin}/downloads/${pkg.file} \\`,
+    `  && echo "${pkg.sha256}  ${pkg.file}" | sha256sum -c - \\`,
+    `  && python3 -m zipfile -e ${pkg.file} ~/uet-grader \\`,
+    `  && cd ~/uet-grader \\`,
+    `  && bash scripts/install-grader.sh --hub ${origin} --slots 2 --rootfs ${origin}/downloads/${rootfs.file} --sha256 ${rootfs.sha256}`].join('\n');
+}
+
+export function graderMessage(item,pkg,origin,platform='windows'){
+  if(platform==='linux')return [tr('Cài máy chấm UET Bot Arena trên Linux, tên máy: ')+item.name,
+    tr('1. Cần Ubuntu 24.04 (hoặc Linux có systemd, cgroup v2 và Python 3.11+); WSL2 phải bật systemd. Cắm sạc, tắt Sleep khi đang chấm.'),
+    tr('2. Mở Terminal, dán cả khối lệnh dưới đây rồi Enter (máy 2 nhân trở xuống thì đổi --slots 2 thành --slots 1). Lệnh có thể hỏi mật khẩu sudo một lần để cài bubblewrap và cho phép sandbox:'),
+    linuxInstallCommand(pkg,origin),
+    tr('3. Khi được hỏi mã máy chấm, dán mã này rồi Enter (mã không hiện khi dán):'),
+    item.token,
+    tr('4. Thấy dòng "OK: hub nhận máy chấm ')+item.name+tr('" rồi "Grader installed" là xong; máy chấm chạy nền bằng systemd và tự bật khi đăng nhập.'),
+    tr('Dừng máy chấm (dòng thứ hai gỡ hẳn):'),
+    'systemctl --user stop uet-arena-grader-default\nbash ~/uet-grader/scripts/install-grader.sh --uninstall'].join('\n\n');
   return [tr('Cài máy chấm UET Bot Arena, tên máy: ')+item.name,
     tr('1. Cần Windows 10/11 và Python 3.11+ (python.org, tick "Add python.exe to PATH"). Cắm sạc, tắt Sleep khi đang chấm.'),
     tr('2. Mở PowerShell, dán cả khối lệnh dưới đây rồi Enter (máy 2 nhân trở xuống thì đổi -Slots 2 thành -Slots 1):'),
@@ -55,11 +80,16 @@ export function graderMessage(item,pkg,origin){
 
 export function packagePanel(pkg,origin){
   if(!validPackage(pkg))return '';
-  const url=`${origin}/downloads/${pkg.file}`;
-  return panel(tr('Gói cài máy chấm Windows'),l10n`<div class="grader-package"><p>Ai có link đều tải được: gói chỉ có code máy chấm, không có mã hay mật khẩu. Máy chỉ nhận việc khi có mã do BTC tạo ở trên, gửi riêng cho từng người.</p><p><strong>Tải về:</strong> <a href="${esc(url)}" download>${esc(pkg.file)}</a></p><p><strong>SHA-256:</strong> <span class="mono">${esc(pkg.sha256)}</span></p><p><strong>Phiên bản máy chấm:</strong> ${esc(pkg.grader_version||'—')}</p><p>Khối lệnh cài trên Windows (PowerShell):</p><pre class="report-json">${esc(installCommand(pkg,origin))}</pre></div>`);
+  const url=`${origin}/downloads/${pkg.file}`,rootfs=linuxRootfs(pkg);
+  const linux=rootfs?l10n`<h3>Ubuntu/Linux hoặc WSL2 (Terminal)</h3><p>Cần systemd, cgroup v2 và Python 3.11+ (Ubuntu 24.04 có sẵn); WSL2 phải bật systemd. Lệnh tự tải bộ biên dịch cho sandbox (rootfs ${esc(Math.round(rootfs.bytes/1048576))} MiB, SHA-256 <span class="mono">${esc(rootfs.sha256)}</span>) và có thể hỏi mật khẩu sudo một lần để cài bubblewrap và cho phép sandbox.</p><pre class="report-json">${esc(linuxInstallCommand(pkg,origin))}</pre>`
+    :l10n`<p>Hub này chưa phát rootfs cho máy chấm Linux; cài Linux theo docs/MAY-CHAM.md trong repo.</p>`;
+  return panel(tr('Cài máy chấm'),l10n`<div class="grader-package"><p>Ai có link đều tải được: gói chỉ có code máy chấm, không có mã hay mật khẩu. Máy chỉ nhận việc khi có mã do BTC tạo ở trên, gửi riêng cho từng người.</p><p>Bấm "Tạo mã máy chấm" để có sẵn tin nhắn gửi người cài, gồm link, lệnh và mã. Trận tính điểm chỉ giao cho máy cùng nền tảng với giải; máy nền tảng khác vẫn nhận kiểm bài và luyện tập.</p><p><strong>Tải về:</strong> <a href="${esc(url)}" download>${esc(pkg.file)}</a></p><p><strong>SHA-256:</strong> <span class="mono">${esc(pkg.sha256)}</span></p><p><strong>Phiên bản máy chấm:</strong> ${esc(pkg.grader_version||'—')}</p><h3>Windows 10/11 (PowerShell, không cần quyền admin hay WSL)</h3><p>Cần Python 3.11+ (python.org, tick "Add python.exe to PATH").</p><pre class="report-json">${esc(installCommand(pkg,origin))}</pre>${linux}</div>`);
 }
 
 export function graderTokenModal(item,pkg=null,origin=''){
-  const message=validPackage(pkg)?l10n`<label class="field"><span>Tin nhắn gửi người cài (gồm link, lệnh và mã)</span><pre class="report-json" id="grader-message">${esc(graderMessage(item,pkg,origin))}</pre></label>`:'';
-  return l10n`<p>Đây là lần duy nhất mã của <strong>${esc(item.name)}</strong> được hiển thị. Sao chép rồi dán vào máy chấm khi được hỏi.</p><label class="field"><span>Mã máy chấm</span><div class="credential-value" id="grader-token">${esc(item.token)}</div></label>${message}<div class="modal-actions">${message?button(tr('Sao chép tin nhắn'),'copy-grader-message','','primary'):''}${button(tr('Sao chép mã'),'copy-grader-token','',message?'secondary':'primary')}${button(tr('Đóng'),'close-modal')}</div>`;
+  const message=(platform,label)=>l10n`<label class="field"><span>${label}</span><pre class="report-json" id="grader-message-${platform}">${esc(graderMessage(item,pkg,origin,platform))}</pre></label>`;
+  const windows=validPackage(pkg)?message('windows',tr('Tin nhắn gửi người cài Windows (gồm link, lệnh và mã)')):'';
+  const linux=linuxRootfs(pkg)?message('linux',tr('Tin nhắn gửi người cài Linux')):'';
+  const copy=(platform,label,kind)=>button(label,'copy-grader-message',`data-platform="${platform}"`,kind);
+  return l10n`<p>Đây là lần duy nhất mã của <strong>${esc(item.name)}</strong> được hiển thị. Sao chép rồi dán vào máy chấm khi được hỏi.</p><label class="field"><span>Mã máy chấm</span><div class="credential-value" id="grader-token">${esc(item.token)}</div></label>${windows}${linux}<div class="modal-actions">${windows?copy('windows',tr('Sao chép tin nhắn Windows'),'primary'):''}${linux?copy('linux',tr('Sao chép tin nhắn Linux'),'secondary'):''}${button(tr('Sao chép mã'),'copy-grader-token','',windows?'secondary':'primary')}${button(tr('Đóng'),'close-modal')}</div>`;
 }

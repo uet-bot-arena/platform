@@ -466,7 +466,7 @@ document.addEventListener('click',async e=>{
     }
     if(action==='account-lock'){const locked=b.dataset.locked!=='true';confirmAction(locked?tr('Khóa tài khoản?'):tr('Mở khóa tài khoản?'),locked?tr('Đội sẽ bị đăng xuất và không thể đăng nhập cho tới khi mở khóa.'):tr('Đội có thể đăng nhập lại với mật khẩu hiện tại.'),()=>api.post('/admin/accounts/'+b.dataset.id+'/lock',{locked}));return;}
     if(action==='delivered'){b.disabled=true;await api.post('/admin/accounts/'+b.dataset.id+'/delivered');await refreshAdmin();return;}
-    if(action==='copy-grader-message'){if(issuedGrader&&s.graderPackage){await navigator.clipboard.writeText(graderMessage(issuedGrader,s.graderPackage,location.origin));toast(tr('Đã sao chép tin nhắn cài máy chấm.'));}return;}
+    if(action==='copy-grader-message'){if(issuedGrader&&s.graderPackage){await navigator.clipboard.writeText(graderMessage(issuedGrader,s.graderPackage,location.origin,b.dataset.platform==='linux'?'linux':'windows'));toast(tr('Đã sao chép tin nhắn cài máy chấm.'));}return;}
     if(action==='copy-grader-token'){if(issuedGrader){await navigator.clipboard.writeText(issuedGrader.token);toast(tr('Đã sao chép mã máy chấm.'));}return;}
     if(action==='revoke-grader'){if(!confirm(tr('Thu hồi mã của máy chấm "')+b.dataset.name+tr('"? Máy này sẽ mất kết nối, trận đang chạy được giao lại máy khác.')))return;b.disabled=true;await api.post('/admin/graders/'+b.dataset.id+'/revoke');toast(tr('Đã thu hồi mã máy chấm.'));openRoute();return;}
     if(action==='copy-credential'){if(issued){await navigator.clipboard.writeText(tr('Tài khoản: ')+issued.account.username+tr('\nMật khẩu tạm: ')+issued.temporary_password);toast(tr('Đã sao chép. Hãy phát qua kênh của ban tổ chức.'));}return;}

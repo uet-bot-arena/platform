@@ -62,6 +62,49 @@ class GraderZipTest(unittest.TestCase):
         self.assertEqual(kept, sorted(files[-2:]))
         self.assertEqual(sorted(p.name for p in out.glob("*.sha256")), sorted(f + ".sha256" for f in files[-2:]))
 
+    def rootfs(self, content):
+        path = self.tmp / "build" / f"rootfs-{hashlib.sha256(content).hexdigest()}.tar.zst"
+        path.parent.mkdir(exist_ok=True)
+        path.write_bytes(content)
+        return path
+
+    def test_publishes_checked_rootfs_for_linux_graders(self):
+        rootfs, out = self.rootfs(b"toolchain v1"), self.tmp / "out"
+        manifest = builder.build(self.source, out, rootfs=rootfs)
+        digest = hashlib.sha256(b"toolchain v1").hexdigest()
+        self.assertEqual(manifest["linux_rootfs"], {"file": rootfs.name, "sha256": digest, "bytes": 12})
+        self.assertEqual((out / rootfs.name).read_bytes(), b"toolchain v1")
+        self.assertEqual((out / (rootfs.name + ".sha256")).read_text(), f"{digest}  {rootfs.name}\n")
+        self.assertEqual(json.loads((out / "grader-latest.json").read_text()), manifest)
+        # A reinstall without --rootfs keeps publishing the rootfs already verified in out.
+        self.assertEqual(builder.build(self.source, out)["linux_rootfs"], manifest["linux_rootfs"])
+
+    def test_refuses_rootfs_whose_content_does_not_match_its_name(self):
+        wrong = self.tmp / ("rootfs-" + "0" * 64 + ".tar.zst")
+        wrong.write_bytes(b"not the named toolchain")
+        for bad in (wrong, self.tmp / "toolchain.tar.zst", self.tmp / ("rootfs-" + "1" * 64 + ".tar.zst")):
+            with self.assertRaises(SystemExit):
+                builder.build(self.source, self.tmp / "out", rootfs=bad)
+        self.assertFalse(list((self.tmp / "out").glob("rootfs-*")) if (self.tmp / "out").exists() else [])
+
+    def test_corrupted_published_rootfs_is_not_offered(self):
+        out = self.tmp / "out"
+        rootfs = self.rootfs(b"toolchain v1")
+        builder.build(self.source, out, rootfs=rootfs)
+        (out / rootfs.name).write_bytes(b"truncated")
+        self.assertNotIn("linux_rootfs", builder.build(self.source, out))
+        self.assertNotIn("linux_rootfs", builder.build(self.source, self.tmp / "empty"))
+
+    def test_new_rootfs_wins_and_only_the_previous_one_is_kept(self):
+        out = self.tmp / "out"
+        names = []
+        for i in range(3):
+            rootfs = self.rootfs(f"toolchain v{i}".encode())
+            names.append(rootfs.name)
+            self.assertEqual(builder.build(self.source, out, rootfs=rootfs)["linux_rootfs"]["file"], rootfs.name)
+        self.assertEqual(sorted(p.name for p in out.glob("rootfs-*.tar.zst")), sorted(names[-2:]))
+        self.assertFalse((out / (names[0] + ".sha256")).exists())
+
 
 if __name__ == "__main__":
     unittest.main()

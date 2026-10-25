@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
-# Ubuntu 24.04 hub only: no compiler, rootfs or bot execution.
+# Ubuntu 24.04 hub only: no compiler or bot execution. It only publishes the grader
+# package and, with --grader-rootfs, the Linux grader rootfs file for download.
 set -euo pipefail
 umask 077
 arena_source="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 arena_origin=http://127.0.0.1:4181
 arena_vcpus="$(nproc)"
 arena_remove=false
+arena_rootfs=''
 while (( $# )); do
   case "$1" in
     --origin) arena_origin="${2:?Missing origin}"; shift 2 ;;
     --vcpus) arena_vcpus="${2:?Missing vCPU count}"; shift 2 ;;
+    --grader-rootfs) arena_rootfs="$(realpath -- "${2:?Missing rootfs file}")"; shift 2 ;;
     --uninstall) arena_remove=true; shift ;;
-    *) echo 'Usage: sudo bash scripts/install-hub.sh [--origin https://host] [--vcpus N] [--uninstall]' >&2; exit 2 ;;
+    *) echo 'Usage: sudo bash scripts/install-hub.sh [--origin https://host] [--vcpus N] [--grader-rootfs rootfs-<sha256>.tar.zst] [--uninstall]' >&2; exit 2 ;;
   esac
 done
 (( EUID == 0 )) || { echo 'Run with sudo/root.' >&2; exit 1; }
@@ -80,7 +83,10 @@ fi
 chown -R root:root /opt/uet-arena/app
 chmod -R go-w,a+rX /opt/uet-arena/app
 install -d -m 755 /opt/uet-arena/downloads
-python3 /opt/uet-arena/app/scripts/build-grader-zip.py --source /opt/uet-arena/app --out /opt/uet-arena/downloads >/dev/null
+# Without --grader-rootfs the rootfs already published (if any) is checked and kept.
+arena_zip_args=(--source /opt/uet-arena/app --out /opt/uet-arena/downloads)
+if [[ -n "$arena_rootfs" ]]; then arena_zip_args+=(--rootfs "$arena_rootfs"); fi
+python3 /opt/uet-arena/app/scripts/build-grader-zip.py "${arena_zip_args[@]}" >/dev/null
 python3 -m venv /opt/uet-arena/venv
 /opt/uet-arena/venv/bin/python -m pip install --disable-pip-version-check -r /opt/uet-arena/app/arena-backend/requirements.txt
 chmod -R go-w,a+rX /opt/uet-arena/venv

@@ -42,6 +42,22 @@ if (( ${#packages[@]} )); then
 fi
 python3 -c 'import sys; assert sys.version_info >= (3,11), "Python 3.11+ required"'
 systemctl --user is-active --quiet "$unit" && { echo "Stop $unit before reinstalling." >&2; exit 1; }
+# Ubuntu 23.10+ lets unprivileged programs create user namespaces only through an AppArmor
+# profile, and bubblewrap needs them. WSL2 kernels have no such restriction.
+if [[ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || true)" == 1 ]]; then
+  apparmor_file=/etc/apparmor.d/uet-arena-bwrap
+  apparmor_rule="$(printf 'abi <abi/4.0>,\ninclude <tunables/global>\n\nprofile uet-arena-bwrap %s flags=(unconfined) {\n  userns,\n\n  include if exists <local/uet-arena-bwrap>\n}' "$(command -v bwrap)")"
+  if [[ "$(cat "$apparmor_file" 2>/dev/null || true)" != "$apparmor_rule" ]]; then
+    echo 'This Linux restricts user namespaces: adding AppArmor profile uet-arena-bwrap for bubblewrap (sudo).'
+    printf '%s\n' "$apparmor_rule" | sudo tee "$apparmor_file" >/dev/null
+    sudo apparmor_parser -r "$apparmor_file"
+  fi
+fi
+# --check only talks to the hub, so prove the sandbox and the cgroup limits work before installing.
+bwrap --unshare-all --ro-bind / / --dev /dev --proc /proc true \
+  || { echo 'bubblewrap cannot create a sandbox here (user namespaces blocked); see docs/MAY-CHAM.md.' >&2; exit 1; }
+systemd-run --user --scope --quiet -p MemoryMax=64M -p MemorySwapMax=0 -p CPUQuota=100% -p TasksMax=16 true \
+  || { echo 'systemd user manager or cgroup v2 delegation is missing; see docs/MAY-CHAM.md.' >&2; exit 1; }
 # Escape paths for systemd's unit syntax (not shell syntax).
 unit_quote() { local s="$1"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//%/%%}"; s="${s//\$/\$\$}"; printf '"%s"' "$s"; }
 mkdir -p "$install/app" "$(dirname -- "$unit_file")"
