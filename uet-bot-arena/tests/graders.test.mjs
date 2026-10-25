@@ -28,7 +28,8 @@ test('only allowlisted file names and signed relative URLs can enter shell comma
 test('one-paste Windows message uses signed URL, verifies SHA and explains expiry',()=>{
  const text=graderMessage({name:'laptop',token:'uag_test'},pkg,'https://hub.example');
  assert.ok(text.includes('https://hub.example'+pkg.url));assert.match(text,/Get-FileHash/);assert.ok(text.includes(pkg.sha256.toUpperCase()));assert.match(text,/7 ngày/);assert.match(text,/uag_test/);assert.doesNotMatch(text,/SHA-256:|\/downloads\//);
- assert.equal(installCommand(pkg,'https://hub.example').split('\n').length,6);
+ assert.ok(installCommand(pkg,'https://hub.example').startsWith('$ErrorActionPreference = \"Stop\"\n'));
+ assert.equal(installCommand(pkg,'https://hub.example').split('\n').length,7);
 });
 test('Linux message verifies both files and stops on errors with &&',()=>{
  const text=graderMessage({name:'Linux',token:'uag_test'},linuxPkg,'https://hub.example','linux');
