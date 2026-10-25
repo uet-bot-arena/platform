@@ -568,6 +568,9 @@ def main(argv=None):
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, on_signal)
     try:
+        if args.stop_file and args.stop_file.exists():
+            args.stop_file.unlink()
+            log.info("Đã xóa file dừng cũ khi khởi động.")
         grader.start()
         grader.wait(args.stop_file)
     finally:

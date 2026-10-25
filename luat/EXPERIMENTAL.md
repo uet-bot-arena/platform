@@ -5,7 +5,7 @@ OTT v2 tiêu chuẩn vẫn dùng protocol v2 và runtime native đã ghim.
 
 ## BTC: bật và công bố luật
 
-1. Cài rootfs/toolchain và kết nối máy chấm theo [MAY-CHAM.md](../TAI-LIEU.docx).
+1. Cài rootfs/toolchain và kết nối máy chấm theo khung Cài máy chấm trên trang Máy chấm.
 2. Đăng nhập BTC, mở **Ruleset add-on**, bật công tắc cho phép sử dụng add-on.
 3. Chọn Energy + Dash hoặc Domination + Shield, chỉnh filter, mẫu đi và vùng.
 4. **Preview & kiểm tra** trả trạng thái và toàn bộ action hợp lệ. Chọn action để
@@ -115,7 +115,7 @@ SDK apply mô phỏng **luật bàn cờ**; thuật toán tìm kiếm cần tự
 
 ## Timing, lỗi và replay
 
-Startup 2 s; build 30 s; quỹ cả trận 60 s (Bullet) hoặc 300 s (đấu thường) mỗi bot, chỉ trừ khi đến lượt, không increment; một CPU cho bot, RAM theo hiệu chuẩn native ở [SANDBOX](../TAI-LIEU.docx). Kiểm tra 72 mẫu có 500 ms riêng mỗi mẫu. Giải cũ đã ghim giữ ngân sách lượt cũ.
+Startup 2 s; build 30 s; quỹ cả trận 60 s (Bullet) hoặc 300 s (đấu thường) mỗi bot, chỉ trừ khi đến lượt, không increment; một CPU cho bot, RAM theo hiệu chuẩn native. Kiểm tra 72 mẫu có 500 ms riêng mỗi mẫu. Giải cũ đã ghim giữ ngân sách lượt cũ.
 Engine tính action ngoài ngân sách; serialize/gửi/parse ở bot và nhận đủ LF nằm
 trong ngân sách worker monotonic. Deadline cứng `t1 < D`; chờ thêm ít nhất 3 s
 để server tuyên bố timeout; không nhận action muộn. Không có time modifier.
@@ -147,5 +147,3 @@ với engine Python. Integration dùng tài khoản/DB tạm, upload thật, ben
 hai lượt chính thức, SSE/replay và kiểm tra tắt tính năng/luật bất biến.
 
 Harness tải cũ đã gỡ ở gói 3b; kiểm tải cho kiến trúc máy chấm từ xa tiếp tục theo PLAN_M1.md gói 8–10. Các số đo lịch sử không dùng nghiệm thu M1.
-
-Kết quả kiểm chứng local: [EXPERIMENTAL-VALIDATION.md](../TAI-LIEU.docx).

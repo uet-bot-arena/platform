@@ -3,7 +3,7 @@ import {visiblePoll,githubPollMs} from './polling.js';
 import {tr,html as l10n,language,setLanguage} from './i18n.js';
 import {startAnnouncements} from './announcements.js';
 import {readTournamentOptions} from './tournament-options.js';
-import {timeField,timeBody} from './time-control.js';
+import {timeField,timeBody,competitionProfile} from './time-control.js';
 import {ArenaAPI,saveBlob} from './client.js';
 import {page,jobDetail} from './pages.js';
 import {esc,icon,button,field,table,note,errors,submit,shell,badge,short,select,date} from './view.js';
@@ -128,7 +128,7 @@ async function openRoute(){
       const teamName=tid=>s.competition.entries.find(e=>e.team_id===tid)?.name||short(tid);
       const name=sid=>s.submissions.find(x=>x.id===sid)?.version||short(sid);
       const options={title:practice?tr('Phòng luyện tập · ')+short(s.job.id):s.competition.title+tr(' · Trận ')+fixture.ordinal,red:practice?name(s.job.submission_ids[0]):teamName(fixture.red_team_id),blue:practice?name(s.job.submission_ids[1]):teamName(fixture.blue_team_id),back:practice?'practice':'competitions/'+s.competition.id,admin:!practice&&s.user?.role==='admin',officialLive:!practice&&s.route==='arena'};
-      options.profile=practice?s.job.profile:s.competition.config.profile;
+      options.profile=practice?s.job.profile:competitionProfile(s.competition);
       options.basicRules=(practice?s.job.basic_rules:s.competition.config.basic_rules)?.definition;
       app.innerHTML=shell(s,boardPage(options));mobileSidebar();document.title=options.title+' · UET Bot Arena';
       const mountBoard=(current,reset=false)=>{
@@ -315,6 +315,11 @@ document.addEventListener('input',e=>{
   if(e.target.name==='ops-search'){s.opsSearch=e.target.value;s.opsPage=1;refreshOperationsBody();}
 });
 document.addEventListener('change',async e=>{
+  if(e.target.name==='format'&&e.target.form?.id==='competition-form'){
+    const elo=e.target.value==='elo',form=e.target.form;
+    form.querySelector('[data-competition-time]').hidden=elo;
+    form.querySelector('[data-elo-time]').hidden=!elo;
+  }
   const name=e.target.name,value=e.target.value;
   if(name==='use-experimental'){const label=e.target.form.querySelector('[data-experimental-select]'),select=label.querySelector('select');label.hidden=!e.target.checked;select.required=e.target.checked;if(!e.target.checked)select.value='';}
 

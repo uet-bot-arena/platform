@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {remainingClocks,clockText,timeField,timeLabel,timeBody,timeQuery} from '../dist/live/time-control.js';
+import {remainingClocks,clockText,timeField,timeLabel,timeBody,timeQuery,competitionProfile} from '../dist/live/time-control.js';
 import {jobErrorExplanation} from '../dist/live/result.js';
+import {boardPage} from '../dist/live/board.js';
+
+test('Elo replay uses the official bank rather than the unused competition profile',()=>{
+  const profile={match_ms:300000},competition={config:{format:'elo',profile,official:{match_ms:10000}}};
+  const actual=competitionProfile(competition);
+  assert.equal(timeLabel(actual),'Ladder · 10 giây / đội');
+  assert.match(boardPage({title:'Cup',red:'A',blue:'B',back:'home',profile:actual}),/Ladder · 10 giây \/ đội/);
+  assert.equal(profile.match_ms,300000);
+  assert.equal(competitionProfile({config:{format:'elo',profile}}).match_ms,10000);
+  assert.equal(competitionProfile({config:{format:'swiss',profile}}),profile);
+});
 
 test('only the active bank runs, never resets or goes below zero',()=>{
   const bank={red:59000,blue:60000},turn={side:'red',estimated_started_unix_ms:1000};

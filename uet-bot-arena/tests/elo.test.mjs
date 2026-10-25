@@ -2,6 +2,27 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {eloStandings,eloProgress,eloTeam} from '../dist/live/elo.js';
 import {readTournamentOptions} from '../dist/live/tournament-options.js';
+import {setLanguage} from '../dist/live/i18n.js';
+import {page} from '../dist/live/pages.js';
+
+test('round robin names the frozen rating from the stage that actually ran in either language',()=>{
+ const standings={ranking:'round_robin_points',items:[],matrix:[],progress:{rounds:[{phase:'ladder'}]}};
+ try{
+  for(const [lang,ladder,general] of [['vi','Elo sau ladder','Elo vòng chung'],['en','Post-ladder Elo','General-stage Elo']]){
+   setLanguage(lang);
+   const render=rounds=>eloStandings({standings:{...standings,progress:{rounds}}});
+   assert.match(render([{phase:'ladder'},{phase:'round_robin'}]),new RegExp(ladder));
+   assert.doesNotMatch(render([{phase:'ladder'},{phase:'round_robin'}]),new RegExp(general));
+   assert.match(render([{phase:'general'},{phase:'round_robin'}]),new RegExp(general));
+  }
+ }finally{setLanguage('vi');}
+});
+
+test('new Elo competition explains its fixed bank and hides the unrelated time input',()=>{
+ const html=page({route:'competitions',ids:[],user:{role:'admin'},competitions:[]});
+ assert.match(html,/data-elo-time>Ladder và xếp hạng chính thức: 10 giây mỗi bot/);
+ assert.match(html,/data-competition-time hidden>/);
+});
 
 test('round robin table and both-color matrix link each exact game, escaping names',()=>{
  const state={competition:{id:'cup'},standings:{ranking:'round_robin_points',provisional:true,items:[
@@ -35,7 +56,7 @@ test('form serializes the approved 20/64/16 rule and two K tiers',()=>{
 
 test('team round-robin view explains frozen Elo while points are being played',()=>{
  const html=eloTeam({user:{team_id:'a'},teamElo:{items:[{title:'Cup',competition_id:'cup',ladder_open:false,current:{phase:'round_robin',number:1,status:'running',sha:'sha',elo_before:1600,elo_after:null,games:[]}}]}});
- assert.match(html,/Elo sau vòng chung: 1600.00 · giữ nguyên/);
+ assert.match(html,/Elo trước vòng tròn: 1600.00 · giữ nguyên/);
  assert.doesNotMatch(html,/chờ cả đợt xong/);
 });
 

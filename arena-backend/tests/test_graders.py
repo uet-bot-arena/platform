@@ -732,14 +732,28 @@ class GraderLifecycle(unittest.TestCase):
 
     def test_stop_file_returns_leases(self):
         stop = Path(self.tmp.name) / "stop"
-        stop.touch()
         thread = Mock()
-        thread.is_alive.side_effect = [True, False]
+        thread.is_alive.side_effect = [True, True, False]
+        thread.join.side_effect = lambda *_: stop.touch()
         self.grader.threads = [thread]
         runner = Mock(lease=self.lease)
         self.grader.active["lease-test"] = runner
         self.grader.wait(stop)
         runner.abandon.assert_called_once()
+
+    def test_start_discards_a_stop_file_left_by_the_previous_run(self):
+        from arena.grader import main
+        token = Path(self.tmp.name) / "grader-token"
+        token.write_text("synthetic-test-token")
+        stop = Path(self.tmp.name) / "stop"
+        stop.touch()
+        with patch("arena.grader.Grader", return_value=self.grader), patch("arena.grader.logging.basicConfig"), \
+                patch.object(self.grader, "start") as start, self.assertLogs("arena.grader", level="INFO") as logs:
+            start.side_effect = lambda: self.assertFalse(stop.exists())
+            main(["--hub", "http://localhost", "--token-file", str(token), "--stop-file", str(stop)])
+        start.assert_called_once()
+        self.assertFalse(self.grader.stopping.is_set())
+        self.assertTrue(any("Đã xóa file dừng cũ" in line for line in logs.output))
 
     def test_pythonw_check_handles_missing_console_streams(self):
         from arena.grader import main
