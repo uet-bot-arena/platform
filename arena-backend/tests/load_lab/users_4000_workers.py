@@ -52,7 +52,7 @@ def fake_github(meta,ready,commands,results):
     finally:fixture.close()
 
 
-def user_worker(number,people,origin,cid,contract,start,stop,end,ready,output):
+def user_worker(number,people,origin,cid,contract,start,stop,end,ready,output,login_interval=1,pool_count=256):
     import httpx
     async def run():
         latencies=[];login=[];statuses=Counter();errors=[]
@@ -62,7 +62,7 @@ def user_worker(number,people,origin,cid,contract,start,stop,end,ready,output):
         async with AsyncExitStack() as stack:
             # Small independent pools avoid httpcore scanning hundreds of idle sockets per request.
             clients=[await stack.enter_async_context(httpx.AsyncClient(timeout=30,verify=False,
-                limits=httpx.Limits(max_connections=2,max_keepalive_connections=2))) for _ in range(256)]
+                limits=httpx.Limits(max_connections=2,max_keepalive_connections=2))) for _ in range(pool_count)]
             client=await stack.enter_async_context(httpx.AsyncClient(timeout=30,verify=False))
             async def read(path,person,measured):
                 began=time.monotonic()
@@ -70,7 +70,7 @@ def user_worker(number,people,origin,cid,contract,start,stop,end,ready,output):
                     headers={'Cookie':person['cookie'],'X-Forwarded-For':person['ip'],'Accept-Encoding':'gzip'}
                     etags=person.setdefault('etags',{})
                     if path.startswith('/snapshots/') and path in etags:headers['If-None-Match']=etags[path]
-                    response=await clients[person['index']%256].send(httpx.Request('GET',origin+path,headers=headers),stream=True)
+                    response=await clients[person['index']%pool_count].send(httpx.Request('GET',origin+path,headers=headers),stream=True)
                     try:
                         # Measure through the complete wire body; browser gzip decoding is outside hub latency.
                         async for _ in response.aiter_raw():pass
@@ -134,7 +134,7 @@ def user_worker(number,people,origin,cid,contract,start,stop,end,ready,output):
                         response=await client.post(origin+'/api/v1/auth/login',json=dict(username=person['username'],password='capacity-fixture-only-password'),headers={'X-Forwarded-For':person['ip']})
                         login.append(time.monotonic()-t);statuses['login:'+str(response.status_code)]+=1
                     except Exception as exc:errors.append('login:'+type(exc).__name__)
-                    i+=1;due=began+i
+                    i+=1;due=began+i*login_interval
             tasks=[person_loop(*person) for person in visible]
             if number==0:tasks.append(logins())
             await asyncio.gather(*tasks)
@@ -205,12 +205,12 @@ def grader_worker(origin,tokens,runtime_id,fixture,start,stop,end,ready,output,s
         grader.client=Recording(origin,token)
         grader.settings=grader.client.call('POST','/api/v1/grader/hello',dict(**identity,slots=1,version='users-4000-trace'))
         graders.append(grader)
-    ready.put(('graders',32));began=time.monotonic();cpu=time.process_time()
+    ready.put(('graders',len(graders)));began=time.monotonic();cpu=time.process_time()
     def slot(i,grader):
         runner=None;beat=None
         try:
             # Warm the real lease/result loop too; phase starts then stay spread over a game.
-            if stop.wait(i*10/32):return
+            if stop.wait(i*10/len(graders)):return
             while not stop.is_set() and (not start.is_set() or time.monotonic()<end.value):
                 lease=grader.client.call('POST','/api/v1/grader/lease',dict(wait_seconds=1))['lease']
                 if lease is None:continue
