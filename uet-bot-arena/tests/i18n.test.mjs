@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {tr,html,setLanguage,language,locale} from '../dist/live/i18n.js';
+import {tr,html,setLanguage,language,locale,languageButton} from '../dist/live/i18n.js';
 import {esc,date} from '../dist/live/view.js';
 import {APIError} from '../dist/live/client.js';
 
@@ -37,4 +37,12 @@ test('English API failures explain authentication and overload without rewriting
 
 test('ladder timestamps stay in Vietnam time in either language',()=>{
  for(const value of ['en','vi']){setLanguage(value);assert.match(date(Date.parse('2026-10-24T00:00:00Z')),/07:00/);}
+});
+
+test('language button shows the language in use and explains the switch',()=>{
+ setLanguage('vi');let button=languageButton();
+ assert.match(button,/>VI<\/button>$/);assert.match(button,/title="Chuyển sang tiếng Anh"/);assert.match(button,/lang="vi"/);
+ setLanguage('en');button=languageButton();
+ assert.match(button,/>EN<\/button>$/);assert.match(button,/title="Switch to Vietnamese"/);assert.match(button,/lang="en"/);
+ setLanguage('vi');
 });

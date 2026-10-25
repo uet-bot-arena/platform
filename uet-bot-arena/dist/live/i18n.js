@@ -20,4 +20,6 @@ export function tr(value){
 }
 // Translate only template source segments, before interpolated user values join.
 export function html(parts,...values){return parts.map((part,i)=>tr(part)+(i<values.length?values[i]:'')).join('');}
-export const languageButton=()=>`<button type="button" class="btn small secondary" data-action="language" aria-label="${selected==='vi'?'Switch to English':'Chuyển sang tiếng Việt'}" lang="${selected==='vi'?'en':'vi'}">${selected==='vi'?'EN':'VI'}</button>`;
+// The label names the language in use; the tooltip says what a click does.
+export const languageButton=()=>{const hint=selected==='vi'?'Chuyển sang tiếng Anh':'Switch to Vietnamese';
+  return `<button type="button" class="btn small secondary" data-action="language" aria-label="${hint}" title="${hint}" lang="${selected}">${selected==='vi'?'VI':'EN'}</button>`;};
