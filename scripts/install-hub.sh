@@ -64,10 +64,10 @@ install -d -m 700 -o arena -g arena /var/lib/uet-arena /var/lib/uet-arena/data /
 install -d -m 700 /var/backups/uet-arena
 systemctl stop uet-arena-nginx uet-arena-publisher uet-arena-mailer uet-arena-hub 2>/dev/null || true
 systemctl stop uet-arena-read@4183 uet-arena-read@4184 2>/dev/null || true
-# Updating from the same installed tree needs no copy; rsync removes no data.
+# Updating from another source removes stale code only inside the three application trees.
 if [[ "$arena_source" != /opt/uet-arena/app ]]; then
   for arena_dir in arena-backend uet-bot-arena luat; do
-    rsync -a --exclude=.venv --exclude=__pycache__ --exclude=test-results --exclude=.platform-state --exclude=node_modules --exclude=downloads \
+    rsync -a --delete --exclude=.venv --exclude=__pycache__ --exclude=test-results --exclude=.platform-state --exclude=node_modules --exclude=downloads \
       "$arena_source/$arena_dir" /opt/uet-arena/app/
   done
   install -d -m 755 /opt/uet-arena/app/scripts
@@ -75,7 +75,7 @@ if [[ "$arena_source" != /opt/uet-arena/app ]]; then
   install -m 755 "$arena_source/scripts/hub-status.py" /opt/uet-arena/app/scripts/
   install -m 755 "$arena_source/scripts/install-hub.sh" /opt/uet-arena/app/scripts/
   install -m 644 "$arena_source/scripts/hub-nginx.conf" "$arena_source/scripts/hub-nginx-security.conf" /opt/uet-arena/app/scripts/
-  # Grader package sources, served as a ZIP at /downloads/ (code only, no secrets).
+  # Grader package sources; nginx serves files only through signed hub download URLs.
   install -m 755 "$arena_source/scripts/build-grader-zip.py" /opt/uet-arena/app/scripts/
   install -m 644 "$arena_source"/scripts/install-grader.{ps1,sh}{,.sha256} /opt/uet-arena/app/scripts/
   if [[ -f "$arena_source/.gitattributes" ]]; then install -m 644 "$arena_source/.gitattributes" /opt/uet-arena/app/; fi

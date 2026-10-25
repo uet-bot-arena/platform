@@ -14,6 +14,7 @@ from arena.protocol import Fault
 from arena.service import TERMINAL
 from arena_api.dependencies import COOKIE, team_principal, admin_principal
 from arena_api.schemas import Benchmark, Match, TeamView
+from arena_api.teams import public_team
 
 ROOT = Path(__file__).resolve().parents[1]
 router = APIRouter(prefix="/api/v1", tags=["arena"])
@@ -42,6 +43,9 @@ def page_bundle(request,view,job_id,auth,section='all'):
         data['personal']={'profile':state.people.profile(auth['user']['id']),
             'team':state.teams.current(auth['user']['id']),'policy':state.teams.policy()}
         data['team']=data['personal']['team']
+        if view in ('home','team'):
+            from arena_api.competition_views import team_competitions
+            data['teamCompetitions']=team_competitions(state.competitions, team_id)
     if section=='personal':
         return JSONResponse(data)
     if view in ('team','submissions'):
@@ -150,14 +154,14 @@ def config(auth=Depends(team_principal)):
 
 @router.get("/teams/me", response_model=TeamView, summary="Hồ sơ đội hiện tại, chỉ đội đó đọc được")
 def team(request: Request, auth=Depends(team_principal)):
-    return request.app.state.accounts.team(auth["user"]["team_id"])
+    return public_team(request.app.state.accounts.team(auth["user"]["team_id"]))
 
 
 @router.get("/dashboard", summary="Thống kê thật từ submissions/jobs của đội")
 def dashboard(request: Request, auth=Depends(team_principal)):
     store, team_id = request.app.state.store, auth["user"]["team_id"]
     jobs = store.list("job", team_id, summary=True)
-    return JSONResponse({"team": request.app.state.accounts.team(team_id), "counts": {"submissions": len(store.list("submission", team_id)),
+    return JSONResponse({"team": public_team(request.app.state.accounts.team(team_id)), "counts": {"submissions": len(store.list("submission", team_id)),
             "benchmarks": sum(j["kind"] == "benchmark" for j in jobs), "matches": sum(j["kind"] == "match" for j in jobs),
             "active_jobs": sum(j["status"] not in TERMINAL for j in jobs)}, "recent_jobs": [public_job(j) for j in jobs[:10]],
             "official_standings_available": True, "competitions_url": "/api/v1/competitions"})

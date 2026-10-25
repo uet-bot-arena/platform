@@ -1,3 +1,4 @@
+import {competitionRoute} from './competition-ui.js';
 import {participantData,privatePage} from './page-data.js';
 import {visiblePoll,githubPollMs} from './polling.js';
 import {tr,html as l10n,language,setLanguage} from './i18n.js';
@@ -11,13 +12,13 @@ import {MatchBoard,boardPage} from './board.js';
 import {CompetitionFollow} from './follow.js';
 import {patchChildren} from './patch.js';
 import {adminTeamsBody,operationsBody} from './admin-ui.js';
-import {graderTokenModal,graderMessage,validPackage} from './graders-ui.js';
+import {graderTokenModal,graderMessage,validPackage,controlsMessage} from './graders-ui.js';
 import {loadBotGuide} from './bot-guide.js';
 import {publicRoute} from './access.js';
 import {readRuleForm,ruleEditor,rulePreviewMarkup,botRulesetField,botRulesetSelection,ruleFingerprint} from './experimental-ui.js';
 
 const api=new ArenaAPI(),app=document.getElementById('app'),modalRoot=document.getElementById('modal-root');
-const defaults=()=>({initialHistory:null,initialClock:null,announcements:[],adminAnnouncements:[],duplicates:[],queue:null,rankingLookup:null,historyTotal:null,teamElo:null,github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
+const defaults=()=>({initialHistory:null,initialClock:null,announcements:[],adminAnnouncements:[],duplicates:[],queue:null,rankingLookup:null,historyTotal:null,teamElo:null,teamCompetitions:null,competitionSummary:null,selectedCompetition:'',github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
 const s={...defaults(),user:null,emailRequest:null,emailAddress:'',route:'home',ids:[],loading:false,adminTab:'accounts',registrationStatus:'pending',adminVisibility:'active',adminSearch:'',adminPage:1,opsTab:'jobs',opsPage:1,opsSearch:'',opsStatus:'',opsKind:'',opsTeam:''};
 let emailPoll,githubPoll;
 let generation=0,board,competitionFeed,jobFeed,toastTimer,modalFocus,returnTo='home',issued=null,issuedGrader=null,refreshingGeneration=null;
@@ -44,12 +45,13 @@ function parseRoute(){const raw=location.hash.replace(/^#\/?/,'')||'home',[path,
 async function loadData(route,ids,q){
   api.admin=s.user?.role==='admin';
   if(!api.admin)return participantData(api,s.user,route,ids,q);
-  const data={};
+  const data={selectedCompetition:q.get('competition')||''};
+  const scope=data.selectedCompetition?'?competition='+enc(data.selectedCompetition):'';
   if(s.user&&s.user.role!=='admin'&&['home','team','submissions','competitions'].includes(route))data.personal=await api.request('/users/me');
   if(route==='team'&&s.user?.team_id)data.teamElo=await api.request('/team/elo');
   if(route==='matching')data.matching=await api.request('/matching');
   if(route==='users'){
-    [data.people,data.teamPolicy,data.teamMerges,data.teamChoices]=await Promise.all([api.all('/admin/users'),api.request('/admin/team-policy'),api.request('/admin/team-merges'),api.all('/admin/teams')]);
+    [data.people,data.teamPolicy,data.teamMerges,data.teamChoices]=await Promise.all([api.all('/admin/users'+scope),api.request('/admin/team-policy'),api.request('/admin/team-merges'),api.all('/admin/teams'+scope)]);
   }
   if(['practice','operations'].includes(route))data.sampleBots=(await api.request(s.user?.role==='admin'?'/admin/sample-bots':'/sample-bots')).items;
   if(route==='guide'){
@@ -67,12 +69,14 @@ async function loadData(route,ids,q){
   if(s.user?.team_id&&!admin&&['team','submissions'].includes(route))work.push(api.request('/teams/me/github').then(x=>data.github=x));
   if(needsTeams)work.push(api.request('/teams/me').then(x=>data.team=x));
   if(s.user?.team_id&&['home','submissions','benchmark','practice','competitions','jobs','arena','replay'].includes(route)&&!admin){work.push(api.all('/submissions').then(x=>data.submissions=x));work.push(api.all('/jobs').then(x=>data.jobs=x));}
-  if(['home','competitions','schedule','live','standings','arena','replay'].includes(route))work.push(api.all('/competitions').then(x=>data.competitions=x));
+  if(['home','admin','users','competitions','schedule','live','standings','arena','replay'].includes(route))work.push(api.all('/competitions').then(x=>data.competitions=x));
+  if(route==='home'&&data.selectedCompetition)work.push(api.request('/admin/competitions/'+enc(data.selectedCompetition)+'/summary').then(x=>data.competitionSummary=x));
   if(route==='home'&&s.user&&(admin||s.user.team_id))work.push(api.request(admin?'/admin/metrics':'/dashboard').then(x=>{if(admin)data.metrics=x;else data.dashboard=x;}));
   if(route==='jobs')work.push(api.request('/jobs/'+enc(ids[0])).then(x=>data.job=x));
   if(route==='admin'){
+    work.push(api.all('/admin/users'+scope).then(x=>data.people=x));
     work.push(api.all('/admin/registrations?status='+(s.registrationStatus||'pending')).then(x=>data.registrations=x));
-    work.push(api.all('/admin/accounts').then(x=>data.accounts=x));
+    work.push(api.all('/admin/accounts'+scope).then(x=>data.accounts=x));
     work.push(api.all('/admin/recoveries').then(x=>data.recoveries=x));
   }
   if(route==='operations'){
@@ -84,8 +88,8 @@ async function loadData(route,ids,q){
   if(route==='audit')work.push(api.all('/admin/audit').then(x=>data.audit=x));
   if(route==='email')work.push(api.request('/admin/email').then(x=>data.mail=x));
   if(route==='graders'){work.push(api.request('/admin/graders').then(x=>data.graders=x));
-    // Package manifest is a static file from install-hub.sh; missing (dev hub) just hides the panel.
-    work.push(fetch('/downloads/grader-latest.json',{cache:'no-cache'}).then(r=>r.ok?r.json():null).catch(()=>null).then(x=>data.graderPackage=validPackage(x)));}
+    // A local hub may not publish a grader package.
+    work.push(api.request('/admin/grader-package').catch(()=>null).then(x=>data.graderPackage=validPackage(x)));}
   const settled=await Promise.allSettled(work);for(const item of settled)if(item.status==='rejected')throw item.reason;
   const cid=route==='competitions'?ids[0]:['arena','replay'].includes(route)?ids[0]==='practice'?null:ids[0]:route==='benchmark'?q.get('competition'):['schedule','live','standings'].includes(route)?q.get('competition')||data.competitions?.find(c=>!c.archived_ms)?.id:null;
   if(cid){
@@ -312,6 +316,7 @@ function refreshAdminBody(){const el=document.getElementById('admin-table');if(e
 function refreshOperationsBody(){const el=document.getElementById('operations-table');if(el)el.innerHTML=operationsBody(s);}
 document.addEventListener('input',e=>{
   if(e.target.name==='admin-search'){s.adminSearch=e.target.value;s.adminPage=1;refreshAdminBody();}
+  if(e.target.name==='people-search'){s.peopleSearch=e.target.value;const pos=e.target.selectionStart;render();const input=document.querySelector('[name=people-search]');input.focus();input.setSelectionRange(pos,pos);}
   if(e.target.name==='ops-search'){s.opsSearch=e.target.value;s.opsPage=1;refreshOperationsBody();}
 });
 document.addEventListener('change',async e=>{
@@ -321,6 +326,7 @@ document.addEventListener('change',async e=>{
     form.querySelector('[data-elo-time]').hidden=!elo;
   }
   const name=e.target.name,value=e.target.value;
+  if(name==='competition-scope'){go(competitionRoute(parseRoute().raw,value));return;}
   if(name==='use-experimental'){const label=e.target.form.querySelector('[data-experimental-select]'),select=label.querySelector('select');label.hidden=!e.target.checked;select.required=e.target.checked;if(!e.target.checked)select.value='';}
 
   if(['submission_id','red_submission_id','blue_submission_id'].includes(name)){
@@ -471,6 +477,7 @@ document.addEventListener('click',async e=>{
     }
     if(action==='account-lock'){const locked=b.dataset.locked!=='true';confirmAction(locked?tr('Khóa tài khoản?'):tr('Mở khóa tài khoản?'),locked?tr('Đội sẽ bị đăng xuất và không thể đăng nhập cho tới khi mở khóa.'):tr('Đội có thể đăng nhập lại với mật khẩu hiện tại.'),()=>api.post('/admin/accounts/'+b.dataset.id+'/lock',{locked}));return;}
     if(action==='delivered'){b.disabled=true;await api.post('/admin/accounts/'+b.dataset.id+'/delivered');await refreshAdmin();return;}
+    if(action==='copy-grader-controls'){await navigator.clipboard.writeText(controlsMessage(b.dataset.platform==='linux'?'linux':'windows'));toast(tr('Đã sao chép lệnh dừng/gỡ.'));return;}
     if(action==='copy-grader-message'){if(issuedGrader&&s.graderPackage){await navigator.clipboard.writeText(graderMessage(issuedGrader,s.graderPackage,location.origin,b.dataset.platform==='linux'?'linux':'windows'));toast(tr('Đã sao chép tin nhắn cài máy chấm.'));}return;}
     if(action==='copy-grader-token'){if(issuedGrader){await navigator.clipboard.writeText(issuedGrader.token);toast(tr('Đã sao chép mã máy chấm.'));}return;}
     if(action==='delete-grader'){if(!confirm(tr('Xóa máy chấm "')+b.dataset.name+tr('" khỏi danh sách? Mã đã thu hồi nên máy không nối lại được; lịch sử ván vẫn ghi tên máy.')))return;b.disabled=true;await api.post('/admin/graders/'+b.dataset.id+'/delete');toast(tr('Đã xóa máy chấm khỏi danh sách.'));openRoute();return;}

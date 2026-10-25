@@ -1,5 +1,10 @@
 """Remote grader API (token per grader, never cookies) and the organiser's grader page API."""
 import asyncio
+import hashlib
+import hmac
+import json
+from pathlib import Path
+import re
 import time
 from typing import Literal
 
@@ -11,6 +16,53 @@ from arena_api.dependencies import admin_principal
 from arena_api.schemas import Model
 
 router = APIRouter(prefix="/api/v1", tags=["graders"])
+DOWNLOADS = Path('/opt/uet-arena/downloads')
+DOWNLOAD_FILE = re.compile(r'(?:uet-arena-grader-[0-9a-f]{12}\.zip|rootfs-[0-9a-f]{64}\.tar\.zst)')
+DOWNLOAD_TTL_MS = 7 * 86400 * 1000
+
+
+def download_signature(request, file, exp):
+    key = request.app.state.settings.secrets.get('verification_hmac_key')
+    return hmac.new(key.encode(), f'grader-download|{file}|{exp}'.encode(), hashlib.sha256).hexdigest()
+
+
+def package_admin(request: Request):
+    try:
+        return admin_principal(request)
+    except Fault as exc:
+        if exc.code != 'unauthorized':
+            raise
+        raise Fault('forbidden', 'Administrator required') from None
+
+
+@router.get('/admin/grader-package', summary='Gói cài và link riêng có hạn bảy ngày, chỉ BTC')
+def package(request: Request, auth=Depends(package_admin)):
+    try:
+        item = json.loads((DOWNLOADS / 'grader-latest.json').read_text())
+    except FileNotFoundError:
+        raise Fault('not_found', 'Hub chưa phát gói máy chấm') from None
+    exp = str(int(time.time() * 1000) + DOWNLOAD_TTL_MS)
+    for entry in [item, *([item['linux_rootfs']] if item.get('linux_rootfs') else [])]:
+        file = entry['file']
+        if not DOWNLOAD_FILE.fullmatch(file) or not (DOWNLOADS / file).is_file():
+            raise Fault('not_found', 'Gói máy chấm không còn tồn tại')
+        entry['url'] = f'/api/v1/grader/download/{exp}/{download_signature(request, file, exp)}/{file}'
+    return item
+
+
+@router.get('/grader/download/{exp}/{sig}/{file}', summary='Tải gói bằng chữ ký có hạn, nginx phát file nội bộ')
+def download(exp: str, sig: str, file: str, request: Request):
+    now = int(time.time() * 1000)
+    path = DOWNLOADS / file
+    if (not DOWNLOAD_FILE.fullmatch(file) or not re.fullmatch(r'[0-9]{1,16}', exp)
+            or not now < int(exp) <= now + DOWNLOAD_TTL_MS
+            or not re.fullmatch(r'[0-9a-f]{64}', sig)
+            or not hmac.compare_digest(sig, download_signature(request, file, exp))
+            or path.is_symlink() or not path.is_file()):
+        raise Fault('not_found', 'Không tìm thấy link tải còn hạn')
+    return Response(headers={'X-Accel-Redirect': '/_grader_files/' + file,
+                             'Cache-Control': 'private, no-store',
+                             'Content-Disposition': f'attachment; filename="{file}"'}, media_type='application/octet-stream')
 
 
 class Hello(Model):

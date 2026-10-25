@@ -212,7 +212,8 @@ def create_app(settings=None, start_worker=True):
     from arena_api import snapshot_routes
     app.include_router(snapshot_routes.router)
     app.include_router(auth_routes.router)
-    from arena_api import people_routes
+    from arena_api import people_routes, competition_views
+    app.include_router(competition_views.router)
     app.include_router(people_routes.router)
     app.include_router(admin_routes.router)
     from arena_api import announcements

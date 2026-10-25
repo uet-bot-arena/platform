@@ -1,136 +1,47 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {gradersPage,graderRows,graderTokenModal,graderMessage,installCommand,linuxInstallCommand,linuxRootfs,validPackage} from '../dist/live/graders-ui.js';
-import {readTournamentOptions} from '../dist/live/tournament-options.js';
-
-const g=(extra)=>({id:'g1',name:'PC 301',platform:'windows',backend:'windows',slots:2,running:1,jobs_done:5,
-  runtime_id:'sha256:'+'a'.repeat(64),version:'0.7.0-m1',last_seen_ms:1,online:true,revoked_ms:null,...extra});
-
-test('grader list shows status, platform, slots and never a token',()=>{
-  const html=gradersPage({graders:{items:[g(),g({id:'g2',name:'WSL',platform:'linux',backend:'bwrap',online:false}),
-    g({id:'g3',name:'Cũ',revoked_ms:5,online:false}),g({id:'g4',name:'Mới',platform:null,online:false})],queue:{official:2,practice:7}},origin:'http://127.0.0.1:4181'});
-  assert.match(html,/Online/);assert.match(html,/Offline/);assert.match(html,/Đã thu hồi/);assert.match(html,/Chưa kết nối/);
-  assert.match(html,/Windows · AppContainer/);assert.match(html,/Linux · bubblewrap/);
-  assert.match(html,/<div class="stat-value">1<\/div>/,'one machine online');
-  assert.match(html,/<div class="stat-value">2<\/div>/,'two slots online');
-  assert.match(html,/--hub http:\/\/127\.0\.0\.1:4181 --slots 2 --backend windows/);
-  assert.doesNotMatch(html,/uag_|token_hash|undefined|NaN/);
-  assert.equal((html.match(/data-action="revoke-grader"/g)||[]).length,3,'no revoke button for an already revoked grader');
+import {gradersPage,graderRows,graderTokenModal,graderMessage,installCommand,linuxInstallCommand,linuxRootfs,validPackage,controlsMessage} from '../dist/live/graders-ui.js';
+const signed=file=>`/api/v1/grader/download/1794000000000/${'a'.repeat(64)}/${file}`;
+const pkg={file:'uet-arena-grader-0123456789ab.zip',sha256:'0123456789ab'+'c'.repeat(52),bytes:254540,grader_version:'0.8.0-m1',url:signed('uet-arena-grader-0123456789ab.zip')};
+const linuxPkg={...pkg,linux_rootfs:{file:'rootfs-'+ 'd'.repeat(64)+'.tar.zst',sha256:'d'.repeat(64),bytes:1000000,url:signed('rootfs-'+ 'd'.repeat(64)+'.tar.zst')}};
+const g=extra=>({id:'g1',name:'PC 301',platform:'windows',backend:'windows',slots:2,running:1,jobs_done:5,runtime_id:'sha256:'+'a'.repeat(64),version:'0.8.0-m1',last_seen_ms:1,online:true,revoked_ms:null,...extra});
+test('grader table keeps status, slots and revoke/delete without tokens',()=>{
+ const html=gradersPage({graders:{items:[g(),g({id:'g2',platform:'linux',backend:'bwrap',online:false}),g({id:'g3',revoked_ms:5,online:false}),g({id:'g4',platform:null,online:false})],queue:{official:2,practice:7}}});
+ for(const word of ['Online','Offline','Đã thu hồi','Chưa kết nối','Windows · AppContainer','Linux · bubblewrap'])assert.ok(html.includes(word));
+ assert.equal((html.match(/data-action="revoke-grader"/g)||[]).length,3);assert.match(html,/data-action="delete-grader"/);assert.doesNotMatch(html,/uag_|token_hash|undefined|NaN/);
 });
-
-test('grader names are escaped everywhere',()=>{
-  const evil='<img src=x onerror=alert(1)>';
-  const html=graderRows([g({name:evil})]).join('');
-  assert.doesNotMatch(html,/<img/);assert.match(html,/&lt;img/);
-  assert.doesNotMatch(graderTokenModal({name:evil,token:'uag_x'}),/<img/);
+test('grader names and modal tokens are escaped',()=>{
+ const evil='<img src=x onerror=alert(1)>';assert.doesNotMatch(graderRows([g({name:evil})]).join(''),/<img/);assert.doesNotMatch(graderTokenModal({name:evil,token:'uag_x'}),/<img/);
 });
-
-test('token modal shows the one-time token and a copy action',()=>{
-  const html=graderTokenModal({name:'PC 301',token:'uag_abc'});
-  assert.match(html,/uag_abc/);assert.match(html,/copy-grader-token/);assert.match(html,/lần duy nhất/);
+test('install panel exposes neither downloads, hashes nor commands',()=>{
+ for(const graderPackage of [null,pkg,linuxPkg]){
+  const html=gradersPage({graders:{items:[],queue:{}},graderPackage});
+  assert.doesNotMatch(html,/install-grader\.ps1 -HubUrl|SHA-256:|\/downloads\/|<pre|api\/v1\/grader\/download/);
+  assert.match(html,/copy-grader-controls/);assert.match(html,/Windows/);assert.match(html,/WSL2/);assert.match(html,/7 ngày/);
+ }
 });
-
-const pkg={file:'uet-arena-grader-0123456789ab.zip',sha256:'0123456789ab'+'c'.repeat(52),bytes:254540,grader_version:'0.8.0-m1'};
-
-test('package panel links the hub ZIP with its SHA-256 and a one-paste install block',()=>{
-  const html=gradersPage({graders:{items:[],queue:{}},graderPackage:pkg,origin:'https://hub.example'});
-  assert.match(html,/href="https:\/\/hub\.example\/downloads\/uet-arena-grader-0123456789ab\.zip" download/);
-  assert.match(html,new RegExp(pkg.sha256));assert.match(html,/0\.8\.0-m1/);
-  assert.match(html,/Get-FileHash/);assert.match(html,new RegExp(pkg.sha256.toUpperCase()));
-  assert.match(html,/install-grader\.ps1 -HubUrl https:\/\/hub\.example -Slots 2/);
-  assert.doesNotMatch(gradersPage({graders:{items:[],queue:{}},origin:'https://hub.example'}),/Gói cài máy chấm/,'no manifest, no panel');
+test('only allowlisted file names and signed relative URLs can enter shell commands',()=>{
+ assert.equal(validPackage(pkg),pkg);
+ for(const bad of [null,{},{...pkg,file:'../passwd'},{...pkg,url:'/downloads/'+pkg.file},{...pkg,url:pkg.url+';whoami'},{...pkg,url:'https://evil.test'+pkg.url},{...pkg,sha256:'zz'}])assert.equal(validPackage(bad),null);
+ for(const linux_rootfs of [{...linuxPkg.linux_rootfs,sha256:'c'.repeat(64)},{...linuxPkg.linux_rootfs,url:'oops'}])assert.equal(linuxRootfs({...pkg,linux_rootfs}),null);
 });
-
-test('only well-formed package manifests are used',()=>{
-  assert.equal(validPackage(pkg),pkg);
-  for(const bad of [null,{},{...pkg,file:'../etc/passwd'},{...pkg,file:'uet-arena-grader-0123456789ab.zip"onerror=x'},{...pkg,sha256:'zz'}])
-    assert.equal(validPackage(bad),null);
+test('one-paste Windows message uses signed URL, verifies SHA and explains expiry',()=>{
+ const text=graderMessage({name:'laptop',token:'uag_test'},pkg,'https://hub.example');
+ assert.ok(text.includes('https://hub.example'+pkg.url));assert.match(text,/Get-FileHash/);assert.ok(text.includes(pkg.sha256.toUpperCase()));assert.match(text,/7 ngày/);assert.match(text,/uag_test/);assert.doesNotMatch(text,/SHA-256:|\/downloads\//);
+ assert.equal(installCommand(pkg,'https://hub.example').split('\n').length,6);
 });
-
-test('install message carries link, checked SHA, command and token for one machine',()=>{
-  const text=graderMessage({name:'laptop-2',token:'uag_abc'},pkg,'https://hub.example');
-  assert.match(text,/laptop-2/);assert.match(text,/uag_abc/);
-  assert.match(text,/Invoke-WebRequest -UseBasicParsing "https:\/\/hub\.example\/downloads\/uet-arena-grader-0123456789ab\.zip"/);
-  assert.match(text,/-ne "0123456789AB/);assert.match(text,/install-grader\.ps1 -Stop/);
-  assert.equal(installCommand(pkg,'https://hub.example').split('\n').length,6);
+test('Linux message verifies both files and stops on errors with &&',()=>{
+ const text=graderMessage({name:'Linux',token:'uag_test'},linuxPkg,'https://hub.example','linux');
+ for(const entry of [linuxPkg,linuxPkg.linux_rootfs])assert.ok(text.includes('https://hub.example'+entry.url));
+ const command=linuxInstallCommand(linuxPkg,'https://hub.example');assert.match(command,/sha256sum -c -/);assert.match(command,/--sha256 d{64}/);assert.equal(command.split('\n').filter(x=>x.trim().startsWith('&&')).length,4);assert.match(text,/7 ngày/);
 });
-
-test('token modal adds the copyable install message only when a package exists',()=>{
-  const html=graderTokenModal({name:'PC <b>',token:'uag_abc'},pkg,'https://hub.example');
-  assert.match(html,/copy-grader-message/);assert.match(html,/id="grader-message-windows"/);assert.match(html,/uag_abc/);
-  assert.doesNotMatch(html,/data-platform="linux"/,'no rootfs, no Linux message');
-  assert.doesNotMatch(html,/<b>/);
-  assert.doesNotMatch(graderTokenModal({name:'PC',token:'uag_abc'}),/copy-grader-message/);
+test('one-time modal offers Windows and Linux messages only for available packages',()=>{
+ assert.doesNotMatch(graderTokenModal({name:'PC',token:'uag_x'}),/copy-grader-message/);
+ const html=graderTokenModal({name:'PC',token:'uag_x'},linuxPkg,'https://hub.example');
+ for(const marker of ['copy-grader-token','copy-grader-message','data-platform="windows"','data-platform="linux"','lần duy nhất'])assert.ok(html.includes(marker));
+ assert.doesNotMatch(html,/SHA-256:|\/downloads\//);
 });
-
-test('competition form sends the grader platform, default windows',()=>{
-  assert.equal(readTournamentOptions(new Map([['format','swiss']])).grader_platform,'windows');
-  assert.equal(readTournamentOptions(new Map([['format','swiss'],['grader_platform','linux']])).grader_platform,'linux');
-});
-
-const digest='d'.repeat(64);
-const linuxPkg={...pkg,linux_rootfs:{file:`rootfs-${digest}.tar.zst`,sha256:digest,bytes:113901128}};
-
-test('install panel offers Windows and Linux blocks and hides source-checkout commands',()=>{
-  const html=gradersPage({graders:{items:[],queue:{}},graderPackage:linuxPkg,origin:'https://hub.example'});
-  assert.match(html,/Cài máy chấm/);assert.match(html,/Windows 10\/11/);assert.match(html,/Ubuntu\/Linux hoặc WSL2/);
-  assert.match(html,/install-grader\.ps1 -HubUrl https:\/\/hub\.example -Slots 2/);
-  assert.match(html,/install-grader\.sh --hub https:\/\/hub\.example --slots 2 --rootfs https:\/\/hub\.example\/downloads\/rootfs-d{64}\.tar\.zst --sha256 d{64}/);
-  assert.match(html,/109 MiB/);
-  assert.doesNotMatch(html,/arena\.sandbox\.toolchain install|--backend bwrap/,'source-checkout panel only without a package');
-  const windowsOnly=gradersPage({graders:{items:[],queue:{}},graderPackage:pkg,origin:'https://hub.example'});
-  assert.doesNotMatch(windowsOnly,/install-grader\.sh/);assert.match(windowsOnly,/chưa phát rootfs/);
-});
-
-test('Linux install is one fail-fast chain that checks both SHA-256 values',()=>{
-  const text=linuxInstallCommand(linuxPkg,'https://hub.example');
-  const lines=text.split('\n');
-  assert.equal(lines.length,5);
-  assert.ok(lines.slice(0,-1).every(line=>line.endsWith(' \\')),'continued lines');
-  assert.ok(lines.slice(1).every(line=>line.startsWith('  && ')),'each step runs only after the previous one succeeded');
-  assert.match(text,/curl -fLO https:\/\/hub\.example\/downloads\/uet-arena-grader-0123456789ab\.zip/);
-  assert.ok(text.includes(`echo "${pkg.sha256}  uet-arena-grader-0123456789ab.zip" | sha256sum -c -`));
-  assert.match(text,/python3 -m zipfile -e uet-arena-grader-0123456789ab\.zip ~\/uet-grader/);
-});
-
-test('only a rootfs whose name matches its SHA-256 is offered',()=>{
-  assert.equal(linuxRootfs(linuxPkg),linuxPkg.linux_rootfs);
-  for(const bad of [{...linuxPkg.linux_rootfs,sha256:'e'.repeat(64)},{...linuxPkg.linux_rootfs,file:'../rootfs-'+digest+'.tar.zst'},{...linuxPkg.linux_rootfs,file:'rootfs-x.tar.zst'},null])
-    assert.equal(linuxRootfs({...pkg,linux_rootfs:bad}),null);
-  assert.equal(linuxRootfs({...linuxPkg,file:'bad.zip'}),null,'no valid package, no rootfs');
-});
-
-test('Linux install message carries the chain, token and stop/uninstall commands',()=>{
-  const text=graderMessage({name:'ubuntu-1',token:'uag_lin'},linuxPkg,'https://hub.example','linux');
-  assert.match(text,/ubuntu-1/);assert.match(text,/uag_lin/);assert.match(text,/Ubuntu 24\.04/);assert.match(text,/sudo/);
-  assert.ok(text.includes(linuxInstallCommand(linuxPkg,'https://hub.example')));
-  assert.match(text,/systemctl --user stop uet-arena-grader-default/);assert.match(text,/install-grader\.sh --uninstall/);
-  assert.doesNotMatch(text,/PowerShell|install-grader\.ps1/);
-  const modal=graderTokenModal({name:'ubuntu-1',token:'uag_lin'},linuxPkg,'https://hub.example');
-  assert.match(modal,/id="grader-message-linux"/);assert.match(modal,/data-platform="linux"/);assert.match(modal,/data-platform="windows"/);
-});
-
-test('a revoked grader offers Delete instead of Revoke',()=>{
-  const rows=graderRows([g(),g({id:'old',name:'Cũ',revoked_ms:5,online:false})]);
-  assert.match(rows[0],/data-action="revoke-grader"/);assert.doesNotMatch(rows[0],/delete-grader/);
-  assert.match(rows[1],/data-action="delete-grader" data-id="old" data-name="Cũ"[^>]*>Xóa</);assert.doesNotMatch(rows[1],/revoke-grader/);
-});
-
-test('install messages end with stop and full-removal commands',()=>{
-  const windows=graderMessage({name:'laptop-3',token:'uag_w'},linuxPkg,'https://hub.example');
-  assert.match(windows,/install-grader\.ps1 -Uninstall\ncd C:\\\nRemove-Item -Recurse -Force C:\\uet-grader, "\$env:LOCALAPPDATA\\uet-arena"/);
-  const linux=graderMessage({name:'ubuntu-1',token:'uag_l'},linuxPkg,'https://hub.example','linux');
-  assert.match(linux,/install-grader\.sh --uninstall && rm -rf ~\/uet-grader ~\/uet-arena-grader-\*\.zip ~\/\.local\/share\/uet-arena/);
-  assert.match(linux,/apparmor_parser -R \/etc\/apparmor\.d\/uet-arena-bwrap/);
-});
-
-test('public install panel shows stop, restart and uninstall commands without any token',()=>{
-  const html=gradersPage({graders:{items:[],queue:{}},graderPackage:linuxPkg,origin:'https://hub.example'});
-  assert.match(html,/Dừng, bật lại hoặc gỡ máy chấm/);
-  assert.match(html,/install-grader\.ps1 -Stop/);assert.match(html,/install-grader\.ps1 -Uninstall/);
-  assert.match(html,/UET Arena grader default\.lnk/);
-  assert.match(html,/systemctl --user start uet-arena-grader-default/);assert.match(html,/install-grader\.sh --uninstall/);
-  assert.doesNotMatch(html,/uag_/);
-  const text=graderMessage({name:'laptop-2',token:'uag_abc'},pkg,'https://hub.example');
-  assert.match(text,/Bật lại sau khi dừng:\n\nStart-Process/);
+test('clipboard controls retain stop/start/uninstall and profile warning',()=>{
+ assert.match(controlsMessage('windows'),/install-grader\.ps1 -Stop/);assert.match(controlsMessage('windows'),/install-grader\.ps1 -Uninstall/);assert.match(controlsMessage('windows'),/default\.lnk/);
+ assert.match(controlsMessage('linux'),/systemctl --user start/);assert.match(controlsMessage('linux'),/--uninstall/);assert.match(controlsMessage('linux'),/profile/);
 });

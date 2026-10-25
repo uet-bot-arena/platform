@@ -23,7 +23,7 @@ export async function participantData(api,user,route,ids,q){
   }
   if(route==='announcements')data.announcements=(await api.snapshot('announcements.json')).items;
   if(route==='queue')data.queue=await api.snapshot('queue.json');
-  if(['home','competitions','schedule','live','standings','arena','replay'].includes(route))data.competitions=(await api.snapshot('competitions.json')).items;
+  if(['home','competitions','schedule','live','standings','arena','replay'].includes(route)||route==='team'&&user&&!user.team_id)data.competitions=(await api.snapshot('competitions.json')).items;
   const cid=route==='competitions'?ids[0]:['arena','replay'].includes(route)?ids[0]==='practice'?null:ids[0]:route==='benchmark'?q.get('competition'):['schedule','live','standings'].includes(route)?q.get('competition')||data.competitions?.find(c=>!c.archived_ms)?.id:null;
   if(cid){
     const [competition,fixtures,standings]=await Promise.all([api.snapshot('competitions/'+enc(cid)+'.json'),api.snapshot('fixtures/'+enc(cid)+'.json'),api.snapshot('standings/'+enc(cid)+'.json')]);

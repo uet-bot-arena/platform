@@ -4,6 +4,7 @@ from pydantic import Field, SecretStr
 
 from arena_api.dependencies import active_principal, admin_principal, participant_principal, peer
 from arena_api.schemas import Model, AccountLock
+from arena_api.competition_views import competition_filter
 
 router = APIRouter(prefix="/api/v1", tags=["people-and-teams"])
 
@@ -127,19 +128,24 @@ def matching(request: Request, auth=Depends(active_principal)):
 
 
 @router.get("/admin/users", summary="Danh sách tài khoản cá nhân và khách, không xuất hash mật khẩu")
-def users(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0), auth=Depends(admin_principal)):
+def users(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0), competition: str | None = None, auth=Depends(admin_principal)):
     a = request.app.state.accounts
+    states=competition_filter(request, competition)
     with a.store.lock:
-        rows = a.rows("SELECT * FROM accounts ORDER BY created_ms DESC,id LIMIT ? OFFSET ?", (limit, offset))
-        return {"items": [a.public(p) for p in rows], "limit": limit, "offset": offset}
+        where=" WHERE team_id IN ("+','.join('?' for _ in states)+")" if states else " WHERE 0" if states is not None else ""
+        rows = a.rows("SELECT * FROM accounts"+where+" ORDER BY created_ms DESC,id LIMIT ? OFFSET ?", (*(states or {}),limit,offset))
+        return {"items": [a.public(p) | ({'participation':states[p['team_id']]} if states is not None else {}) for p in rows], "limit": limit, "offset": offset}
 
 
 @router.get("/admin/teams", summary="Các đội trong mùa để BTC chọn chỉnh thành viên")
-def team_choices(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0), auth=Depends(admin_principal)):
+def team_choices(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0), competition: str | None = None, auth=Depends(admin_principal)):
+    states=competition_filter(request, competition)
     a, teams = request.app.state.accounts, request.app.state.teams
     with a.store.lock:
-        rows = a.rows("SELECT id,name,is_guest,locked_ms FROM teams WHERE season_id=? AND archived_ms IS NULL ORDER BY name,id LIMIT ? OFFSET ?", (teams.season, limit, offset))
+        where=" AND id IN ("+','.join('?' for _ in states)+")" if states else " AND 0" if states is not None else ""
+        rows = a.rows("SELECT id,name,is_guest,locked_ms FROM teams WHERE season_id=? AND archived_ms IS NULL"+where+" ORDER BY name,id LIMIT ? OFFSET ?", (teams.season,*(states or {}),limit,offset))
         for row in rows:
+            if states is not None:row['participation']=states[row['id']]
             row["roster"] = [{k: p[k] for k in ("id", "display_name", "captain")} for p in teams.roster(row["id"])]
         return {"items": rows, "limit": limit, "offset": offset}
 

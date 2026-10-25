@@ -1,6 +1,7 @@
 from typing import Literal
 from fastapi import APIRouter, Depends, Query, Request
 from arena_api.dependencies import admin_principal
+from arena_api.competition_views import competition_filter
 from arena_api.schemas import AccountLock, Credentials, ResetPassword, IssuedCredential, RegistrationReceipt, UserView
 from arena_api.schemas import AdminTeamCreate, AdminTeamEdit, Revision
 
@@ -25,8 +26,14 @@ def reject(ident: str, request: Request, auth=Depends(admin_principal)):
 
 
 @router.get("/accounts", summary="Danh sách tài khoản đội; không trả hash hoặc mật khẩu")
-def accounts(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0, le=2147483647), auth=Depends(admin_principal)):
-    return {"items": request.app.state.accounts.accounts(limit, offset), "limit": limit, "offset": offset}
+def accounts(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0, le=2147483647), competition: str | None = None, auth=Depends(admin_principal)):
+    a=request.app.state.accounts;states=competition_filter(request, competition)
+    if states is None:return {"items": a.accounts(limit, offset), "limit": limit, "offset": offset}
+    with a.store.lock:
+        ids=list(states)
+        if not ids:return {"items": [], "limit": limit, "offset": offset}
+        rows=a.rows("SELECT a.* FROM accounts a WHERE a.team_id IN ("+','.join('?' for _ in ids)+") AND (a.role='guest' OR EXISTS(SELECT 1 FROM team_members m WHERE m.user_id=a.id AND m.team_id=a.team_id AND m.captain=1)) ORDER BY a.created_ms DESC,a.id LIMIT ? OFFSET ?", (*ids,limit,offset))
+        return {"items": [a.public(row)|dict(team=a.team(row['team_id']),participation=states[row['team_id']]) for row in rows], "limit": limit, "offset": offset}
 
 
 @router.post("/accounts/{ident}/lock", response_model=UserView, summary="Khóa/mở khóa đội và thu hồi các phiên hiện có")

@@ -11,6 +11,12 @@ from arena_api.accounts import name_key, now_ms
 from arena_api.people import clean_name
 
 HOUR = 3_600_000
+TEAM_FIELDS = ('id', 'name', 'created_ms', 'archived_ms', 'revision', 'season_id',
+               'is_guest', 'locked_ms', 'recruiting', 'repo_code')
+
+
+def public_team(team):
+    return {key: team[key] for key in TEAM_FIELDS}
 
 
 class Teams:
@@ -66,8 +72,9 @@ class Teams:
                        and (deadline is None or self.clock() < deadline))
             today = datetime.fromtimestamp(self.clock() / 1000, timezone.utc)
             freshman = self.rules.freshman_cohort or today.year - (today.month < 8)
-            return team | {"roster": [{k: m[k] for k in ("id", "display_name", "role", "captain", "cohort")} for m in members],
-                           "captain_id": captain, "invite_code": invite["code"] if invite and captain == user else None,
+            return public_team(team) | {"roster": [{k: m[k] for k in ("id", "display_name", "role", "captain", "cohort")} for m in members],
+                           "captain_id": captain, "member_count": len(team['members']) if team['legacy_roster'] else len(members),
+                           "invite_code": invite["code"] if invite and captain == user else None,
                            "invite_enabled": enabled, "team_size": self.rules.team_size,
                            "freshman": len(members) == self.rules.team_size and all(m["role"] == "student" and m["cohort"] == freshman for m in members)}
 

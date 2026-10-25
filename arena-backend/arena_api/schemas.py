@@ -157,9 +157,6 @@ class RegistrationReceipt(Model):
 class TeamView(Model):
     id: str
     name: str
-    email: str
-    phone: str
-    members: list[Member]
     created_ms: int
     archived_ms: int | None = None
     revision: int = 1
@@ -167,7 +164,6 @@ class TeamView(Model):
     is_guest: int = 0
     locked_ms: int | None = None
     recruiting: int = 0
-    legacy_roster: int = 1
     repo_code: str
 
 
