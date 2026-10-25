@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import re
 import secrets
+import sqlite3
 import time
 import uuid
 
@@ -165,6 +166,26 @@ class MailQueue:
             self.db.execute("UPDATE email_outbox SET code_hash=?,expires_ms=NULL,verified_ms=NULL,proof_hash=NULL,wrong_codes=0 WHERE id=?",
                             (self.code_hash(row, code), row["id"]))
         return code
+
+    def has_reset_target(self, recipient):
+        """A reset can only finish for an existing, unlocked account with this email (People.finish)."""
+        try:
+            with self.transaction():
+                return self.one("SELECT 1 AS ok FROM accounts WHERE email=? COLLATE NOCASE AND locked=0", (recipient,)) is not None
+        except sqlite3.OperationalError:
+            return True  # no accounts table (bare queue in tests/tools): keep the old behaviour
+
+    def complete_without_mail(self, job):
+        """Reset for an address without an account: same public states as a delivered mail, but no SMTP attempt or quota.
+
+        The stored hash is random, so no 6-digit code can ever verify; wrong guesses count as usual.
+        """
+        with self.transaction():
+            self.owned(job)
+            current = self.clock()
+            self.db.execute("UPDATE email_outbox SET status='sent',sent_ms=?,expires_ms=?,code_hash=?,verified_ms=NULL,proof_hash=NULL,"
+                            "wrong_codes=0,error='no_account',claim_token=NULL,claim_until_ms=NULL WHERE id=?",
+                            (current, current + self.settings.verification.code_ttl_seconds * 1000, secrets.token_hex(32), job["id"]))
 
     def attempt_done(self, job, provider, attempt, error=None, auth_error=False):
         with self.transaction():

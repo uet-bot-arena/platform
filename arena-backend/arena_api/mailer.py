@@ -65,6 +65,10 @@ class Mailer:
             return False
         code, error, available = None, None, []
         try:
+            if job["purpose"] == "reset" and not queue.has_reset_target(job["recipient"]):
+                # Never spend quota on a reset nobody can finish; the requester still sees "sent".
+                queue.complete_without_mail(job)
+                return True
             for provider in queue.settings.email_providers:
                 attempt, due = queue.reserve(job, provider)
                 if not attempt:

@@ -403,6 +403,7 @@ document.addEventListener('click',async e=>{
     if(action==='language'){setLanguage(language()==='vi'?'en':'vi');location.reload();return;}
     if(action.startsWith('rule-')||action==='experimental-toggle'||action==='experimental-starter'){await ruleAction(action,b);return;}
     if(action.startsWith('board-')){board?.action(action.slice(6),b.dataset.index);return;}
+    if(action==='email-change'){emailPoll?.close();s.emailRequest=null;render();document.querySelector('#people-auth input[name=email]')?.focus();return;}
     if(action==='password'){const input=document.getElementById(b.dataset.target),visible=input.type==='password';input.type=visible?'text':'password';b.textContent=visible?tr('Ẩn'):tr('Hiện');b.setAttribute('aria-label',visible?tr('Ẩn mật khẩu'):tr('Hiện mật khẩu'));return;}
     if(action==='menu'){s.menuOpen=!s.menuOpen;document.querySelector('.app-shell')?.classList.toggle('menu-open',s.menuOpen);document.querySelector('.mobile-menu')?.setAttribute('aria-expanded',String(s.menuOpen));mobileSidebar();return;}
     if(action==='skip-main'){e.preventDefault();document.querySelector('#main')?.focus();return;}

@@ -124,6 +124,24 @@ class PeopleAPI(APIHarness):
         self.login_person(user["email"], new_password)
         self.assertEqual(self.other_client().post("/api/v1/auth/reset", json=proof | {"password": new_password}).status_code, 400)
 
+    def test_reset_for_address_without_account_spends_no_mail_and_looks_the_same(self):
+        _, user = self.person()
+        guest, sent = self.other_client(), []
+        unknown = guest.post("/api/v1/auth/email/request", json={"email": "26999999@vnu.test", "purpose": "reset"})
+        known = guest.post("/api/v1/auth/email/request", json={"email": user["email"], "purpose": "reset"})
+        self.assertEqual((unknown.status_code, known.status_code), (202, 202))
+        with patch("arena_api.outbox.secrets.randbelow", return_value=123456):
+            while Mailer(self.queue, send=lambda provider, credentials, mail: sent.append(mail["To"])).once():
+                pass
+        self.assertEqual(sent, [user["email"]], "only the existing account receives a reset mail")
+        statuses = [guest.get("/api/v1/auth/email/requests/" + r.json()["id"]).json() for r in (unknown, known)]
+        visible = lambda s: {k: s[k] for k in ("purpose", "status", "attempts_remaining")} | {"has_expiry": s["expires_ms"] is not None}
+        self.assertEqual(visible(statuses[0]), visible(statuses[1]), "unknown and known addresses are indistinguishable")
+        attempts = self.queue.db.execute("SELECT COUNT(*) FROM email_attempts WHERE request_id=?", (unknown.json()["id"],)).fetchone()[0]
+        self.assertEqual(attempts, 0, "no provider attempt, so no quota is used")
+        bad = guest.post("/api/v1/auth/email/verify", json={"request_id": unknown.json()["id"], "code": "123456"})
+        self.assertEqual(bad.status_code, 400, "no code can verify a reset that was never mailed")
+
     def test_email_ip_limit_and_profile_name_limits(self):
         with self.app.state.store.transaction():
             self.app.state.store.db.execute("INSERT INTO rate_limits VALUES(?,?,?)", (token_hash("email-code:ip:testclient"), 1000, self.current + 100 * HOUR))

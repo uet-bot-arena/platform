@@ -569,3 +569,8 @@ body:has(.real-auth) #announcements-banner { margin-left: 0; }
 .grader-package a { color: var(--green); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 .grader-package .mono { overflow-wrap: anywhere; }
 .grader-package pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Email code step: the address is shown as text once the code is sent. */
+.email-sent-to { margin: 4px 0 8px; color: var(--muted); }
+.email-sent-to strong { color: var(--ink); overflow-wrap: anywhere; }
+.email-sent-actions { display: flex; flex-wrap: wrap; gap: 8px; }
