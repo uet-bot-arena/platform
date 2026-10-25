@@ -54,6 +54,8 @@ class Verification:
     resend_seconds: int = 60
     drop_after_seconds: int = 1800
     max_attempts: int = 5
+    max_per_hour: int = 5
+    max_per_day: int = 10
 
 
 @dataclass(frozen=True)
@@ -171,7 +173,9 @@ def load(names, path=None, env=None):
         code_ttl_seconds=section.integer("code_ttl_seconds", 600, 60, 3600),
         resend_seconds=section.integer("resend_seconds", 60, 10, 3600),
         drop_after_seconds=section.integer("drop_after_seconds", 1800, 60, DAY),
-        max_attempts=section.integer("max_attempts", 5, 1, 20))
+        max_attempts=section.integer("max_attempts", 5, 1, 20),
+        max_per_hour=section.integer("max_per_hour", 5, 1, 100),
+        max_per_day=section.integer("max_per_day", 10, 1, 500))
     section.finish()
     section = Reader(data, "grader")
     values["grader"] = GraderSettings(

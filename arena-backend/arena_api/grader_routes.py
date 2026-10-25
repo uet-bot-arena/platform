@@ -155,3 +155,11 @@ def revoke(ident: str, request: Request, auth=Depends(admin_principal)):
     with request.app.state.store.lock, request.app.state.store.db:
         request.app.state.accounts.audit(auth["user"]["id"], "grader.revoked", ident)
     return item
+
+
+@router.post("/admin/graders/{ident}/delete", summary="Xóa máy chấm đã thu hồi khỏi danh sách; lịch sử ván vẫn ghi tên máy")
+def delete_grader(ident: str, request: Request, auth=Depends(admin_principal)):
+    item = request.app.state.service.delete_grader(ident)
+    with request.app.state.store.lock, request.app.state.store.db:
+        request.app.state.accounts.audit(auth["user"]["id"], "grader.deleted", ident)
+    return item

@@ -6224,6 +6224,52 @@
         ]
       }
     },
+    "/api/v1/admin/graders/{ident}/delete": {
+      "post": {
+        "tags": [
+          "graders"
+        ],
+        "summary": "Xóa máy chấm đã thu hồi khỏi danh sách; lịch sử ván vẫn ghi tên máy",
+        "operationId": "delete_grader_api_v1_admin_graders__ident__delete_post",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/auth/email/request": {
       "post": {
         "tags": [

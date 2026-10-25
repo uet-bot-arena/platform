@@ -109,3 +109,17 @@ test('Linux install message carries the chain, token and stop/uninstall commands
   const modal=graderTokenModal({name:'ubuntu-1',token:'uag_lin'},linuxPkg,'https://hub.example');
   assert.match(modal,/id="grader-message-linux"/);assert.match(modal,/data-platform="linux"/);assert.match(modal,/data-platform="windows"/);
 });
+
+test('a revoked grader offers Delete instead of Revoke',()=>{
+  const rows=graderRows([g(),g({id:'old',name:'Cũ',revoked_ms:5,online:false})]);
+  assert.match(rows[0],/data-action="revoke-grader"/);assert.doesNotMatch(rows[0],/delete-grader/);
+  assert.match(rows[1],/data-action="delete-grader" data-id="old" data-name="Cũ"[^>]*>Xóa</);assert.doesNotMatch(rows[1],/revoke-grader/);
+});
+
+test('install messages end with stop and full-removal commands',()=>{
+  const windows=graderMessage({name:'laptop-3',token:'uag_w'},linuxPkg,'https://hub.example');
+  assert.match(windows,/install-grader\.ps1 -Uninstall\ncd C:\\\nRemove-Item -Recurse -Force C:\\uet-grader, "\$env:LOCALAPPDATA\\uet-arena"/);
+  const linux=graderMessage({name:'ubuntu-1',token:'uag_l'},linuxPkg,'https://hub.example','linux');
+  assert.match(linux,/install-grader\.sh --uninstall && rm -rf ~\/uet-grader ~\/uet-arena-grader-\*\.zip ~\/\.local\/share\/uet-arena/);
+  assert.match(linux,/apparmor_parser -R \/etc\/apparmor\.d\/uet-arena-bwrap/);
+});

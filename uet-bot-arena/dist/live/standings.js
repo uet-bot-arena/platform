@@ -16,7 +16,7 @@ function pointAxis(maximum){
 }
 export function standingsChart(standings,ownTeam){
   const items=standings.items,scoring=standings.scoring;
-  if(!scoring||items.some(team=>!Number.isFinite(team.points)))return tr('<p class="muted">Nhấn Cập nhật dữ liệu sau khi máy chủ cập nhật cách tính điểm.</p>');
+  if(!scoring||items.some(team=>!Number.isFinite(team.points)))return tr('<p class="muted">Nhấn Làm mới sau khi máy chủ cập nhật cách tính điểm.</p>');
   // API order and shared ranks are authoritative. The chart has exactly ten
   // slots, including when a shared rank crosses the tenth position.
   const leaders=items.slice(0,10),remaining=items.slice(10);

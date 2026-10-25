@@ -83,6 +83,14 @@ class MailQueue:
                 fault = Fault("rate_limited", "Vui lòng chờ trước khi gửi lại mã")
                 fault.retry_after = (old["created_ms"] + wait - current + 999) // 1000
                 raise fault
+            # Cap codes per address across purposes so nobody can flood an inbox or the provider quota.
+            for window, limit in ((HOUR, self.settings.verification.max_per_hour), (DAY, self.settings.verification.max_per_day)):
+                recent = self.one("SELECT COUNT(*) AS n, MIN(created_ms) AS first FROM (SELECT created_ms FROM email_outbox "
+                                  "WHERE recipient=? AND created_ms>? ORDER BY created_ms DESC LIMIT ?)", (recipient, current - window, limit))
+                if recent["n"] >= limit:
+                    fault = Fault("rate_limited", "Email này đã xin quá nhiều mã; vui lòng thử lại sau")
+                    fault.retry_after = (recent["first"] + window - current + 999) // 1000
+                    raise fault
             ident = uuid.uuid4().hex
             self.db.execute("INSERT INTO email_outbox(id,purpose,recipient,user_id,created_ms,status,next_attempt_ms) VALUES(?,?,?,?,?,'queued',?)",
                             (ident, purpose, recipient, user_id, current, current))

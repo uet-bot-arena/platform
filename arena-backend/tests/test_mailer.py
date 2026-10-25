@@ -141,6 +141,28 @@ class MailDelivery(unittest.TestCase):
         self.assertTrue(self.queue.verify(newest, "123456")["verified_ms"])
         self.assertEqual(self.queue.status(ident)["attempts_remaining"], 0)
 
+    def test_codes_per_address_are_capped_per_hour_and_per_day_across_purposes(self):
+        address = "22000002@vnu.test"
+        first = self.current
+        for purpose in ("verify", "reset", "reset", "verify", "reset"):
+            self.queue.enqueue(address, purpose)
+            self.current += 61_000
+        with self.assertRaises(Fault) as caught:
+            self.queue.enqueue(address, "reset")
+        self.assertEqual(caught.exception.code, "rate_limited")
+        self.assertEqual(caught.exception.retry_after, (first + HOUR - self.current + 999) // 1000)
+        self.queue.enqueue("22000003@vnu.test", "reset")  # other addresses are unaffected
+        self.current = first + HOUR + 300_000  # the first five are now outside the hourly window
+        for _ in range(5):
+            self.queue.enqueue(address, "reset")
+            self.current += 61_000
+        self.current = first + 3 * HOUR
+        with self.assertRaises(Fault) as caught:
+            self.queue.enqueue(address, "verify")
+        self.assertEqual(caught.exception.retry_after, (first + DAY - self.current + 999) // 1000, "ten codes per day")
+        self.current = first + DAY + 1
+        self.queue.enqueue(address, "verify")
+
     def test_sql_claims_and_reservations_fence_two_workers(self):
         providers = (replace(self.providers[0], hourly_limit=1),)
         settings = replace(self.settings, email_providers=providers)

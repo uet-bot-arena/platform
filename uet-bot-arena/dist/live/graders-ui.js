@@ -11,7 +11,7 @@ export function graderStatus(g){
 }
 
 export function graderRows(items){
-  return items.map(g=>`<tr data-grader="${esc(g.id)}"><td><strong>${esc(g.name)}</strong></td><td>${graderStatus(g)}</td><td>${g.platform?esc(platformLabels[g.platform]||g.platform)+' · '+esc(backendLabels[g.backend]||g.backend||''):'—'}</td><td>${g.slots??'—'}</td><td>${g.running??0}</td><td>${g.jobs_done??0}</td><td class="mono" title="${esc(g.runtime_id||'')}">${g.runtime_id?esc(g.runtime_id.slice(7,19)):'—'}</td><td>${esc(g.version||'—')}</td><td>${date(g.last_seen_ms)}</td><td>${g.revoked_ms?'':button(tr('Thu hồi'),'revoke-grader',`data-id="${esc(g.id)}" data-name="${esc(g.name)}"`,'small danger-button')}</td></tr>`);
+  return items.map(g=>`<tr data-grader="${esc(g.id)}"><td><strong>${esc(g.name)}</strong></td><td>${graderStatus(g)}</td><td>${g.platform?esc(platformLabels[g.platform]||g.platform)+' · '+esc(backendLabels[g.backend]||g.backend||''):'—'}</td><td>${g.slots??'—'}</td><td>${g.running??0}</td><td>${g.jobs_done??0}</td><td class="mono" title="${esc(g.runtime_id||'')}">${g.runtime_id?esc(g.runtime_id.slice(7,19)):'—'}</td><td>${esc(g.version||'—')}</td><td>${date(g.last_seen_ms)}</td><td>${button(g.revoked_ms?tr('Xóa'):tr('Thu hồi'),g.revoked_ms?'delete-grader':'revoke-grader',`data-id="${esc(g.id)}" data-name="${esc(g.name)}"`,'small danger-button')}</td></tr>`);
 }
 
 export function gradersPage(s){
@@ -65,8 +65,11 @@ export function graderMessage(item,pkg,origin,platform='windows'){
     tr('3. Khi được hỏi mã máy chấm, dán mã này rồi Enter (mã không hiện khi dán):'),
     item.token,
     tr('4. Thấy dòng "OK: hub nhận máy chấm ')+item.name+tr('" rồi "Grader installed" là xong; máy chấm chạy nền bằng systemd và tự bật khi đăng nhập.'),
-    tr('Dừng máy chấm (dòng thứ hai gỡ hẳn):'),
-    'systemctl --user stop uet-arena-grader-default\nbash ~/uet-grader/scripts/install-grader.sh --uninstall'].join('\n\n');
+    tr('Dừng máy chấm:'),
+    'systemctl --user stop uet-arena-grader-default',
+    tr('Gỡ hẳn và xóa mọi file của máy chấm (khoảng 0,5 GB, gồm rootfs):'),
+    'bash ~/uet-grader/scripts/install-grader.sh --uninstall && rm -rf ~/uet-grader ~/uet-arena-grader-*.zip ~/.local/share/uet-arena\n'+
+    'if [ -f /etc/apparmor.d/uet-arena-bwrap ]; then sudo apparmor_parser -R /etc/apparmor.d/uet-arena-bwrap; sudo rm /etc/apparmor.d/uet-arena-bwrap; fi'].join('\n\n');
   return [tr('Cài máy chấm UET Bot Arena, tên máy: ')+item.name,
     tr('1. Cần Windows 10/11 và Python 3.11+ (python.org, tick "Add python.exe to PATH"). Cắm sạc, tắt Sleep khi đang chấm.'),
     tr('2. Mở PowerShell, dán cả khối lệnh dưới đây rồi Enter (máy 2 nhân trở xuống thì đổi -Slots 2 thành -Slots 1):'),
@@ -74,8 +77,11 @@ export function graderMessage(item,pkg,origin,platform='windows'){
     tr('3. Khi được hỏi mã máy chấm, dán mã này rồi Enter (mã không hiện khi dán):'),
     item.token,
     tr('4. Thấy dòng "OK: hub nhận máy chấm ')+item.name+tr('" là xong; máy chấm chạy ẩn và tự bật khi đăng nhập Windows.'),
-    tr('Dừng máy chấm (gỡ hẳn thì thay -Stop bằng -Uninstall):'),
-    'cd C:\\uet-grader\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\install-grader.ps1 -Stop'].join('\n\n');
+    tr('Dừng máy chấm:'),
+    'cd C:\\uet-grader\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\install-grader.ps1 -Stop',
+    tr('Gỡ hẳn và xóa mọi file của máy chấm (khoảng 1 GB, gồm bộ biên dịch):'),
+    'cd C:\\uet-grader\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\install-grader.ps1 -Uninstall\n'+
+    'cd C:\\\nRemove-Item -Recurse -Force C:\\uet-grader, "$env:LOCALAPPDATA\\uet-arena", "$env:TEMP\\uet-arena-grader-*.zip" -ErrorAction SilentlyContinue'].join('\n\n');
 }
 
 export function packagePanel(pkg,origin){

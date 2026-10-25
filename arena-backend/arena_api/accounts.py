@@ -73,7 +73,8 @@ class Accounts:
                 "email": account["email"], "display_name": account["display_name"], "cohort": account["cohort"],
                 "is_judge": bool(account["is_judge"])}
 
-    def rate_limit(self, bucket, limit, window_seconds):
+    def rate_limit(self, bucket, limit, window_seconds, count=True):
+        """Refuse when the bucket is full; otherwise count this attempt unless count=False."""
         key, current = token_hash(bucket), now_ms()
         with self.store.lock, self.db:
             self.db.execute("DELETE FROM rate_limits WHERE expires_ms<=?", (current,))
@@ -82,8 +83,14 @@ class Accounts:
                 fault = Fault("rate_limited", "Too many attempts; try again after the rate-limit window")
                 fault.retry_after = max(1, (row["expires_ms"] - current + 999) // 1000)
                 raise fault
+            if count:
+                self.db.execute("INSERT INTO rate_limits VALUES(?,?,?) ON CONFLICT(bucket) DO UPDATE SET count=count+1",
+                                (key, 1, current + window_seconds * 1000))
+
+    def rate_count(self, bucket, window_seconds):
+        with self.store.lock, self.db:
             self.db.execute("INSERT INTO rate_limits VALUES(?,?,?) ON CONFLICT(bucket) DO UPDATE SET count=count+1",
-                            (key, 1, current + window_seconds * 1000))
+                            (token_hash(bucket), 1, now_ms() + window_seconds * 1000))
 
     def bootstrap_admin(self, username, password):
         import re
@@ -114,18 +121,24 @@ class Accounts:
 
     def login(self, username, password, peer):
         username = username.casefold().strip()
+        # Every attempt costs an Argon2 hash, so all attempts count per address (a campus NAT fits 600 per
+        # 15 minutes). Per account only wrong passwords count, 10 per 15 minutes as Windows 11 does by
+        # default, so correct sign-ins (BTC scripts included) never lock an account.
         self.rate_limit("login-ip:" + peer, 600, 900)
-        self.rate_limit("login-account:" + username, 10, 900)
+        failures = "login-account:" + username
+        self.rate_limit(failures, 10, 900, count=False)
         with self.store.lock:
             account = self.one("SELECT * FROM accounts WHERE username=?", (username,))
         valid = self.verify(account["password_hash"] if account else self.dummy_hash, password)
         if not valid or not account or account["locked"]:
+            self.rate_count(failures, 900)
             raise Fault("unauthorized", "Invalid username or password")
         with self.store.lock, self.db:
             latest = self.one("SELECT * FROM accounts WHERE id=?", (account["id"],))
             if latest["locked"] or latest["password_hash"] != account["password_hash"]:
                 raise Fault("unauthorized", "Invalid username or password")
             self.temporary_lock(latest)
+            self.db.execute("DELETE FROM rate_limits WHERE bucket=?", (token_hash(failures),))
             self.audit(account["id"], "auth.login", account["id"])
             return self.new_session(latest)
 

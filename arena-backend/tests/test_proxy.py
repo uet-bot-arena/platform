@@ -27,6 +27,7 @@ class ProxyAndRateLimits(APIHarness):
             response=self.client.post('/api/v1/auth/login',json={'username':f'proxy{i:04}','password':'test-only-password'})
             self.assertEqual(response.status_code,200,response.text)
         accounts.verify.return_value=False
-        for _ in range(9):
+        # Only wrong passwords count per account; the successful sign-in above does not.
+        for _ in range(10):
             self.assertEqual(self.client.post('/api/v1/auth/login',json={'username':'proxy0000','password':'incorrect'}).status_code,401)
         self.assertEqual(self.client.post('/api/v1/auth/login',json={'username':'proxy0000','password':'incorrect'}).status_code,429)

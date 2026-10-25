@@ -317,6 +317,17 @@ class Service:
             self.end_lease(lease_id, "revoked", "grader_revoked")
         return self.grader_view(self.grader_row(ident))
 
+    def delete_grader(self, ident):
+        """Drop a revoked grader from the list; jobs keep the machine name they ran on."""
+        row = self.grader_row(ident)
+        if row["revoked_ms"] is None:
+            raise Fault("invalid_request", "Thu hồi mã trước khi xóa máy chấm")
+        with self.store.lock, self.store.db:
+            if self.store.db.execute("SELECT 1 FROM grader_leases WHERE grader_id=? AND status='active'", (ident,)).fetchone():
+                raise Fault("admin_conflict", "Máy chấm còn giữ việc; thử lại sau vài giây")
+            self.store.db.execute("DELETE FROM graders WHERE id=? AND revoked_ms IS NOT NULL", (ident,))
+        return {"id": ident, "deleted": True}
+
     def grader_row(self, ident):
         with self.store.lock:
             cursor = self.store.db.execute("SELECT * FROM graders WHERE id=?", (ident,))

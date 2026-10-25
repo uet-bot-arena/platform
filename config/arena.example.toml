@@ -62,7 +62,9 @@ season_id = "default"                  # mỗi người chỉ thuộc một đ�
 
 [verification]
 code_ttl_seconds = 600        # mã hết hạn 10 phút sau lúc gửi
-resend_seconds = 60
+resend_seconds = 60           # tối thiểu giữa hai lần xin mã cho cùng email
+max_per_hour = 5              # mỗi email (đăng ký và quên mật khẩu cộng chung) tối đa 5 mã/giờ
+max_per_day = 10              # và 10 mã/24 giờ, chặn spam hộp thư và giữ hạn mức Mailjet
 drop_after_seconds = 1800     # yêu cầu chờ trong hàng quá 30 phút thì bỏ
 max_attempts = 5
 

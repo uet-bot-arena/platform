@@ -249,6 +249,20 @@ class GraderAPI(APIHarness):
         bare.headers["Authorization"] = "Bearer uag_" + "x" * 40
         self.assertEqual(bare.post("/api/v1/grader/lease", json={}).status_code, 401)
 
+    def test_only_revoked_graders_can_be_deleted_from_the_list(self):
+        created = self.post(self.client, "/admin/graders", {"name": "Máy cũ"}, expected=201)
+        path = "/api/v1/admin/graders/" + created["id"]
+        self.assertEqual(self.client.post(path + "/delete").status_code, 400, "revoke first")
+        self.assertEqual(self.client.post(path + "/revoke").status_code, 200)
+        self.assertEqual(self.client.post(path + "/delete").json(), {"id": created["id"], "deleted": True})
+        self.assertNotIn("Máy cũ", self.client.get("/api/v1/admin/graders").text)
+        self.assertEqual(self.client.post(path + "/delete").status_code, 404)
+        audit = self.client.get("/api/v1/admin/audit").text
+        self.assertIn("grader.deleted", audit)
+        bare = self.other_client()
+        bare.headers["Authorization"] = "Bearer " + created["token"]
+        self.assertEqual(bare.post("/api/v1/grader/hello", json={}).status_code, 401, "a deleted token stays dead")
+
     def test_listing_shows_online_platform_slots_and_runtime(self):
         self.machine("Win A", "windows", WINDOWS, 2)
         self.machine("WSL", "linux", LINUX, 1)

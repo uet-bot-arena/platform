@@ -12,9 +12,11 @@ export function competitionTools(c){
   return (['draft','open'].includes(c.status)?button(tr('Sửa'),'competition-edit',attrs,'small'):'')+(['draft','open','completed'].includes(c.status)?button(tr('Xóa'),'competition-archive',attrs,'small danger-button'):'');
 }
 
-function trend(days){
+// One column per day; failed jobs are the red foot of the same column, so the count and the date
+// stay centred on it whether or not the day had failures.
+export function trend(days){
   const max=Math.max(1,...days.map(d=>d.jobs));
-  return l10n`<svg class="admin-trend" viewBox="0 0 700 210" role="img" aria-label="Số tác vụ tạo mỗi ngày trong 7 ngày gần nhất; cột xanh là tổng tác vụ, cột đỏ là tác vụ lỗi"><path class="trend-axis" d="M20 170H680"/>${days.map((d,i)=>{const x=35+i*95,h=130*d.jobs/max,bad=130*d.failed/max;return l10n`<g><title>${esc(d.day)}: ${d.jobs} tác vụ, ${d.failed} lỗi</title><rect class="trend-total" x="${x}" y="${170-h}" width="30" height="${h}" rx="3"/><rect class="trend-failed" x="${x+34}" y="${170-bad}" width="16" height="${bad}" rx="2"/><text x="${x+25}" y="${Math.max(22,160-h)}" text-anchor="middle">${d.jobs}</text><text x="${x+25}" y="195" text-anchor="middle">${esc(d.day.slice(5))}</text></g>`;}).join('')}</svg><div class="trend-legend"><span>Tổng tác vụ</span><span>Tác vụ lỗi</span><small>Ngày theo Asia/Bangkok · Không phải số lượt bot</small></div>`;
+  return l10n`<svg class="admin-trend" viewBox="0 0 700 210" role="img" aria-label="Số tác vụ tạo mỗi ngày trong 7 ngày gần nhất; cột xanh là tổng tác vụ, phần đỏ ở chân cột là tác vụ lỗi"><path class="trend-axis" d="M20 170H680"/>${days.map((d,i)=>{const center=70+i*93,h=130*d.jobs/max,bad=130*Math.min(d.failed,d.jobs)/max;return l10n`<g><title>${esc(d.day)}: ${d.jobs} tác vụ, ${d.failed} lỗi</title><rect class="trend-total" x="${center-20}" y="${170-h}" width="40" height="${h}" rx="3"/><rect class="trend-failed" x="${center-20}" y="${170-bad}" width="40" height="${bad}" rx="3"/><text x="${center}" y="${Math.max(22,160-h)}" text-anchor="middle">${d.jobs}</text><text x="${center}" y="195" text-anchor="middle">${esc(d.day.slice(5))}</text></g>`;}).join('')}</svg><div class="trend-legend"><span>Tổng tác vụ</span><span>Tác vụ lỗi</span><small>Ngày theo giờ Việt Nam · Không phải số lượt bot</small></div>`;
 }
 export function adminDashboard(s){
   const m=s.metrics;if(!m)return head(tr('Tổng quan ban tổ chức'),tr('Theo dõi đội thi, giải đấu và worker.'))+empty(tr('Đang tải số liệu…'));

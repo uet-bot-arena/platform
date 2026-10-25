@@ -139,7 +139,7 @@ staff_domains=["vnu.test"]
                     passed(scheme+"_four_email_registrations_and_invite_team")
                     owner = pages[0]
                     owner.goto(origin+"/#/team")
-                    owner.get_by_role("button", name="Cập nhật dữ liệu", exact=True).click()
+                    owner.get_by_role("button", name="Làm mới", exact=True).click()
                     expect(owner.locator("#people-page")).to_contain_text("4/4 thành viên")
                     expect(owner.locator("#people-page")).to_contain_text("Đã tắt")
                     background = owner.locator("body").evaluate("e=>getComputedStyle(e).backgroundColor")
@@ -199,7 +199,7 @@ staff_domains=["vnu.test"]
                     admin.locator("#team-deadline-form button[type=submit]").click()
                     expect(admin.locator("#team-deadline-form button[type=submit]")).to_be_enabled()
                     owner.goto(origin+"/#/team")
-                    owner.get_by_role("button", name="Cập nhật dữ liệu", exact=True).click()
+                    owner.get_by_role("button", name="Làm mới", exact=True).click()
                     expect(owner.locator("#people-page")).to_contain_text("Đã chốt")
                     current = owner.request.get(origin+"/api/v1/users/me").json()["team"]
                     target = next(p["id"] for p in current["roster"] if p["display_name"]==f"Thành viên 4 {scheme}")
