@@ -88,7 +88,7 @@ export function packagePanel(pkg,origin){
   if(!validPackage(pkg))return '';
   const url=`${origin}/downloads/${pkg.file}`,rootfs=linuxRootfs(pkg);
   const linux=rootfs?l10n`<h3>Ubuntu/Linux hoặc WSL2 (Terminal)</h3><p>Cần systemd, cgroup v2 và Python 3.11+ (Ubuntu 24.04 có sẵn); WSL2 phải bật systemd. Lệnh tự tải bộ biên dịch cho sandbox (rootfs ${esc(Math.round(rootfs.bytes/1048576))} MiB, SHA-256 <span class="mono">${esc(rootfs.sha256)}</span>) và có thể hỏi mật khẩu sudo một lần để cài bubblewrap và cho phép sandbox.</p><pre class="report-json">${esc(linuxInstallCommand(pkg,origin))}</pre>`
-    :l10n`<p>Hub này chưa phát rootfs cho máy chấm Linux; cài Linux theo docs/MAY-CHAM.md trong repo.</p>`;
+    :l10n`<p>Hub này chưa phát rootfs cho máy chấm Linux; cài Linux theo TAI-LIEU.docx trong repo.</p>`;
   return panel(tr('Cài máy chấm'),l10n`<div class="grader-package"><p>Ai có link đều tải được: gói chỉ có code máy chấm, không có mã hay mật khẩu. Máy chỉ nhận việc khi có mã do BTC tạo ở trên, gửi riêng cho từng người.</p><p>Bấm "Tạo mã máy chấm" để có sẵn tin nhắn gửi người cài, gồm link, lệnh và mã. Trận tính điểm chỉ giao cho máy cùng nền tảng với giải; máy nền tảng khác vẫn nhận kiểm bài và luyện tập.</p><p><strong>Tải về:</strong> <a href="${esc(url)}" download>${esc(pkg.file)}</a></p><p><strong>SHA-256:</strong> <span class="mono">${esc(pkg.sha256)}</span></p><p><strong>Phiên bản máy chấm:</strong> ${esc(pkg.grader_version||'—')}</p><h3>Windows 10/11 (PowerShell, không cần quyền admin hay WSL)</h3><p>Cần Python 3.11+ (python.org, tick "Add python.exe to PATH").</p><pre class="report-json">${esc(installCommand(pkg,origin))}</pre>${linux}</div>`);
 }
 

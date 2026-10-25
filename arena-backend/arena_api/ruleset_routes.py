@@ -39,7 +39,7 @@ def starter_bytes(root,record):
 
 @router.get('/experimental/guide')
 def guide():
-    return FileResponse(Path(__file__).resolve().parents[2]/'docs/EXPERIMENTAL.md',media_type='text/plain; charset=utf-8')
+    return FileResponse(Path(__file__).resolve().parents[2]/'luat/EXPERIMENTAL.md',media_type='text/plain; charset=utf-8')
 
 @router.get('/rulesets')
 def listing(request:Request,auth=Depends(active_principal)):
@@ -84,8 +84,8 @@ def kit(ident:str,request:Request,auth=Depends(active_principal)):
         z.writestr('contract.json',json.dumps(record['contract'],ensure_ascii=False,indent=2))
         z.writestr('definition.schema.json',json.dumps(addons.definition_schema(),ensure_ascii=False,indent=2))
         z.writestr('README.md',addons.markdown(record,record['contract']))
-        z.write(root.parent/'docs/EXPERIMENTAL.md','PROTOCOL.md')
-        z.write(root.parent/'docs/RULESET-ADDONS.md','RULESET-ADDONS.md')
+        z.write(root.parent/'luat/EXPERIMENTAL.md','PROTOCOL.md')
+        z.write(root.parent/'luat/RULESET-ADDONS.md','RULESET-ADDONS.md')
         z.writestr('starter.zip',starter_bytes(root,record))
     return Response(out.getvalue(),media_type='application/zip',headers={'Content-Disposition':f'attachment; filename="ruleset-{ident[:8]}-v{record["version"]}-sdk-v3.zip"'})
 
@@ -110,5 +110,5 @@ def starter(auth=Depends(active_principal)):
     with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
         z.write(root/'sdk/experimental-bot.cpp','bot.cpp')
         for name in ('experimental.hpp','json.hpp','LICENSE.MIT'):z.write(root/'sdk'/name,name)
-        z.write(root.parent/'docs/EXPERIMENTAL.md','README.md')
+        z.write(root.parent/'luat/EXPERIMENTAL.md','README.md')
     return Response(out.getvalue(),media_type='application/zip',headers={'Content-Disposition':'attachment; filename="ottv2-experimental-v3.zip"'})

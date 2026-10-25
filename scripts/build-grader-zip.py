@@ -2,7 +2,7 @@
 """Build the grader install ZIP that the hub serves at /downloads/.
 
 The ZIP holds only grader code, the SDK, the two installer scripts with their
-SHA-256 files and two docs: no config, secret or token. It is deterministic
+SHA-256 files without config, secrets or tokens. It is deterministic
 (sorted names, fixed timestamps), so the same source always gives the same
 SHA-256 and file name. Standard library only; install-hub.sh runs it as root.
 
@@ -25,7 +25,7 @@ import zipfile
 from pathlib import Path
 
 TREES = ("arena-backend/arena", "arena-backend/sdk")
-FILES = (".gitattributes", "docs/MAY-CHAM.md", "docs/SANDBOX.md",
+FILES = (".gitattributes",
          "scripts/install-grader.ps1", "scripts/install-grader.ps1.sha256",
          "scripts/install-grader.sh", "scripts/install-grader.sh.sha256")
 OPTIONAL = {".gitattributes"}

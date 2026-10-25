@@ -23,7 +23,7 @@ def platform():
 @router.get("/rules", summary="Văn bản luật OTTv2 chính thức đã cung cấp", response_class=FileResponse,
             responses={200: {"content": {"text/plain": {"schema": {"type": "string"}}}}})
 def rules(lang: Literal["vi", "en"] = "vi"):
-    return FileResponse(Path(__file__).resolve().parents[2] / "docs" / ("OTTV2-RULES.en.md" if lang == "en" else "OTTV2-RULES.md"), media_type="text/plain; charset=utf-8")
+    return FileResponse(Path(__file__).resolve().parents[2] / "luat" / ("OTTV2-RULES.en.md" if lang == "en" else "OTTV2-RULES.md"), media_type="text/plain; charset=utf-8")
 
 
 @router.get("/admin/dashboard", summary="Tổng quan vận hành cho admin, không trả credential/source")

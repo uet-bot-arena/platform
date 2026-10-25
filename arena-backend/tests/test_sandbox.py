@@ -1,6 +1,6 @@
 """Gói 2: sandbox interface, shared transport and platform limits (no native sandboxes needed).
 
-The real backends are exercised by tests/sandbox_suite/suite.py (see docs/SANDBOX.md).
+The real backends are exercised by tests/sandbox_suite/suite.py (see TAI-LIEU.docx).
 """
 import json
 import os

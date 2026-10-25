@@ -1,6 +1,6 @@
 # Cấu hình hub UET Bot Arena. KHÔNG chứa bí mật (bí mật nằm ở secrets.toml).
 # Chép thành ~/.uet-arena/config.toml hoặc đặt ARENA_CONFIG=<đường dẫn>.
-# Biến môi trường ARENA_* (xem docs/DEPLOY.md) vẫn đè được các giá trị trong [hub].
+# Biến môi trường ARENA_* (xem TAI-LIEU.docx) vẫn đè được các giá trị trong [hub].
 # Đường dẫn tương đối tính từ thư mục chứa file này; C:/... tự đổi thành /mnt/c/... khi chạy trong WSL.
 
 [hub]

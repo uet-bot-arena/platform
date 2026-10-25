@@ -1,7 +1,7 @@
 """Exercise both installers with real graders on the existing Windows/WSL accounts.
 
 Run from WSL. Creates a temporary Startup shortcut and user service and removes both.
-The fresh-account / logout acceptance check remains a manual step in docs/MAY-CHAM.md.
+The fresh-account / logout acceptance check remains a manual step in TAI-LIEU.docx.
 """
 import hashlib
 import os

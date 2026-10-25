@@ -66,7 +66,7 @@ systemctl stop uet-arena-nginx uet-arena-publisher uet-arena-mailer uet-arena-hu
 systemctl stop uet-arena-read@4183 uet-arena-read@4184 2>/dev/null || true
 # Updating from the same installed tree needs no copy; rsync removes no data.
 if [[ "$arena_source" != /opt/uet-arena/app ]]; then
-  for arena_dir in arena-backend uet-bot-arena docs; do
+  for arena_dir in arena-backend uet-bot-arena luat; do
     rsync -a --exclude=.venv --exclude=__pycache__ --exclude=test-results --exclude=.platform-state --exclude=node_modules --exclude=downloads \
       "$arena_source/$arena_dir" /opt/uet-arena/app/
   done
@@ -299,4 +299,4 @@ for port,path,status in targets:
         time.sleep(.2)
 PY
 )
-echo 'Installed. Existing config/secrets were preserved. Bootstrap an admin (docs/DEPLOY.md); SMTP and named tunnel need configuration.'
+echo 'Installed. Existing config/secrets were preserved. Bootstrap an admin (TAI-LIEU.docx); SMTP and named tunnel need configuration.'

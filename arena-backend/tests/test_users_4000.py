@@ -22,7 +22,7 @@ class LoadContract(unittest.TestCase):
         self.assertEqual(percentile([i/1000 for i in range(1,101)]),95)
 
     def test_generators_read_the_same_six_navigation_plans_as_the_ui_test(self):
-        document=(Path(__file__).resolve().parents[2]/'docs/UI.md').read_text()
+        document=(Path(__file__).resolve().parents[2]/'arena-backend/tests/fixtures/ui-routes.md').read_text()
         contract=paths(document)
         self.assertEqual(set(contract),{'home','team','submissions','standings','schedule','queue'})
         self.assertEqual(contract['team'],[['/ui/personal?view=team','/ui/read?view=team'],[]])

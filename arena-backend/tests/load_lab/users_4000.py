@@ -408,7 +408,7 @@ def run(args):
         state_dir=Path(remote.private.name)/'synthetic-graders' if remote else LAB/'synthetic-graders'
         graders=spawn(grader_worker,ORIGIN,tokens,meta['runtime_id'],fixture,start,stop,end,ready,output,str(state_dir))
         assert ready.get(timeout=60)==('graders',args.slots)
-        contract=paths((ROOT.parent/'docs/UI.md').read_text())
+        contract=paths((ROOT/'tests/fixtures/ui-routes.md').read_text())
         count=(args.people+1)//2
         people=meta['people'][:args.people]
         # Keep the single SSH server process below its 1,024-FD limit; D2 stays at 256 pools.

@@ -51,7 +51,7 @@ def main():
             try:publisher.publish()
             finally:publisher.close()
             contracts={}
-            for line in (ROOT.parent/'docs/UI.md').read_text().splitlines():
+            for line in (ROOT/'tests/fixtures/ui-routes.md').read_text().splitlines():
                 if line.startswith('| '):
                     cols=[v.strip() for v in line.split('|')]
                     if cols[1] in ('home','team','submissions','standings','schedule','queue'):contracts[cols[1]]=cols[2:4]

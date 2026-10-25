@@ -19,4 +19,4 @@ if "$arena_setup_grader"; then
   arena_rootfs="$(find "$arena_project_root/build/rootfs" -maxdepth 1 -name 'rootfs-*.tar.zst' -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
   .venv/bin/python -m arena.sandbox.bwrap install "$arena_rootfs"
 fi
-printf '\nHub setup complete. Bootstrap an admin, start the hub, then install a grader (docs/MAY-CHAM.md).\n'
+printf '\nHub setup complete. Bootstrap an admin, start the hub, then install a grader (TAI-LIEU.docx).\n'

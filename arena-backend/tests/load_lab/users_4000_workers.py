@@ -21,7 +21,7 @@ def paths(document):
         cells=[v.strip() for v in line.split('|')]
         if len(cells)==5 and cells[1] in ('home','team','submissions','standings','schedule','queue'):
             result[cells[1]]=[[x for x in cell.split(', ') if x!='—'] for cell in cells[2:4]]
-    assert len(result)==6,'docs/UI.md navigation contract is missing'
+    assert len(result)==6,'tests/fixtures/ui-routes.md navigation contract is missing'
     return result
 
 

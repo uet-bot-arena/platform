@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {participantData} from '../dist/live/page-data.js';
 
-test('navigation follows docs/UI.md request table, with at most two private API reads',async()=>{
- const doc=readFileSync(new URL('../../docs/UI.md',import.meta.url),'utf8');
+test('navigation follows arena-backend/tests/fixtures/ui-routes.md request table, with at most two private API reads',async()=>{
+ const doc=readFileSync(new URL('../../arena-backend/tests/fixtures/ui-routes.md',import.meta.url),'utf8');
  const rows=doc.split('\n').filter(x=>/^\| (home|team|submissions|standings|schedule|queue|competitions|live|announcements|benchmark|practice|jobs|matching|rulesets) \|/.test(x));
  assert.equal(rows.length,14);
  for(const row of rows){

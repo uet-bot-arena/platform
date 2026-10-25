@@ -1,4 +1,4 @@
-"""OTT v2 rules from docs/OTTV2-RULES.md. No clock or I/O in the engine."""
+"""OTT v2 rules from luat/OTTV2-RULES.md. No clock or I/O in the engine."""
 from copy import deepcopy
 import hashlib
 from pathlib import Path
