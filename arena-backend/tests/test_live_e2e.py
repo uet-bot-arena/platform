@@ -1,4 +1,5 @@
 """Offline safety checks for the explicitly invoked production acceptance script."""
+from pathlib import Path
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -7,6 +8,13 @@ import live_e2e
 
 
 class LiveAcceptanceSafety(TestCase):
+    def test_private_dir_comes_from_environment_not_a_fixed_machine_path(self):
+        with patch.dict(live_e2e.os.environ, {'ARENA_PRIVATE_DIR': '/srv/owner-secrets'}):
+            self.assertEqual(live_e2e.private_dir(), Path('/srv/owner-secrets'))
+        with patch.dict(live_e2e.os.environ, {}, clear=True), \
+                patch.object(live_e2e.Path, 'home', return_value=Path('/home/btc')):
+            self.assertEqual(live_e2e.private_dir(), Path('/home/btc/.uet-arena'))
+
     def test_post_has_idempotency_and_does_not_log_response_credentials(self):
         requests = []
 

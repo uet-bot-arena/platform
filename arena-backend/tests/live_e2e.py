@@ -8,6 +8,7 @@ import argparse
 from contextlib import closing
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -22,7 +23,14 @@ import httpx
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-PRIVATE = Path('/mnt/c/Users/sixde/.uet-arena')
+
+
+def private_dir():
+    """Owner's credential directory: ARENA_PRIVATE_DIR, default ~/.uet-arena."""
+    return Path(os.environ.get('ARENA_PRIVATE_DIR') or Path.home() / '.uet-arena')
+
+
+PRIVATE = private_dir()
 OUTPUT = ROOT / 'test-results/m2/live-e2e'
 REPO = 'uet-bot-arena/bot-thu'
 
