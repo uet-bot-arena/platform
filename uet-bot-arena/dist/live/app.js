@@ -226,7 +226,8 @@ function draftRegistration(){const f=document.getElementById('registration-form'
 const pendingKeys=new WeakMap();
 function keyFor(form){if(!pendingKeys.has(form))pendingKeys.set(form,uuid());return pendingKeys.get(form);}
 document.addEventListener('input',e=>{if(e.target.form)pendingKeys.delete(e.target.form);});
-function showFormError(form,e){const el=form.querySelector('.form-error');if(el){el.classList.add('visible');el.textContent=e.message+(e.requestId?tr(' · Mã hỗ trợ ')+e.requestId:'');}else toast(e.message);if(e.status===401&&s.user)expired();}
+// Wrong login shows one plain sentence; the support ID is only useful for server-side failures.
+function showFormError(form,e){const el=form.querySelector('.form-error');const message=form.id==='login-form'&&e.status===401?tr('Sai tài khoản hoặc mật khẩu.'):e.message;if(el){el.classList.add('visible');el.textContent=message+(e.requestId&&(!e.status||e.status>=500)?tr(' · Mã hỗ trợ ')+e.requestId:'');}else toast(message);if(e.status===401&&s.user)expired();}
 async function runForm(form,task){if(form.dataset.busy)return;form.dataset.busy='1';const controls=[...form.querySelectorAll('button')],error=form.querySelector('.form-error');controls.forEach(b=>b.disabled=true);const loginButton=form.id==='login-form'?form.querySelector('[type=submit]'):null,loginLabel=loginButton?.textContent;if(loginButton)loginButton.textContent=tr('Đang đăng nhập…');if(error){error.classList.remove('visible');error.textContent='';}try{await task();pendingKeys.delete(form);}catch(e){showFormError(form,e);}finally{delete form.dataset.busy;controls.forEach(b=>b.disabled=false);if(loginButton)loginButton.textContent=loginLabel;}}
 document.addEventListener('submit',e=>{
   const form=e.target;if(!form.matches('.real-form'))return;e.preventDefault();const data=new FormData(form),v=name=>String(data.get(name)||'').trim();

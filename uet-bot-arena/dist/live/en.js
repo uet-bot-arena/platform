@@ -1227,6 +1227,7 @@ export default {
   "Trang": "Page",
   "Hash bot": "Bot hash",
   "Link repo private": "Private repository link",
+  "Sai tài khoản hoặc mật khẩu.": "Incorrect username or password.",
   "Gói cài máy chấm Windows": "Windows grader package",
   "Ai có link đều tải được: gói chỉ có code máy chấm, không có mã hay mật khẩu. Máy chỉ nhận việc khi có mã do BTC tạo ở trên, gửi riêng cho từng người.": "Anyone with the link can download it: the package holds grader code only, no token or password. A machine only receives work with a token the organisers create above and send privately to each person.",
   "Tải về:": "Download:",
