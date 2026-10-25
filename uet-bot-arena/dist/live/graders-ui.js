@@ -57,6 +57,25 @@ export function linuxInstallCommand(pkg,origin){
     `  && bash scripts/install-grader.sh --hub ${origin} --slots 2 --rootfs ${origin}/downloads/${rootfs.file} --sha256 ${rootfs.sha256}`].join('\n');
 }
 
+export const graderControls={
+  windows:{
+    stop:'cd C:\\uet-grader\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\install-grader.ps1 -Stop',
+    start:'Start-Process "$([Environment]::GetFolderPath(\'Startup\'))\\UET Arena grader default.lnk"',
+    uninstall:'cd C:\\uet-grader\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\install-grader.ps1 -Uninstall\n'+
+      'cd C:\\\nRemove-Item -Recurse -Force C:\\uet-grader, "$env:LOCALAPPDATA\\uet-arena", "$env:TEMP\\uet-arena-grader-*.zip" -ErrorAction SilentlyContinue'},
+  linux:{
+    stop:'systemctl --user stop uet-arena-grader-default',
+    start:'systemctl --user start uet-arena-grader-default',
+    uninstall:'bash ~/uet-grader/scripts/install-grader.sh --uninstall && rm -rf ~/uet-grader ~/uet-arena-grader-*.zip ~/.local/share/uet-arena\n'+
+      'if [ -f /etc/apparmor.d/uet-arena-bwrap ]; then sudo apparmor_parser -R /etc/apparmor.d/uet-arena-bwrap; sudo rm /etc/apparmor.d/uet-arena-bwrap; fi'}};
+
+function controlsPanel(linux){
+  const block=(title,c,remove)=>`<h4>${esc(title)}</h4><p>${esc(tr('Dừng máy chấm:'))}</p><pre class="report-json">${esc(c.stop)}</pre><p>${esc(tr('Bật lại sau khi dừng:'))}</p><pre class="report-json">${esc(c.start)}</pre><p>${esc(remove)}</p><pre class="report-json">${esc(c.uninstall)}</pre>`;
+  return `<details class="grader-controls"><summary>${esc(tr('Dừng, bật lại hoặc gỡ máy chấm'))}</summary><p>${esc(tr('Lệnh dưới đây dùng cho máy cài bằng khối lệnh ở trên. Nếu lúc cài có thêm -Profile (hoặc --profile) thì thêm đúng tham số đó vào lệnh dừng và gỡ, và đổi chữ default trong lệnh bật lại thành tên profile đó.'))}</p>`+
+    block('Windows (PowerShell)',graderControls.windows,tr('Gỡ hẳn và xóa mọi file của máy chấm (khoảng 1 GB, gồm bộ biên dịch):'))+
+    (linux?block(tr('Ubuntu/Linux hoặc WSL2 (Terminal)'),graderControls.linux,tr('Gỡ hẳn và xóa mọi file của máy chấm (khoảng 0,5 GB, gồm rootfs):')):'')+'</details>';
+}
+
 export function graderMessage(item,pkg,origin,platform='windows'){
   if(platform==='linux')return [tr('Cài máy chấm UET Bot Arena trên Linux, tên máy: ')+item.name,
     tr('1. Cần Ubuntu 24.04 (hoặc Linux có systemd, cgroup v2 và Python 3.11+); WSL2 phải bật systemd. Cắm sạc, tắt Sleep khi đang chấm.'),
@@ -66,10 +85,11 @@ export function graderMessage(item,pkg,origin,platform='windows'){
     item.token,
     tr('4. Thấy dòng "OK: hub nhận máy chấm ')+item.name+tr('" rồi "Grader installed" là xong; máy chấm chạy nền bằng systemd và tự bật khi đăng nhập.'),
     tr('Dừng máy chấm:'),
-    'systemctl --user stop uet-arena-grader-default',
+    graderControls.linux.stop,
+    tr('Bật lại sau khi dừng:'),
+    graderControls.linux.start,
     tr('Gỡ hẳn và xóa mọi file của máy chấm (khoảng 0,5 GB, gồm rootfs):'),
-    'bash ~/uet-grader/scripts/install-grader.sh --uninstall && rm -rf ~/uet-grader ~/uet-arena-grader-*.zip ~/.local/share/uet-arena\n'+
-    'if [ -f /etc/apparmor.d/uet-arena-bwrap ]; then sudo apparmor_parser -R /etc/apparmor.d/uet-arena-bwrap; sudo rm /etc/apparmor.d/uet-arena-bwrap; fi'].join('\n\n');
+    graderControls.linux.uninstall].join('\n\n');
   return [tr('Cài máy chấm UET Bot Arena, tên máy: ')+item.name,
     tr('1. Cần Windows 10/11 và Python 3.11+ (python.org, tick "Add python.exe to PATH"). Cắm sạc, tắt Sleep khi đang chấm.'),
     tr('2. Mở PowerShell, dán cả khối lệnh dưới đây rồi Enter (máy 2 nhân trở xuống thì đổi -Slots 2 thành -Slots 1):'),
@@ -78,10 +98,11 @@ export function graderMessage(item,pkg,origin,platform='windows'){
     item.token,
     tr('4. Thấy dòng "OK: hub nhận máy chấm ')+item.name+tr('" là xong; máy chấm chạy ẩn và tự bật khi đăng nhập Windows.'),
     tr('Dừng máy chấm:'),
-    'cd C:\\uet-grader\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\install-grader.ps1 -Stop',
+    graderControls.windows.stop,
+    tr('Bật lại sau khi dừng:'),
+    graderControls.windows.start,
     tr('Gỡ hẳn và xóa mọi file của máy chấm (khoảng 1 GB, gồm bộ biên dịch):'),
-    'cd C:\\uet-grader\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\install-grader.ps1 -Uninstall\n'+
-    'cd C:\\\nRemove-Item -Recurse -Force C:\\uet-grader, "$env:LOCALAPPDATA\\uet-arena", "$env:TEMP\\uet-arena-grader-*.zip" -ErrorAction SilentlyContinue'].join('\n\n');
+    graderControls.windows.uninstall].join('\n\n');
 }
 
 export function packagePanel(pkg,origin){
@@ -89,7 +110,7 @@ export function packagePanel(pkg,origin){
   const url=`${origin}/downloads/${pkg.file}`,rootfs=linuxRootfs(pkg);
   const linux=rootfs?l10n`<h3>Ubuntu/Linux hoặc WSL2 (Terminal)</h3><p>Cần systemd, cgroup v2 và Python 3.11+ (Ubuntu 24.04 có sẵn); WSL2 phải bật systemd. Lệnh tự tải bộ biên dịch cho sandbox (rootfs ${esc(Math.round(rootfs.bytes/1048576))} MiB, SHA-256 <span class="mono">${esc(rootfs.sha256)}</span>) và có thể hỏi mật khẩu sudo một lần để cài bubblewrap và cho phép sandbox.</p><pre class="report-json">${esc(linuxInstallCommand(pkg,origin))}</pre>`
     :l10n`<p>Hub này chưa phát rootfs cho máy chấm Linux; cài Linux theo TAI-LIEU.docx trong repo.</p>`;
-  return panel(tr('Cài máy chấm'),l10n`<div class="grader-package"><p>Ai có link đều tải được: gói chỉ có code máy chấm, không có mã hay mật khẩu. Máy chỉ nhận việc khi có mã do BTC tạo ở trên, gửi riêng cho từng người.</p><p>Bấm "Tạo mã máy chấm" để có sẵn tin nhắn gửi người cài, gồm link, lệnh và mã. Trận tính điểm chỉ giao cho máy cùng nền tảng với giải; máy nền tảng khác vẫn nhận kiểm bài và luyện tập.</p><p><strong>Tải về:</strong> <a href="${esc(url)}" download>${esc(pkg.file)}</a></p><p><strong>SHA-256:</strong> <span class="mono">${esc(pkg.sha256)}</span></p><p><strong>Phiên bản máy chấm:</strong> ${esc(pkg.grader_version||'—')}</p><h3>Windows 10/11 (PowerShell, không cần quyền admin hay WSL)</h3><p>Cần Python 3.11+ (python.org, tick "Add python.exe to PATH").</p><pre class="report-json">${esc(installCommand(pkg,origin))}</pre>${linux}</div>`);
+  return panel(tr('Cài máy chấm'),l10n`<div class="grader-package"><p>Ai có link đều tải được: gói chỉ có code máy chấm, không có mã hay mật khẩu. Máy chỉ nhận việc khi có mã do BTC tạo ở trên, gửi riêng cho từng người.</p><p>Bấm "Tạo mã máy chấm" để có sẵn tin nhắn gửi người cài, gồm link, lệnh và mã. Trận tính điểm chỉ giao cho máy cùng nền tảng với giải; máy nền tảng khác vẫn nhận kiểm bài và luyện tập.</p><p><strong>Tải về:</strong> <a href="${esc(url)}" download>${esc(pkg.file)}</a></p><p><strong>SHA-256:</strong> <span class="mono">${esc(pkg.sha256)}</span></p><p><strong>Phiên bản máy chấm:</strong> ${esc(pkg.grader_version||'—')}</p><h3>Windows 10/11 (PowerShell, không cần quyền admin hay WSL)</h3><p>Cần Python 3.11+ (python.org, tick "Add python.exe to PATH").</p><pre class="report-json">${esc(installCommand(pkg,origin))}</pre>${linux}${controlsPanel(!!rootfs)}</div>`);
 }
 
 export function graderTokenModal(item,pkg=null,origin=''){

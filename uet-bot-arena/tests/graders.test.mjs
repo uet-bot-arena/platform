@@ -123,3 +123,14 @@ test('install messages end with stop and full-removal commands',()=>{
   assert.match(linux,/install-grader\.sh --uninstall && rm -rf ~\/uet-grader ~\/uet-arena-grader-\*\.zip ~\/\.local\/share\/uet-arena/);
   assert.match(linux,/apparmor_parser -R \/etc\/apparmor\.d\/uet-arena-bwrap/);
 });
+
+test('public install panel shows stop, restart and uninstall commands without any token',()=>{
+  const html=gradersPage({graders:{items:[],queue:{}},graderPackage:linuxPkg,origin:'https://hub.example'});
+  assert.match(html,/Dừng, bật lại hoặc gỡ máy chấm/);
+  assert.match(html,/install-grader\.ps1 -Stop/);assert.match(html,/install-grader\.ps1 -Uninstall/);
+  assert.match(html,/UET Arena grader default\.lnk/);
+  assert.match(html,/systemctl --user start uet-arena-grader-default/);assert.match(html,/install-grader\.sh --uninstall/);
+  assert.doesNotMatch(html,/uag_/);
+  const text=graderMessage({name:'laptop-2',token:'uag_abc'},pkg,'https://hub.example');
+  assert.match(text,/Bật lại sau khi dừng:\n\nStart-Process/);
+});
