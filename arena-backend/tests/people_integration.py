@@ -69,13 +69,15 @@ staff_domains=["vnu.test"]
         server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=hub, access_log=False, log_level="warning"))
         thread = threading.Thread(target=server.run, daemon=True)
         mailpit = subprocess.Popen([str(Path.home()/".local/bin/mailpit"), "--smtp", f"127.0.0.1:{smtp}", "--listen", f"127.0.0.1:{web}", "--database", str(root/"mailpit.db"), "--disable-version-check"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        mailer, grader = None, None
+        mailer, grader, publisher = None, None, None
         mailer_log = open(output/"mailer.log", "w")
         try:
             wait_http(mailbox, "/api/v1/info")
             thread.start()
             wait_http(origin, "/api/v1/health/live")
             mailer = subprocess.Popen([sys.executable, "-m", "arena_api.mailer"], cwd=ROOT, env=env, stdout=mailer_log, stderr=mailer_log)
+            publisher = subprocess.Popen([sys.executable, "-m", "arena_api.publisher"], cwd=ROOT, env=env, stdout=mailer_log, stderr=mailer_log)
+            wait_http(origin, "/snapshots/announcements.json")
             grader = start_grader(app, origin, "bwrap", slots=2, name="personal integration bwrap")
             def code_for(email):
                 until = time.monotonic()+30
@@ -120,6 +122,8 @@ staff_domains=["vnu.test"]
                         page.locator("[name=username]").fill(address)
                         page.locator("[name=login-password]").fill(PASSWORD)
                         page.locator("#login-form button[type=submit]").click()
+                        expect(page.locator(".sidebar")).to_be_visible()
+                        page.goto(origin+"/#/team")
                         expect(page.locator("#people-page")).to_be_visible()
                         if i==0:
                             page.locator("#personal-team-create [name=team-name]").fill("Đội bốn người "+scheme)
@@ -139,7 +143,7 @@ staff_domains=["vnu.test"]
                     expect(owner.locator("#people-page")).to_contain_text("4/4 thành viên")
                     expect(owner.locator("#people-page")).to_contain_text("Đã tắt")
                     background = owner.locator("body").evaluate("e=>getComputedStyle(e).backgroundColor")
-                    assert background == ("rgb(20, 32, 25)" if scheme=="dark" else "rgb(240, 244, 241)"), background
+                    assert background == ("rgb(17, 20, 24)" if scheme=="dark" else "rgb(240, 244, 241)"), background
                     minima.append(contrast(owner))
                     owner.screenshot(path=str(output/f"{scheme}-team.png"), full_page=True)
                     owner.set_viewport_size({"width":390,"height":844})
@@ -226,6 +230,9 @@ staff_domains=["vnu.test"]
             if mailer and mailer.poll() is None:
                 mailer.terminate()
                 mailer.wait(15)
+            if publisher and publisher.poll() is None:
+                publisher.terminate()
+                publisher.wait(15)
             mailer_log.close()
             server.should_exit = True
             if thread.is_alive():

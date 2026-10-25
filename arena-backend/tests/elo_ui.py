@@ -206,7 +206,7 @@ def main(output=None,extended=False,english=False):
                             page.screenshot(path=str(output/f'{route.replace("/","-").replace("?","-")}-{scheme}-{width}.png'),full_page=True)
                             assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),(scheme,route,width,'overflow')
                             background=page.locator('body').evaluate('e=>getComputedStyle(e).backgroundColor')
-                            assert background==('rgb(20, 32, 25)' if scheme=='dark' else 'rgb(240, 244, 241)'),background
+                            assert background==('rgb(17, 20, 24)' if scheme=='dark' else 'rgb(240, 244, 241)'),background
                             contrast=text_contrast(page)
                             failures=[x for x in contrast if x['ratio']<4.5]
                             if failures:result['contrast_failures'].append(dict(route=route,scheme=scheme,width=width,failures=failures))

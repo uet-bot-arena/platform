@@ -36,6 +36,7 @@ ORIGINAL=Path('/var/lib/uet-arena/g10b-original-data')
 LAB=Path('/var/lib/uet-arena/g10b-lab')
 FIXTURE=Path('/root/g10b-fixture')
 OVERRIDE=Path('/etc/systemd/system/uet-arena-hub.service.d/g10b-lab.conf')
+NGINX_OVERRIDE=Path('/etc/systemd/system/uet-arena-nginx.service.d/g10b-lab.conf')
 UNITS=['uet-arena-hub','uet-arena-publisher','uet-arena-mailer','uet-arena-nginx']
 ORIGIN='http://127.0.0.1:4181'
 
@@ -183,6 +184,7 @@ def prepare(repos=1000):
 def restore():
     command('systemctl','stop',*UNITS)
     OVERRIDE.unlink(missing_ok=True)
+    NGINX_OVERRIDE.unlink(missing_ok=True)
     for path in read_overrides():path.unlink(missing_ok=True)
     command('systemctl','daemon-reload')
     assert DATA.resolve()==Path('/var/lib/uet-arena/data')
@@ -207,6 +209,19 @@ def start_server(github_origin):
     for path in read_overrides():
         path.parent.mkdir(parents=True,exist_ok=True)
         path.write_text('[Service]\nEnvironment=ARENA_CONFIG='+str(LAB/'config.toml')+'\nEnvironment=ARENA_SECRETS='+str(LAB/'secrets.toml')+'\n')
+    # Lab-only Host normalization lets independent forwards use different PC ports.
+    config=Path('/etc/uet-arena/nginx.conf').read_text()
+    routes=Path('/etc/uet-arena/nginx-read-routes.conf').read_text()
+    config=config.replace('include /etc/uet-arena/nginx-read-routes.conf;',routes)
+    config=config.replace('$http_host','127.0.0.1:4181')
+    config=config.replace("log_format arena '$remote_addr - \"$request\" $status $body_bytes_sent';",
+        "log_format arena '$msec $request_time $upstream_response_time';")
+    config=config.replace('access_log syslog:server=unix:/dev/log,tag=uet_arena_nginx,nohostname arena;',
+        'access_log /run/uet-arena-nginx/lab-timing.log arena;')
+    assert '$request_time' in config
+    (LAB/'nginx.conf').write_text(config)
+    NGINX_OVERRIDE.parent.mkdir(parents=True,exist_ok=True)
+    NGINX_OVERRIDE.write_text('[Service]\nExecStartPre=\nExecStartPre=/usr/sbin/nginx -t -c '+str(LAB/'nginx.conf')+'\nExecStart=\nExecStart=/usr/sbin/nginx -c '+str(LAB/'nginx.conf')+" -g 'daemon off;'\n")
     command('systemctl','daemon-reload');command('systemctl','start',*UNITS)
     command('systemctl','set-property','--runtime','arena.slice','CPUQuota=400%','MemoryMax=2G','MemorySwapMax=0')
 
@@ -251,7 +266,7 @@ class Remote:
     def __init__(self,alias):
         import re
         assert re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*',alias),'Use an SSH config alias'
-        self.alias=alias;self.tunnel=None;self.tunnel_stderr=None
+        self.alias=alias;self.tunnels={};self.tunnel_logs={}
         self.private=tempfile.TemporaryDirectory(prefix='uet-m2-load-')
         Path(self.private.name).chmod(0o700)
 
@@ -275,33 +290,37 @@ class Remote:
 
     def connect(self,github_origin):
         port=urlsplit(github_origin).port
-        with socket.socket() as probe:
-            probe.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
-            probe.bind(('127.0.0.1',4181))
-        self.tunnel_stderr=(Path(self.private.name)/'ssh.log').open('w+b')
-        self.tunnel=subprocess.Popen(['ssh','-N','-o','BatchMode=yes','-o','ExitOnForwardFailure=yes',
-            '-o','ControlMaster=no','-o','ControlPath=none',
-            '-L','127.0.0.1:4181:127.0.0.1:4181','-R',f'127.0.0.1:14190:127.0.0.1:{port}',self.alias],
-            stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=self.tunnel_stderr)
-        until=time.monotonic()+15
-        while time.monotonic()<until:
-            assert self.tunnel.poll() is None,'SSH traffic tunnel exited'
-            try:
-                with socket.create_connection(('127.0.0.1',4181),timeout=.2):return
-            except OSError:time.sleep(.1)
-        raise TimeoutError('SSH local forward did not open')
+        forwards={'graders':['-L','127.0.0.1:4181:127.0.0.1:4181'],
+            'users-0':['-L','127.0.0.1:14181:127.0.0.1:4181'],
+            'users-1':['-L','127.0.0.1:14182:127.0.0.1:4181'],
+            'sse':['-L','127.0.0.1:14183:127.0.0.1:4181'],
+            'github':['-R',f'127.0.0.1:14190:127.0.0.1:{port}']}
+        for name,forward in forwards.items():
+            log=(Path(self.private.name)/(name+'.log')).open('w+b');self.tunnel_logs[name]=log
+            self.tunnels[name]=subprocess.Popen(['ssh','-N','-o','BatchMode=yes','-o','ExitOnForwardFailure=yes',
+                '-o','ControlMaster=no','-o','ControlPath=none',*forward,self.alias],
+                stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=log)
+        for port in (4181,14181,14182,14183):
+            until=time.monotonic()+15
+            while time.monotonic()<until:
+                assert all(p.poll() is None for p in self.tunnels.values()),'SSH tunnel exited'
+                try:
+                    with socket.create_connection(('127.0.0.1',port),timeout=.2):break
+                except OSError:time.sleep(.1)
+            else:raise TimeoutError('SSH forward did not open')
+
+    def cpu(self):return {name:proc_cpu(p.pid) for name,p in self.tunnels.items()}
 
     def close(self):
-        if self.tunnel:
-            self.tunnel.terminate()
-            try:self.tunnel.wait(timeout=10)
-            except subprocess.TimeoutExpired:self.tunnel.kill();self.tunnel.wait(timeout=5)
-        if self.tunnel_stderr:
-            self.tunnel_stderr.seek(0);diagnostic=self.tunnel_stderr.read()
+        for name,process in self.tunnels.items():
+            process.terminate()
+            try:process.wait(timeout=10)
+            except subprocess.TimeoutExpired:process.kill();process.wait(timeout=5)
+            log=self.tunnel_logs[name];log.seek(0);diagnostic=log.read()
             if diagnostic:
-                output=ROOT/'test-results/m2/vps-load';output.mkdir(parents=True,exist_ok=True)
-                (output/('ssh-tunnel-'+str(time.time_ns())+'.log')).write_bytes(diagnostic)
-            self.tunnel_stderr.close()
+                output=ROOT/'test-results/m2/verification-load';output.mkdir(parents=True,exist_ok=True)
+                (output/(name+'-ssh-'+str(time.time_ns())+'.log')).write_bytes(diagnostic)
+            log.close()
         self.private.cleanup()
 
 
@@ -316,6 +335,9 @@ def server(args):
     elif args.server=='sample':answer=server_sample()
     elif args.server=='check':
         body=json.load(sys.stdin);answer=check_records(body['records'],body['began'],body['finished'])
+        rows=[line.split() for line in Path('/run/uet-arena-nginx/lab-timing.log').read_text().splitlines()]
+        times=[float(r[1]) for r in rows if body['began_unix']<=float(r[0])<=body['finished_unix']]
+        answer.update(vps_http_p95_ms=percentile(times),vps_request_count=len(times))
     else:restore();answer=dict(ok=True)
     print(json.dumps(answer),flush=True)
 
@@ -325,7 +347,7 @@ def run(args):
     from users_4000_workers import fake_github,user_worker,sse_worker,grader_worker,paths,event_digest
     remote=bool(args.remote)
     if remote:
-        ledger=ROOT/'test-results/m2/vps-load/runs.json'
+        ledger=ROOT/'test-results/m2/verification-load/runs.json'
         ledger.parent.mkdir(parents=True,exist_ok=True)
         read_workers=None
     else:
@@ -335,7 +357,8 @@ def run(args):
         ledger=LAB/'runs.json'
     runs=json.loads(ledger.read_text()) if ledger.exists() else []
     if remote:
-        assert len(runs)<8,'M2-2 allows at most eight attempts, including invalid runs'
+        assert args.people==4000 and args.slots==32 and args.repos==1000,'V1 keeps the full 4,000-user scenario'
+        assert len(runs)<3,'V1 allows at most three attempts'
         assert not any(r.get('valid') and r.get('people')==args.people and r.get('slots')==args.slots
             and r.get('repos',1000)==args.repos for r in runs),'This level already has a valid measurement'
     else:assert sum(r.get('valid',False) for r in runs)<3,'PLAN allows at most three valid large runs'
@@ -390,8 +413,8 @@ def run(args):
         people=meta['people'][:args.people]
         # Keep the single SSH server process below its 1,024-FD limit; D2 stays at 256 pools.
         pools=128 if remote else 256
-        users=[spawn(user_worker,i,people[i*count:(i+1)*count],ORIGIN,cid,contract,start,stop,end,ready,output,4000/args.people,pools) for i in range(2)]
-        sse=spawn(sse_worker,ORIGIN,cid,fixture,meta['people'],start,stop,end,ready,output)
+        users=[spawn(user_worker,i,people[i*count:(i+1)*count],('http://127.0.0.1:'+str(14181+i)) if remote else ORIGIN,cid,contract,start,stop,end,ready,output,4000/args.people,pools) for i in range(2)]
+        sse=spawn(sse_worker,'http://127.0.0.1:14183' if remote else ORIGIN,cid,fixture,meta['people'],start,stop,end,ready,output)
         warmed={}
         for _ in range(3):
             deadline=time.monotonic()+120
@@ -420,8 +443,8 @@ def run(args):
         assert http.post(ORIGIN+'/api/v1/admin/__lab/reset-metrics',headers=admin,json={}).status_code==200
         gh_commands.put('begin');assert gh_results.get(timeout=5)
         baseline=snapshot();generator_cpu={p.pid:proc_cpu(p.pid) for p in children}
-        ssh_cpu=proc_cpu(remote.tunnel.pid) if remote else 0
-        began=time.monotonic();end.value=began+120;samples=[baseline['memory']]
+        ssh_cpu=remote.cpu() if remote else {}
+        began_unix=time.time();began=time.monotonic();end.value=began+120;samples=[baseline['memory']]
         if run_index is None:
             run_index=len(runs);runs.append(dict(valid=True,status='started',began_unix=time.time()))
         else:runs[run_index]['status']='started'
@@ -429,9 +452,9 @@ def run(args):
         start.set();print('BEGIN users_4000: 120 seconds',flush=True)
         while time.monotonic()<end.value:
             time.sleep(max(0,min(5,end.value-time.monotonic())));after=snapshot();samples.append(after['memory'])
-        finished=time.monotonic();slice_cpu=(after['usage_usec']-baseline['usage_usec'])/1_000_000
+        finished_unix=time.time();finished=time.monotonic();slice_cpu=(after['usage_usec']-baseline['usage_usec'])/1_000_000
         generator_delta={p.pid:proc_cpu(p.pid)-generator_cpu[p.pid] for p in children}
-        ssh_delta=proc_cpu(remote.tunnel.pid)-ssh_cpu if remote else 0
+        ssh_delta={name:value-ssh_cpu[name] for name,value in remote.cpu().items()} if remote else {}
         stop.set();gh_commands.put('end');gh=gh_results.get(timeout=10)
         metrics=http.get(ORIGIN+'/api/v1/admin/__lab/metrics',headers=admin);assert metrics.status_code==200;metrics=metrics.json()
         reports={}
@@ -451,10 +474,10 @@ def run(args):
         records=reports['graders']['records']
         if remote:
             records=[dict(r,gzip=base64.b64encode(r['gzip']).decode('ascii')) for r in records]
-            checked=remote.call('check',payload=dict(records=records,began=began,finished=finished))
+            checked=remote.call('check',payload=dict(records=records,began=began,finished=finished,began_unix=began_unix,finished_unix=finished_unix))
         else:checked=check_records(records,began,finished)
         event_errors=list(reports['graders']['errors'])+checked['errors'];completed=checked['completed'];replay_checks=checked['checks']
-        result=dict(valid=all(v['percent_of_one_core']<=80 for v in generators.values()) and ssh_delta/seconds*100<=80,duration_seconds=seconds,read_workers=read_workers,
+        result=dict(valid=all(v['percent_of_one_core']<=80 for v in generators.values()) and all(v/seconds*100<=80 for v in ssh_delta.values()),duration_seconds=seconds,read_workers=read_workers,
             teams=1000,people=args.people,warm_visible=warmed,slots=args.slots,repos=args.repos,user_pools_per_process=pools,game_seconds=10,github_poll_seconds=60,
             http_p95_ms=percentile(latencies),http_statuses=dict(statuses),http_errors=http_errors,login_p95_ms=percentile(logins),
             slice_cpu_percent_of_4_vcpu=slice_cpu/seconds/4*100,process_cpu_seconds=dict(process_cpu),generator_cpu=generators,
@@ -465,7 +488,8 @@ def run(args):
             github_polls_per_minute=gh['polls']/seconds*60,github_errors=gh['errors'],metrics=metrics,commits_per_second=metrics['commits']/seconds)
         diagnostic=args.slots!=32 or args.repos!=1000
         if remote:
-            result.update(remote=args.remote,ssh_client_cpu_percent=ssh_delta/seconds*100,
+            result.update(remote=args.remote,ssh_client_cpu_percent={name:value/seconds*100 for name,value in ssh_delta.items()},
+                vps_http_p95_ms=checked['vps_http_p95_ms'],vps_request_count=checked['vps_request_count'],
                 sshd_cpu_percent_of_one_core=sum(max(0,value-baseline['sshd'].get(pid,0)) for pid,value in after['sshd'].items())/seconds*100)
         result['diagnostic']=diagnostic
         result['failures']=[] if diagnostic else evaluate(result)
@@ -519,7 +543,7 @@ def self_check():
             except AssertionError:pass
             else:raise AssertionError('Restore deleted an unmarked directory')
             delete.assert_not_called()
-        args=SimpleNamespace(remote='offline-test',people=200,slots=32,repos=1000)
+        args=SimpleNamespace(remote='offline-test',people=4000,slots=32,repos=1000)
         with patch(__name__+'.ROOT',directory),patch(__name__+'.Remote') as remote:
             remote.return_value.prepare.side_effect=RuntimeError('injected prepare failure')
             try:run(args)
@@ -527,6 +551,14 @@ def self_check():
             else:raise AssertionError('Injected failure was swallowed')
             remote.return_value.call.assert_called_once_with('restore')
             remote.return_value.close.assert_called_once()
+        with patch(__name__+'.subprocess.Popen') as popen,patch(__name__+'.socket.create_connection'):
+            popen.return_value.poll.return_value=None
+            remote=Remote('offline-test')
+            remote.connect('http://127.0.0.1:4190')
+            calls=[call.args[0] for call in popen.call_args_list]
+            assert len(calls)==5 and sum('-L' in c for c in calls)==4 and sum('-R' in c for c in calls)==1
+            assert len({c[c.index('-L')+1] for c in calls if '-L' in c})==4
+            remote.close()
         try:Remote('-oProxyCommand=bad')
         except AssertionError:pass
         else:raise AssertionError('SSH option accepted as an alias')

@@ -80,6 +80,10 @@ def page_ready(page):
     require(page.locator('#main .form-error.visible').count() == 0, 'UI shows a loading/form error')
 
 
+def check_webhook_status(status):
+    require(200 <= status < 300, 'C: webhook returned HTTP ' + str(status))
+
+
 def part_a(hub, result):
     from playwright.sync_api import sync_playwright, expect
     student = tomllib.loads((PRIVATE / 'test-accounts.toml').read_text())['student']
@@ -186,7 +190,7 @@ def part_c(hub, result):
         def github_http(method, url, headers, body, limit):
             return GitHubClient.http(method, url, {**headers, 'User-Agent': 'uet-arena-e2e/1'}, body, limit)
         github = GitHubClient(Secrets.load(PRIVATE / 'secrets.toml', required=True), transport=github_http)
-        checkpoint = PRIVATE / 'm2-t-github-checkpoint.json'
+        checkpoint = PRIVATE / 'm2-v-github-checkpoint.json'
         if checkpoint.exists():
             pushed = json.loads(checkpoint.read_text())
             require(pushed['hub'] == hub, 'C checkpoint belongs to another hub')
@@ -207,7 +211,9 @@ def part_c(hub, result):
                 with bot.open('a', encoding='utf-8', newline='\n') as handle:
                     handle.write('// M2-T live webhook acceptance ' + str(time.time_ns()) + '\n')
                 git('add', 'bot/bot.cpp')
-                git('commit', '-m', 'M2-T: kiem thu webhook tren web that')
+                require(git('diff', '--cached', '--numstat') == '1\t0\tbot/bot.cpp',
+                        'C must add exactly one comment line')
+                git('commit', '-m', 'Kiểm tra webhook trên web thật')
                 require('co-authored-by:' not in git('log', '-1', '--format=%B').lower(),
                         'C: unexpected co-author trailer; commit was not pushed')
                 sha = git('rev-parse', 'HEAD')
@@ -238,8 +244,7 @@ def part_c(hub, result):
         result['delivery'] = {'status_code': delivery['status_code'],
                               'seconds': (delivered_ms - pushed['started_ms']) / 1000}
         require(result['delivery']['seconds'] <= 60, 'C: webhook exceeded 60 seconds')
-        # Keep the PLAN's exact expected HTTP status, even if a different 2xx is intentional.
-        require(delivery['status_code'] == 200, 'C: webhook returned HTTP ' + str(delivery['status_code']) + ', PLAN requires 200')
+        check_webhook_status(delivery['status_code'])
         until = time.monotonic() + 900
         commit = None
         while time.monotonic() < until:

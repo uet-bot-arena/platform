@@ -93,7 +93,7 @@ def main():
                     expect(page.locator("#main")).to_contain_text("Offline")
                     page.screenshot(path=str(output / f"{scheme}-desktop.png"), full_page=True)
                     background = page.locator("body").evaluate("e=>getComputedStyle(e).backgroundColor")
-                    assert background == ("rgb(20, 32, 25)" if scheme == "dark" else "rgb(240, 244, 241)"), background
+                    assert background == ("rgb(17, 20, 24)" if scheme == "dark" else "rgb(240, 244, 241)"), background
                     # Compute rendered text contrast against the nearest opaque ancestor.
                     contrast = text_contrast(page)
                     failures = [item for item in contrast if item["ratio"] < 4.5]

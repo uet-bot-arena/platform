@@ -60,7 +60,7 @@ def run_scheduler(cluster,app,entries,item,result,output):
                 assert game['red_sha']==entries[game['red_team_id']]['github_sha']
                 assert game['blue_sha']==entries[game['blue_team_id']]['github_sha']
                 job=store.get(game['current_job_id'])
-                assert comp.valid_report(job,item['config'])
+                assert comp.valid_report(job,round_item['config'])
                 timing=comp.one('SELECT duration_ms FROM duration_samples WHERE job=?',(job['id'],))
                 assert timing is not None
                 result['games'].append(dict(phase=round_item['phase'],round=round_item['number'],seconds=timing['duration_ms']/1000,result=json.loads(game['result'])))

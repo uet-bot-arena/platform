@@ -370,7 +370,7 @@ class Cluster:
                 self.results.setdefault("logs", {})[name] = item["log"].read_text(errors="replace")[-4000:]
         out = ROOT / "test-results" / "m1"
         out.mkdir(parents=True, exist_ok=True)
-        filename = {"season-m1": "m1-season-cluster.json", "hub-install": "hub-install-cluster.json", "lease-probe": "grader-lease-probe.json", "installers": "grader-installers.json", "hub-restart": "hub-restart.json", "github": "github-native.json", "elo-timing": "elo-windows-timing-cluster.json", "elo-native": "elo-native-cluster.json", "elo-scheduler": "elo-scheduler-cluster.json", "benchmark-timing": "benchmark-windows-cluster.json"}.get(
+        filename = {"remote-grader": "remote-grader-cluster.json", "season-m1": "m1-season-cluster.json", "hub-install": "hub-install-cluster.json", "lease-probe": "grader-lease-probe.json", "installers": "grader-installers.json", "hub-restart": "hub-restart.json", "github": "github-native.json", "elo-timing": "elo-windows-timing-cluster.json", "elo-native": "elo-native-cluster.json", "elo-scheduler": "elo-scheduler-cluster.json", "benchmark-timing": "benchmark-windows-cluster.json"}.get(
             self.results.get("mode"), "grader-cluster.json")
         (out / filename).write_text(json.dumps(self.results, ensure_ascii=False, indent=2), encoding="utf-8")
         shutil.rmtree(self.shared, ignore_errors=True)

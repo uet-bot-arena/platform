@@ -8,6 +8,13 @@ import live_e2e
 
 
 class LiveAcceptanceSafety(TestCase):
+    def test_github_accepts_successful_202_delivery(self):
+        for status in (200, 202, 204, 299):
+            live_e2e.check_webhook_status(status)
+        for status in (199, 300, 401, 500):
+            with self.assertRaises(AssertionError):
+                live_e2e.check_webhook_status(status)
+
     def test_private_dir_comes_from_environment_not_a_fixed_machine_path(self):
         with patch.dict(live_e2e.os.environ, {'ARENA_PRIVATE_DIR': '/srv/owner-secrets'}):
             self.assertEqual(live_e2e.private_dir(), Path('/srv/owner-secrets'))

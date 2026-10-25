@@ -147,7 +147,7 @@ staff_domains = ["vnu.test"]
                     page.locator("#email-code-form button[type=submit]").click()
                     expect(page.locator("#email-state")).to_contain_text("Email đã được xác minh")
                     background = page.locator("body").evaluate("e=>getComputedStyle(e).backgroundColor")
-                    assert background == ("rgb(20, 32, 25)" if scheme == "dark" else "rgb(240, 244, 241)"), background
+                    assert background == ("rgb(17, 20, 24)" if scheme == "dark" else "rgb(240, 244, 241)"), background
                     auth_contrast = text_contrast(page)
                     assert min(item["ratio"] for item in auth_contrast) >= 4.5, auth_contrast
                     page.screenshot(path=str(output / f"{scheme}-verified.png"), full_page=True)
@@ -160,7 +160,7 @@ staff_domains = ["vnu.test"]
                     expect(page.locator("#main h1")).to_have_text("Gửi email")
                     expect(page.locator("#main")).to_contain_text("mailpit")
                     background = page.locator("body").evaluate("e=>getComputedStyle(e).backgroundColor")
-                    assert background == ("rgb(20, 32, 25)" if scheme == "dark" else "rgb(240, 244, 241)"), background
+                    assert background == ("rgb(17, 20, 24)" if scheme == "dark" else "rgb(240, 244, 241)"), background
                     contrast = text_contrast(page)
                     assert min(item["ratio"] for item in contrast) >= 4.5, contrast
                     page.screenshot(path=str(output / f"{scheme}-admin.png"), full_page=True)
