@@ -55,7 +55,8 @@ export class ArenaAPI {
     return response.blob();
   }
   async snapshot(name){
-    const response=await fetch('/snapshots/'+name,{credentials:'omit',signal:AbortSignal.timeout(30000)});
+    // Revalidate every time (ETag/304): a CDN may stretch browser max-age, snapshots must stay live.
+    const response=await fetch('/snapshots/'+name,{credentials:'omit',cache:'no-cache',signal:AbortSignal.timeout(30000)});
     const result=await responseBody(response);
     if(!response.ok)throw new APIError(response,result);
     return result;
