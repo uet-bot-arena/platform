@@ -5,7 +5,7 @@ import {tr,html as l10n,language,setLanguage} from './i18n.js';
 import {startAnnouncements} from './announcements.js';
 import {readTournamentOptions,updateLadderPreview} from './tournament-options.js';
 import {timeField,timeBody,competitionProfile} from './time-control.js';
-import {ArenaAPI,saveBlob} from './client.js';
+import {ArenaAPI,saveBlob,uuid} from './client.js';
 import {page,jobDetail} from './pages.js';
 import {esc,icon,button,field,table,note,errors,submit,shell,badge,short,select,date} from './view.js';
 import {MatchBoard,boardPage} from './board.js';
@@ -27,7 +27,6 @@ const authChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('uet
 authChannel?.addEventListener('message',async()=>{try{const session=await api.request('/auth/me',{poll:true});Object.assign(s,defaults(),{user:session.user});openRoute();}catch(e){if(e.status===401)expired(false);else handleError(e);}});
 const authChanged=()=>authChannel?.postMessage({type:'changed'});
 const terminal=status=>['completed','failed','aborted'].includes(status);
-const uuid=()=>crypto.randomUUID();
 const enc=encodeURIComponent;
 function toast(message){const el=document.getElementById('toast');el.className='toast show';el.textContent=message;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),6000);}
 function clearView(){eloPoll?.close();githubPoll?.close();emailPoll?.close();competitionFeed?.close();competitionFeed=null;board?.close();board=null;jobFeed?.close();jobFeed=null;closeModal();}
@@ -79,6 +78,7 @@ async function loadData(route,ids,q){
     work.push(api.all('/admin/accounts'+scope).then(x=>data.accounts=x));
     work.push(api.all('/admin/recoveries').then(x=>data.recoveries=x));
   }
+  if(route==='competitions'&&ids[0]&&admin)work.push(api.all('/admin/accounts').then(x=>data.entryTeams=[...new Map(x.filter(a=>a.team&&!a.team.archived_ms).map(a=>[a.team.id,a.team])).values()]));
   if(route==='operations'){
     work.push(api.request('/admin/github/duplicates').then(x=>data.duplicates=x.items));
     work.push(api.all('/admin/jobs').then(x=>data.adminJobs=x));
@@ -187,7 +187,7 @@ function watchGitHub(id){
   githubPoll=visiblePoll(async()=>{
     const next=await privatePage(api,s.route,true);
     if(id===generation){Object.assign(s,next);patchPage();}
-  },()=>githubPollMs(s.github),{onError:handleError});
+  },()=>s.platform?.team_zip_upload&&s.jobs.some(j=>j.kind==='benchmark'&&!['completed','failed','aborted'].includes(j.status))?3000:githubPollMs(s.github),{onError:handleError});
 }
 function watchEmail(id){
   emailPoll?.close();
@@ -282,6 +282,10 @@ document.addEventListener('submit',e=>{
     }else if(form.id==='password-form'){
       const pw=data.get('new-password');if(pw.length<8)throw new Error(tr('Mật khẩu mới phải có ít nhất 8 ký tự.'));if(pw!==data.get('confirm-password'))throw new Error(tr('Hai lần nhập mật khẩu mới chưa khớp.'));
       const result=await api.post('/auth/password',{current_password:data.get('current-password'),new_password:pw});s.user=result.user;form.reset();authChanged();toast(tr('Đã đổi mật khẩu và thu hồi các phiên cũ.'));go('home');
+    }else if(form.id==='zip-form'){
+      await api.request('/submissions',{method:'POST',body:data.get('source'),headers:{'Content-Type':'application/zip','X-Submission-Version':v('version'),'X-Arena-Runtime':v('runtime'),'Idempotency-Key':keyFor(form)}});toast(tr('Đã nạp bot và xếp hàng kiểm 72 mẫu.'));openRoute();
+    }else if(form.id==='admin-entry-form'){
+      await api.post('/admin/competitions/'+s.competition.id+'/entries/'+encodeURIComponent(v('team_id')),{},keyFor(form));toast(tr('Đã thêm bản Đạt mới nhất của đội.'));openRoute();
     }else if(form.id==='github-attach-form'){
       s.github=await api.post('/teams/me/github',{url:v('repository')});toast(tr('Đã gắn repo; push lên main để kiểm tra.'));render();
     }else if(form.id==='benchmark-form'){

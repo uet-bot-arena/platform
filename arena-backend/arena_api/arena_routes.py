@@ -51,9 +51,9 @@ def page_bundle(request,view,job_id,auth,section='all',poll=False):
     if view in ('team','submissions'):
         data['github']=state.github.view(team_id)
     if view=='team':data['teamElo']=state.competitions.elo.team_view(team_id)
-    if view in ('home','benchmark','practice','competitions','arena'):
+    if view in ('home','benchmark','practice','competitions','arena') or view=='submissions' and state.settings.team_zip_upload:
         data['submissions']=[state.service.public_submission(s) for s in state.store.list('submission',team_id)]
-    if view in ('home','benchmark','practice','competitions'):
+    if view in ('home','benchmark','practice','competitions') or view=='submissions' and state.settings.team_zip_upload:
         jobs=state.store.list('job',team_id,summary=True)
         data['jobs']=[public_job(j) for j in jobs]
         if view=='home':
@@ -185,22 +185,39 @@ def submissions(request: Request, limit: int = Query(50, ge=1, le=100), offset: 
     return JSONResponse({"items": [service.public_submission(s) for s in items[offset:offset + limit]], "total": len(items), "limit": limit, "offset": offset})
 
 
-@router.post("/submissions", include_in_schema=False)
-def closed_upload(auth=Depends(team_principal)):
-    raise Fault("forbidden", "Đội nộp bài qua repo GitHub đã gắn; không nhận ZIP trên web")
+@router.post("/submissions", status_code=201, summary="Đội nạp ZIP khi hub LAN cho phép")
+async def team_upload(request: Request, auth=Depends(team_principal)):
+    if not request.app.state.settings.team_zip_upload:
+        raise Fault("forbidden", "Đội nộp bài qua repo GitHub đã gắn; không nhận ZIP trên web")
+    headers = request.headers
+    version, key = headers.get('x-submission-version', ''), headers.get('idempotency-key', '')
+    try:
+        protocol = int(headers.get('x-arena-protocol', '2'))
+    except ValueError:
+        raise Fault('invalid_request', 'SDK phải là 2 hoặc 3') from None
+    item = await receive_zip(request, auth['user']['team_id'], version, key, headers.get('x-arena-runtime', 'cpp17'), protocol)
+    from starlette.concurrency import run_in_threadpool
+    body = {'submission_id': item['id']}
+    # A retry after a dropped HTTP response must not create a second check.
+    await run_in_threadpool(request.app.state.service.enqueue, auth['user']['team_id'], 'benchmark', body, 'lan-check-' + item['id'])
+    return request.app.state.service.public_submission(item)
+
+
+async def receive_zip(request, team, version, key, runtime, protocol):
+    if request.headers.get("Content-Type", "").split(";")[0] != "application/zip":
+        raise Fault("invalid_request", "Expected application/zip")
+    raw = await request.body()
+    from starlette.concurrency import run_in_threadpool
+    request.app.state.accounts.team(team)
+    return await run_in_threadpool(request.app.state.service.submit, team, version, runtime, raw, key, protocol)
 
 
 @router.post("/admin/teams/{ident}/submissions", status_code=201, summary="BTC nạp ZIP nội bộ cho đội; sinh viên dùng GitHub",
              openapi_extra={"requestBody": {"required": True, "content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}}}})
 async def upload(ident: str, request: Request, x_submission_version: str = Header(), idempotency_key: str = Header(),
                  x_arena_runtime: str = Header("cpp17"), x_arena_protocol:int=Header(2), auth=Depends(admin_principal)):
-    if request.headers.get("Content-Type", "").split(";")[0] != "application/zip":
-        raise Fault("invalid_request", "Expected application/zip")
-    raw = await request.body()
-    from starlette.concurrency import run_in_threadpool
     service = request.app.state.service
-    request.app.state.accounts.team(ident)
-    item = await run_in_threadpool(service.submit, ident, x_submission_version, x_arena_runtime, raw, idempotency_key,x_arena_protocol)
+    item = await receive_zip(request, ident, x_submission_version, idempotency_key, x_arena_runtime, x_arena_protocol)
     with request.app.state.store.transaction():
         request.app.state.accounts.audit(auth["user"]["id"], "submission.internal_import", item["id"])
     return service.public_submission(item)

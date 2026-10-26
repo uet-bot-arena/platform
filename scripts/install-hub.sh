@@ -8,13 +8,16 @@ arena_origin=http://127.0.0.1:4181
 arena_vcpus="$(nproc)"
 arena_remove=false
 arena_rootfs=''
+arena_lan=false
+arena_origin_explicit=false
 while (( $# )); do
   case "$1" in
-    --origin) arena_origin="${2:?Missing origin}"; shift 2 ;;
+    --origin) arena_origin="${2:?Missing origin}"; arena_origin_explicit=true; shift 2 ;;
+    --lan) arena_lan=true; shift ;;
     --vcpus) arena_vcpus="${2:?Missing vCPU count}"; shift 2 ;;
     --grader-rootfs) arena_rootfs="$(realpath -- "${2:?Missing rootfs file}")"; shift 2 ;;
     --uninstall) arena_remove=true; shift ;;
-    *) echo 'Usage: sudo bash scripts/install-hub.sh [--origin https://host] [--vcpus N] [--grader-rootfs rootfs-<sha256>.tar.zst] [--uninstall]' >&2; exit 2 ;;
+    *) echo 'Usage: sudo bash scripts/install-hub.sh [--lan --origin http://private-ip:port] [--origin https://host] [--vcpus N] [--grader-rootfs rootfs-<sha256>.tar.zst] [--uninstall]' >&2; exit 2 ;;
   esac
 done
 (( EUID == 0 )) || { echo 'Run with sudo/root.' >&2; exit 1; }
@@ -35,13 +38,19 @@ if "$arena_remove"; then
 fi
 . /etc/os-release
 [[ "$ID" == ubuntu && "$VERSION_ID" == 24.04 && "$(uname -m)" == x86_64 ]] || { echo 'Ubuntu 24.04 amd64 required.' >&2; exit 1; }
-python3 - "$arena_origin" <<'PY'
-import sys
+if "$arena_lan" && ! "$arena_origin_explicit"; then echo '--lan requires --origin http://private-ip[:port].' >&2; exit 2; fi
+python3 - "$arena_origin" "$arena_lan" <<'PY'
+import sys,ipaddress
 from urllib.parse import urlsplit
 u=urlsplit(sys.argv[1])
 assert u.scheme in ('http','https') and u.hostname and not u.username and not u.password
 assert not u.query and not u.fragment and u.path==''
-assert u.scheme=='https' or sys.argv[1]=='http://127.0.0.1:4181'
+if sys.argv[2]=='true':
+    address=ipaddress.ip_address(u.hostname)
+    assert address.version==4 and address.is_private and not address.is_loopback and u.scheme=='http'
+    assert 1 <= (u.port or 80) <= 65535
+else:
+    assert u.scheme=='https' or sys.argv[1]=='http://127.0.0.1:4181'
 assert all(c.isalnum() or c in ':/.-' for c in sys.argv[1])
 PY
 export DEBIAN_FRONTEND=noninteractive
@@ -90,6 +99,7 @@ python3 /opt/uet-arena/app/scripts/build-grader-zip.py "${arena_zip_args[@]}" >/
 python3 -m venv /opt/uet-arena/venv
 /opt/uet-arena/venv/bin/python -m pip install --disable-pip-version-check -r /opt/uet-arena/app/arena-backend/requirements.txt
 chmod -R go-w,a+rX /opt/uet-arena/venv
+if ! "$arena_lan"; then
 arena_cloud_sha=053b80b0a23031a038fdbf3c073f59f82b8f1f152aa67971d7383ffafc0dbab0
 if ! echo "$arena_cloud_sha  /usr/local/bin/cloudflared" | sha256sum -c --status 2>/dev/null; then
   arena_download="$(mktemp)"
@@ -98,6 +108,7 @@ if ! echo "$arena_cloud_sha  /usr/local/bin/cloudflared" | sha256sum -c --status
   echo "$arena_cloud_sha  $arena_download" | sha256sum -c --status || { echo 'cloudflared SHA mismatch.' >&2; exit 1; }
   install -m 755 "$arena_download" /usr/local/bin/cloudflared
   rm -f "$arena_download"; trap - EXIT
+fi
 fi
 arena_workers=$((arena_vcpus/2)); (( arena_workers >= 1 )) || arena_workers=1
 if [[ ! -e /etc/uet-arena/config.toml ]]; then
@@ -113,6 +124,20 @@ hash_workers = $arena_workers
 read_workers = $((arena_vcpus >= 4 ? 2 : 0))
 trusted_proxies = ["127.0.0.1/32"]
 EOF
+fi
+if "$arena_lan"; then
+  # An explicit LAN install also updates an existing local configuration.
+  python3 - "$arena_origin" <<'PY'
+from pathlib import Path
+import re,sys
+p=Path('/etc/uet-arena/config.toml');s=p.read_text()
+start=s.index('[hub]')+len('[hub]');end=s.find('\n[',start)
+if end<0:end=len(s)
+hub=s[start:end]
+for key,value in dict(origin='"'+sys.argv[1]+'"',cookie_secure='false',team_zip_upload='true').items():
+    hub=re.sub(r'(?m)^'+key+r'\s*=.*$',key+' = '+value,hub) if re.search(r'(?m)^'+key+r'\s*=',hub) else hub+'\n'+key+' = '+value+'\n'
+p.write_text(s[:start]+hub+s[end:])
+PY
 fi
 if [[ ! -e /etc/uet-arena/secrets.toml ]]; then
   python3 - <<'PY'
@@ -178,6 +203,15 @@ EOF
 done
 install -m 644 /opt/uet-arena/app/scripts/hub-nginx.conf /etc/uet-arena/nginx.conf
 install -m 644 /opt/uet-arena/app/scripts/hub-nginx-security.conf /etc/uet-arena/nginx-security.conf
+arena_http_port=4181
+if "$arena_lan"; then
+  arena_http_port="$(python3 -c 'import sys;from urllib.parse import urlsplit;print(urlsplit(sys.argv[1]).port or 80)' "$arena_origin")"
+  sed -i "s/listen 127.0.0.1:4181;/listen 0.0.0.0:$arena_http_port;/" /etc/uet-arena/nginx.conf
+  if command -v ufw >/dev/null && ufw status | grep -q '^Status: active'; then
+    arena_network="$(python3 -c 'import ipaddress,sys;from urllib.parse import urlsplit;a=ipaddress.ip_address(urlsplit(sys.argv[1]).hostname);nets=["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16","169.254.0.0/16"];print(next((n for n in nets if a in ipaddress.ip_network(n)),str(a)+"/32"))' "$arena_origin")"
+    ufw allow from "$arena_network" to any port "$arena_http_port" proto tcp
+  fi
+fi
 arena_read_workers="$(cd /opt/uet-arena/app/arena-backend && ARENA_CONFIG=/etc/uet-arena/config.toml ARENA_SECRETS=/etc/uet-arena/secrets.toml /opt/uet-arena/venv/bin/python -m arena_api.read_worker --nginx-dir /etc/uet-arena)"
 cat > /etc/systemd/system/uet-arena-read@.service <<'EOF'
 [Unit]
@@ -241,6 +275,9 @@ LogRateLimitBurst=100000
 [Install]
 WantedBy=multi-user.target
 EOF
+if "$arena_lan" && (( arena_http_port < 1024 )); then
+  sed -i '/^NoNewPrivileges=true/a AmbientCapabilities=CAP_NET_BIND_SERVICE' /etc/systemd/system/uet-arena-nginx.service
+fi
 install -d -m 755 /etc/systemd/journald.conf.d
 cat > /etc/systemd/journald.conf.d/uet-arena.conf <<'EOF'
 [Journal]
@@ -278,14 +315,14 @@ done
 for arena_component in hub publisher mailer nginx; do
   systemctl is-active --quiet "uet-arena-$arena_component" || { echo "$arena_component failed to start; inspect its journal." >&2; exit 1; }
 done
-(cd /opt/uet-arena/app/arena-backend && ARENA_CONFIG=/etc/uet-arena/config.toml ARENA_SECRETS=/etc/uet-arena/secrets.toml /opt/uet-arena/venv/bin/python - "$arena_read_workers" <<'PY'
+(cd /opt/uet-arena/app/arena-backend && ARENA_CONFIG=/etc/uet-arena/config.toml ARENA_SECRETS=/etc/uet-arena/secrets.toml /opt/uet-arena/venv/bin/python - "$arena_read_workers" "$arena_http_port" <<'PY'
 import sys,time
 from urllib.error import HTTPError,URLError
 from urllib.parse import urlsplit
 from urllib.request import Request,urlopen
 from arena_api.settings import Settings
 host=urlsplit(Settings().origin).netloc
-targets=[(4181,'health/ready',200)]+[(4183+i,'auth/me',401) for i in range(int(sys.argv[1]))]
+targets=[(int(sys.argv[2]),'health/ready',200)]+[(4183+i,'auth/me',401) for i in range(int(sys.argv[1]))]
 for port,path,status in targets:
     deadline=time.monotonic()+60
     while True:
@@ -299,4 +336,5 @@ for port,path,status in targets:
         time.sleep(.2)
 PY
 )
+if "$arena_lan"; then echo "LAN installed: $arena_origin (team ZIP enabled; no Cloudflare tunnel)."; exit; fi
 echo 'Installed. Existing config/secrets were preserved. Bootstrap an admin (TAI-LIEU.docx); SMTP and named tunnel need configuration.'

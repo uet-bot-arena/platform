@@ -32,7 +32,10 @@ async def stream_admin(request,authenticated):
 
 @router.post("/admin/competitions", status_code=201, summary="Tạo giải Elo, vòng tròn hoặc Swiss; ghim engine/runtime/SDK/profile")
 def create(body: CompetitionCreate, request: Request, idempotency_key: str = Header(), auth=Depends(admin_principal)):
-    return request.app.state.competitions.create(auth["user"]["id"], body.model_dump(exclude_none=True), idempotency_key)
+    values = body.model_dump(exclude_none=True)
+    if request.app.state.settings.team_zip_upload and values.get('format') == 'double_round_robin':
+        values['scoring'] = dict(win=1,draw=.5,loss=0)
+    return request.app.state.competitions.create(auth["user"]["id"], values, idempotency_key)
 
 
 @router.get("/admin/competitions", summary="Danh sách giải của admin, gồm bản nháp")
@@ -112,6 +115,11 @@ def withdraw(ident: str, request: Request, idempotency_key: str = Header(), auth
     with request.app.state.store.lock:
         team = request.app.state.teams.captain_team(auth["user"]["id"])
         return request.app.state.competitions.withdraw(auth["user"]["id"], team["id"], ident, idempotency_key)
+
+
+@router.post('/admin/competitions/{ident}/entries/{team_id}', summary='BTC thêm bản Đạt mới nhất của đội trước khi chốt')
+def add_team(ident: str, team_id: str, request: Request, idempotency_key: str = Header(), auth=Depends(admin_principal)):
+    return request.app.state.competitions.add_team(auth['user']['id'], team_id, ident, idempotency_key)
 
 
 @router.post("/admin/competitions/{ident}/entries/{team_id}/remove", summary="Admin loại entry trước khi chốt, có audit")

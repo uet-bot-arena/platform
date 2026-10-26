@@ -124,6 +124,7 @@ class Settings:
     thread_limit: int = UNSET
     hash_workers: int = UNSET
     read_workers: int = UNSET
+    team_zip_upload: bool = UNSET
     ui_root: Path = UNSET
     email_providers: tuple = UNSET
     account_rules: AccountRules = UNSET
@@ -172,6 +173,7 @@ def load(names, path=None, env=None):
     values["thread_limit"] = hub.integer("thread_limit", 256, 40, 4096)
     values["hash_workers"] = hub.integer("hash_workers", 4, 1, 32)
     values['read_workers'] = hub.integer('read_workers',0,0,2)
+    values['team_zip_upload'] = hub.boolean('team_zip_upload',False)
     values["ui_root"] = hub.path("ui_root", str(Path(__file__).resolve().parents[2] / "uet-bot-arena" / "dist"))
     hub.finish()
     values["email_providers"] = email_providers(data)
@@ -311,7 +313,12 @@ def validate(settings):
     parts = urlsplit(settings.origin)
     if parts.scheme not in ("http", "https") or not parts.netloc or parts.path or parts.query or parts.fragment or parts.username:
         raise ConfigError("Cấu hình sai: hub.origin phải là origin chính xác, không có dấu / ở cuối, ví dụ http://127.0.0.1:4181")
-    if parts.hostname not in LOOPBACK and (parts.scheme != "https" or not settings.cookie_secure):
+    try:
+        address = ipaddress.ip_address(parts.hostname)
+        lan = address.version == 4 and address.is_private and not address.is_loopback
+    except ValueError:
+        lan = False
+    if parts.hostname not in LOOPBACK and not (lan and parts.scheme == "http" and not settings.cookie_secure) and (parts.scheme != "https" or not settings.cookie_secure):
         raise ConfigError("Cấu hình sai: hub.origin công khai phải dùng https và hub.cookie_secure = true")
     if not 300 <= settings.session_seconds <= 30 * DAY:
         raise ConfigError("Cấu hình sai: hub.session_seconds phải 300..2592000 (5 phút..30 ngày)")

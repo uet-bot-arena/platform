@@ -2912,6 +2912,29 @@
             "cookieAuth": []
           }
         ]
+      },
+      "post": {
+        "tags": [
+          "arena"
+        ],
+        "summary": "Đội nạp ZIP khi hub LAN cho phép",
+        "operationId": "team_upload_api_v1_submissions_post",
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
       }
     },
     "/api/v1/admin/teams/{ident}/submissions": {
@@ -4241,6 +4264,70 @@
             "schema": {
               "type": "string",
               "title": "Ident"
+            }
+          },
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/competitions/{ident}/entries/{team_id}": {
+      "post": {
+        "tags": [
+          "competitions"
+        ],
+        "summary": "BTC thêm bản Đạt mới nhất của đội trước khi chốt",
+        "operationId": "add_team_api_v1_admin_competitions__ident__entries__team_id__post",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          },
+          {
+            "name": "team_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Team Id"
             }
           },
           {

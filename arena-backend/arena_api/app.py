@@ -34,7 +34,7 @@ MIB = 1024 * 1024
 def body_limit(method, path):
     """(bytes, binary?) accepted for a mutation on this path."""
     if path == "/api/v1/submissions":
-        return 16_384, True  # closed student channel; handler returns a GitHub instruction
+        return 10 * MIB, True  # LAN ZIP; online handler still rejects this channel
     if path == "/api/v1/admin/sample-bots" or path.startswith("/api/v1/admin/teams/") and path.endswith("/submissions"):
         return 10 * MIB, True
     if method == "PUT" and path.startswith(GRADER_PREFIX + "artifacts/"):

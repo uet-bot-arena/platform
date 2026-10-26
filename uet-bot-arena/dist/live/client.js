@@ -2,6 +2,8 @@ import {tr,html as l10n,language} from './i18n.js';
 // Same-origin session only. No password, session or CSRF in browser storage.
 import {snapshotPath,publicRequest,PublicFeed} from './public-client.js';
 import {VisibleSource} from './polling.js';
+// getRandomValues also works on the isolated HTTP LAN, unlike randomUUID.
+export const uuid=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
 const responseBody=response=>(response.headers.get('Content-Type')||'').includes('json')?response.json():response.text();
 export class APIError extends Error {
   constructor(response, result) {

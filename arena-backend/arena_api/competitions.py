@@ -101,7 +101,7 @@ class Competitions:
             runtime_id = body.get("runtime_id") or self.service.runtime_for(platform)
             if not runtime_id:
                 raise Fault("competition_conflict", f"Chưa có máy chấm {platform} nào kết nối; chạy máy chấm trước hoặc ghi rõ runtime_id")
-            config = {"format": "double_round_robin", "ranking": "points_shared_rank", "scoring": dict(SCORING), "max_teams": body["max_teams"], "adjudication": dict(CURRENT),
+            config = {"format": "double_round_robin", "ranking": "points_shared_rank", "scoring": dict(body.get("scoring", SCORING)), "max_teams": body["max_teams"], "adjudication": dict(CURRENT),
                       "profile": request_profile(body).public(), "runtime": "cpp17", "protocol_version": 2,
                       "grader_platform": platform, "runtime_id": runtime_id, "engine_id": engine.ENGINE_ID, "engine_sha256": engine.ENGINE_SHA256,
                       "sdk_sha256": sandbox.sdk_hash(),
@@ -241,23 +241,40 @@ class Competitions:
                 "artifact_sha256": artifact["artifact_sha256"], "benchmark_id": benchmark_id,
                 "benchmark_report_sha256": digest(report) if job.get('report') else report['report_sha256']}
 
-    def enter(self, actor, team, ident, body, key):
+    def latest_qualified(self, config, team):
+        jobs = self.store.list('job', team)
+        for source in self.store.list('submission', team):
+            for job in jobs:
+                if job.get('submission_ids') != [source['id']] or job.get('kind') != 'benchmark':
+                    continue
+                try:
+                    self.qualification(config, team, source['id'], job['id'])
+                    return {'submission_id':source['id'], 'benchmark_id':job['id']}
+                except Fault:
+                    continue
+        raise Fault('qualification_required', 'Đội chưa có bản Đạt đủ 72 mẫu theo luật và cấu hình máy chấm của giải')
+
+    def add_team(self, actor, team, ident, key):
+        return self.enter(actor, team, ident, {'team_id':team}, key, admin=True)
+
+    def enter(self, actor, team, ident, body, key, *, admin=False):
         def action():
             if hasattr(self, "teams"):
                 self.teams.eligible(team)
             item = self.get(ident)
-            self.require_status(item, "open")
+            self.require_status(item, *( ("draft", "open") if admin else ("open",) ))
             if item.get("submission_deadline") is not None:
                 raise Fault("forbidden", "Hub tự chốt bài GitHub khi hết hạn; đội không chọn bài tay")
             count = self.db.execute("SELECT COUNT(*) FROM competition_entries WHERE competition_id=? AND team_id<>?", (ident, team)).fetchone()[0]
             if count >= item["config"]["max_teams"]:
                 raise Fault("quota_exceeded", "Competition entry limit reached")
-            snapshot = self.qualification(item["config"], team, body["submission_id"], body["benchmark_id"])
+            selected = self.latest_qualified(item["config"], team) if admin else body
+            snapshot = self.qualification(item["config"], team, selected["submission_id"], selected["benchmark_id"])
             self.db.execute("INSERT INTO competition_entries VALUES(?,?,?,?,?,?) ON CONFLICT(competition_id,team_id) DO UPDATE SET submission_id=excluded.submission_id, benchmark_id=excluded.benchmark_id, snapshot=excluded.snapshot, accepted_ms=excluded.accepted_ms",
-                            (ident, team, body["submission_id"], body["benchmark_id"], json.dumps(snapshot), now_ms()))
-            return {"id": ident, "team_id": team, "submission_id": body["submission_id"], "version": snapshot["version"],
+                            (ident, team, selected["submission_id"], selected["benchmark_id"], json.dumps(snapshot), now_ms()))
+            return {"id": ident, "team_id": team, "submission_id": selected["submission_id"], "version": snapshot["version"],
                     "delegate_timeout_claims": True, "status": "entered"}
-        return self.command(actor, "entry:" + ident, key, body, action)
+        return self.command(actor, ("add_team:" if admin else "entry:") + ident, key, body, action)
 
     def lock(self, actor, ident, key):
         def action():
@@ -604,10 +621,11 @@ class Competitions:
                 team["played"] += 1
                 outcome = "wins" if side == winner else "draws" if winner is None and result["reason"] != "double_startup_failure" else "losses"
                 team[outcome] += 1
+        scoring = item['config'].get('scoring', SCORING)
         for team in scores.values():
-            team['point_breakdown'] = {'wins': team['wins'] * SCORING['win'],
-                                       'draws': team['draws'] * SCORING['draw'],
-                                       'losses': team['losses'] * SCORING['loss']}
+            team['point_breakdown'] = {'wins': team['wins'] * scoring['win'],
+                                       'draws': team['draws'] * scoring['draw'],
+                                       'losses': team['losses'] * scoring['loss']}
             team['points'] = sum(team['point_breakdown'].values())
         swiss = item["config"].get("format") == "swiss"
         if swiss:
@@ -616,7 +634,7 @@ class Competitions:
                 # A bye is scored as winning the whole round: two games x 3 points.
                 # It is listed separately and is not counted as played games.
                 team["bye_round"] = bye["round_number"]
-                team["bye_points"] = 2 * SCORING["win"]
+                team["bye_points"] = 2 * scoring["win"]
                 team["points"] += team["bye_points"]
                 team["point_breakdown"]["bye"] = team["bye_points"]
             opponents = {t:set() for t in scores}
@@ -638,7 +656,7 @@ class Competitions:
             if key != previous:
                 rank = index
             row["rank"], previous = rank, key
-        return {"competition_id": ident, "ranking": "points_buchholz" if swiss else "points_shared_rank", "scoring": dict(SCORING),
+        return {"competition_id": ident, "ranking": "points_buchholz" if swiss else "points_shared_rank", "scoring": dict(scoring),
                 "provisional": item["status"] != "completed", "items": rows}
 
     def attempts(self, ident, fixture_id):

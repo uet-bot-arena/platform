@@ -1,5 +1,19 @@
 // English translations of static UI copy. User content is never looked up here.
 export default {
+  "Nạp file ZIP": "Upload ZIP",
+  "Hub chung kết không có GitHub; nén thư mục bot như repo mẫu.": "The finals hub has no GitHub; zip the bot folder like the starter repository.",
+  "Tên phiên bản": "Version name",
+  "File ZIP": "ZIP file",
+  "Mỗi bài tự kiểm 72 mẫu; tối đa 30 bài nguồn mỗi giờ.": "Each upload is checked on 72 samples automatically; up to 30 source uploads per hour.",
+  "Nạp và kiểm tra": "Upload and check",
+  "Đã nạp bot và xếp hàng kiểm 72 mẫu.": "Bot uploaded and queued for the 72-sample check.",
+  "Đã thêm bản Đạt mới nhất của đội.": "The team’s latest compatible Pass version was added.",
+  "Dùng bản Đạt mới nhất hợp với luật và cấu hình máy chấm của giải.": "Use the latest Pass version compatible with the competition rules and grader configuration.",
+  "Thêm đội": "Add team",
+  " · Thắng 1đ · Hòa ½đ · Thua 0đ": " · Win 1 pt · Draw ½ pt · Loss 0 pts",
+  "Vòng tròn LAN: mỗi cặp 2 ván đổi màu; thắng 1, hòa ½, thua 0. Bằng điểm thì đồng hạng.": "LAN round robin: two games per pair, swapping colors; win 1, draw ½, loss 0. Equal points share a rank.",
+  "Xếp theo tổng điểm · Thắng 1đ, hòa ½đ, thua 0đ; bằng điểm thì đồng hạng.": "Ranked by points · Win 1 pt, draw ½ pt, loss 0 pts; equal points share a rank.",
+
   "Hạn nộp GitHub (giờ trên máy BTC)": "GitHub submission deadline (organizer local time)",
   "Đợt mở lúc ": "Rounds start at ",
   " mỗi ngày (giờ Việt Nam)": " every day (Vietnam time)",
