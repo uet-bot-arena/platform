@@ -4,6 +4,16 @@ import {snapshotPath,publicRequest,PublicFeed} from './public-client.js';
 import {VisibleSource} from './polling.js';
 // getRandomValues also works on the isolated HTTP LAN, unlike randomUUID.
 export const uuid=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
+export async function copyText(text){
+  try{if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(text);return true;}}catch{}
+  // HTTP LAN has no Clipboard API; selection must stay focusable for execCommand.
+  const field=document.createElement('textarea'),previous=document.activeElement;
+  field.value=text;field.readOnly=true;field.tabIndex=-1;field.setAttribute('aria-hidden','true');
+  field.style.cssText='position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+  try{document.body.append(field);field.focus({preventScroll:true});field.select();return document.execCommand('copy');}
+  catch{return false;}
+  finally{field.remove();previous?.focus({preventScroll:true});}
+}
 const responseBody=response=>(response.headers.get('Content-Type')||'').includes('json')?response.json():response.text();
 export class APIError extends Error {
   constructor(response, result) {

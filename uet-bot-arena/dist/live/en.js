@@ -1,5 +1,6 @@
 // English translations of static UI copy. User content is never looked up here.
 export default {
+  "Hãy bôi đen rồi nhấn Ctrl+C": "Select the text, then press Ctrl+C",
   "Nạp file ZIP": "Upload ZIP",
   "Hub chung kết không có GitHub; nén thư mục bot như repo mẫu.": "The finals hub has no GitHub; zip the bot folder like the starter repository.",
   "Tên phiên bản": "Version name",
