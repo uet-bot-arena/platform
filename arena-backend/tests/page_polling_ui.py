@@ -90,14 +90,23 @@ def main():
                         with page.expect_response(lambda r:r.url==origin+'/api/v1/ui/personal?view=team&poll=1') as poll:
                             page.evaluate("window.testHidden=false;document.dispatchEvent(new Event('visibilitychange'))")
                         assert 'teamCompetitions' not in poll.value.json()
+                        assert poll.value.request.headers.get('x-arena-poll')=='1'
                         expect(page.locator('#github-page')).to_contain_text('47/72',timeout=5000)
                         expect(panel).to_have_text(competitions_before,use_inner_text=True)
                         page.screenshot(path=str(output/f'{lang}-{theme}.png'),full_page=True)
+                        second=context.new_page();second.goto(origin+'/#/team');expect(second.locator('#github-page')).to_be_visible()
+                        with app.state.store.transaction():app.state.store.db.execute('UPDATE sessions SET last_seen_ms=last_seen_ms-3600000')
+                        page.evaluate("window.testHidden=true;document.dispatchEvent(new Event('visibilitychange'))")
+                        page.evaluate("window.testHidden=false;document.dispatchEvent(new Event('visibilitychange'))")
+                        for tab in (page,second):
+                            expect(tab.locator('#login-form')).to_be_visible()
+                            expect(tab.locator('#toast')).to_have_text('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.' if lang=='vi' else 'Your session has expired. Please sign in again.')
+                        report.setdefault('expiry_checks',[]).append(dict(language=lang,theme=theme,tabs=2))
                         context.close()
                 browser.close()
             assert not report['errors'],report['errors']
             (output/'result.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
-            print(json.dumps(dict(navigation_checks=len(report['pages']),hidden_resume_progress_checks=4,errors=report['errors'])))
+            print(json.dumps(dict(navigation_checks=len(report['pages']),hidden_resume_progress_checks=4,expiry_checks=len(report['expiry_checks']),errors=report['errors'])))
         finally:
             server.should_exit=True;thread.join(10);sock.close()
 

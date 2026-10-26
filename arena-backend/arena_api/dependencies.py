@@ -29,7 +29,8 @@ def spectator_admin(request: Request):
 
 
 def principal(request: Request):
-    auth = request.app.state.accounts.principal(request.cookies.get(COOKIE, ""), allow_blocked=request.url.path == "/api/v1/auth/logout")
+    automatic = request.headers.get('X-Arena-Poll') == '1' or 'text/event-stream' in request.headers.get('accept','') or request.url.path.endswith('/watch')
+    auth = request.app.state.accounts.principal(request.cookies.get(COOKIE, ""), allow_blocked=request.url.path == "/api/v1/auth/logout", refresh=not automatic)
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         csrf = request.headers.get("X-CSRF-Token", "")
         if not secrets.compare_digest(csrf.encode(), auth["csrf_token"].encode()):
@@ -90,5 +91,5 @@ def peer(request):
 def set_session(request, response, result):
     settings = request.app.state.settings
     response.set_cookie(COOKIE, result["token"], httponly=True, secure=settings.cookie_secure,
-                        samesite="strict", path="/api", max_age=settings.session_seconds)
+                        samesite="strict", path="/api", max_age=settings.admin_session_seconds if result['user']['role']=='admin' else settings.session_seconds)
     return {key: value for key, value in result.items() if key != "token"}

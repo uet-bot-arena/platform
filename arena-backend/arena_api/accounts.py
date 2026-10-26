@@ -27,8 +27,11 @@ def name_key(name):
 
 
 class Accounts:
-    def __init__(self, store, session_seconds=3600, hash_workers=2):
+    def __init__(self, store, session_seconds=86400, hash_workers=2, session_idle_seconds=3600,
+                 admin_session_seconds=43200, admin_session_idle_seconds=1800):
         self.store, self.db, self.ttl = store, store.db, session_seconds
+        self.idle, self.admin_ttl, self.admin_idle = session_idle_seconds, admin_session_seconds, admin_session_idle_seconds
+        self.read_only = False
         migrate(store)
         self.hasher = PasswordHasher(time_cost=2, memory_cost=65536, parallelism=1)
         self.hash_slots = threading.BoundedSemaphore(hash_workers)
@@ -107,9 +110,12 @@ class Accounts:
             raise Fault("account_conflict", "Username already exists") from None
 
     def new_session(self, account):
-        token, csrf, expires = secrets.token_urlsafe(32), secrets.token_urlsafe(32), now_ms() + self.ttl * 1000
-        self.db.execute("DELETE FROM sessions WHERE expires_ms<=?", (now_ms(),))
-        self.db.execute("INSERT INTO sessions VALUES(?,?,?,?)", (token_hash(token), account["id"], csrf, expires))
+        current = now_ms()
+        ttl = self.admin_ttl if account['role'] == 'admin' else self.ttl
+        token, csrf, expires = secrets.token_urlsafe(32), secrets.token_urlsafe(32), current + ttl * 1000
+        self.db.execute("DELETE FROM sessions WHERE expires_ms<=?", (current,))
+        self.db.execute("INSERT INTO sessions(token_hash,account_id,csrf,expires_ms,last_seen_ms) VALUES(?,?,?,?,?)",
+                        (token_hash(token), account["id"], csrf, expires, current))
         return {"token": token, "csrf_token": csrf, "expires_ms": expires, "user": self.public(account)}
 
     @staticmethod
@@ -142,17 +148,25 @@ class Accounts:
             self.audit(account["id"], "auth.login", account["id"])
             return self.new_session(latest)
 
-    def principal(self, token, allow_blocked=False):
+    def principal(self, token, allow_blocked=False, refresh=True):
         if not token or len(token) > 128:
             raise Fault("unauthorized", "Login required")
+        current, digest = now_ms(), token_hash(token)
         with self.store.lock:
-            row = self.one("SELECT a.*,s.csrf,s.expires_ms FROM sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.expires_ms>? AND a.locked=0",
-                           (token_hash(token), now_ms()))
-        if not row:
-            raise Fault("unauthorized", "Session expired or revoked")
-        if not allow_blocked:
-            self.temporary_lock(row)
-        return {"user": self.public(row), "csrf_token": row["csrf"], "expires_ms": row["expires_ms"], "token_hash": token_hash(token)}
+            row = self.one("SELECT a.*,s.csrf,s.expires_ms,s.last_seen_ms FROM sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.expires_ms>? AND a.locked=0",
+                           (digest, current))
+            if not row:
+                raise Fault("unauthorized", "Session expired or revoked")
+            idle = self.admin_idle if row['role'] == 'admin' else self.idle
+            if current - row['last_seen_ms'] >= idle * 1000:
+                if not self.read_only:
+                    with self.db:self.db.execute('DELETE FROM sessions WHERE token_hash=?', (digest,))
+                raise Fault("unauthorized", "Session expired or revoked")
+            if not allow_blocked:
+                self.temporary_lock(row)
+            if refresh and not self.read_only and current - row['last_seen_ms'] >= 300_000:
+                with self.db:self.db.execute('UPDATE sessions SET last_seen_ms=? WHERE token_hash=?', (current, digest))
+        return {"user": self.public(row), "csrf_token": row["csrf"], "expires_ms": row["expires_ms"], "token_hash": digest}
 
     def logout(self, principal):
         with self.store.lock, self.db:

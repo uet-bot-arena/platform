@@ -14,7 +14,8 @@ def main():
     db=sqlite3.connect('/var/lib/uet-arena/data/arena.sqlite')
     account=db.execute("SELECT id FROM accounts WHERE role='admin' AND locked=0 LIMIT 1").fetchone()[0]
     token=secrets.token_urlsafe(32);digest=hashlib.sha256(token.encode()).hexdigest()
-    db.execute('INSERT INTO sessions VALUES(?,?,?,?)',(digest,account,secrets.token_urlsafe(32),time.time_ns()//1_000_000+300000));db.commit()
+    current=time.time_ns()//1_000_000
+    db.execute('INSERT INTO sessions(token_hash,account_id,csrf,expires_ms,last_seen_ms) VALUES(?,?,?,?,?)',(digest,account,secrets.token_urlsafe(32),current+300000,current));db.commit()
     unit='uet-arena-read@4183'
     def pid():return subprocess.check_output(['systemctl','show',unit,'-p','MainPID','--value'],text=True).strip()
     before=pid();assert before!='0'

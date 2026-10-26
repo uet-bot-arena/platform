@@ -76,11 +76,11 @@ export class MatchBoard {
     if(initialClock)this.clockMap=initialClock;else if(!terminal)this.syncClock();
     this.resync=visiblePoll(()=>this.terminal?Promise.resolve():this.syncClock(),30000);
   }
-  async start(){try{await this.history();if(!this.disposed&&!this.terminal)this.connect();}catch(e){if(!this.disposed){this.message(e.message);this.onError?.(e);}}}
+  async start(poll=false){try{await this.history(poll);if(!this.disposed&&!this.terminal)this.connect();}catch(e){if(!this.disposed){this.message(e.message);this.onError?.(e);}}}
   message(text){if(!this.disposed)this.$('stream-message').textContent=text;}
   async syncClock(){
     let best;
-    try{for(let i=0;i<1;i++){const a=performance.now(),t=await this.api.request('/time'),b=performance.now(),rtt=b-a;if(!best||rtt<best.rtt)best={rtt,anchor:(a+b)/2,unix:(t.server_received_unix_ms+t.server_sent_unix_ms)/2,clockId:t.clock_id};}
+    try{for(let i=0;i<1;i++){const a=performance.now(),t=await this.api.request('/time',{poll:true}),b=performance.now(),rtt=b-a;if(!best||rtt<best.rtt)best={rtt,anchor:(a+b)/2,unix:(t.server_received_unix_ms+t.server_sent_unix_ms)/2,clockId:t.clock_id};}
       if(this.disposed)return;this.clockMap=best;this.clock();
     }catch{if(!this.disposed)this.$('clock-note').textContent=tr('Chưa đồng bộ đồng hồ hiển thị; worker vẫn quyết định thời hạn mỗi lượt.');}
   }
@@ -91,10 +91,10 @@ export class MatchBoard {
     this.$('follow-live').checked=true;this.$('move-caption').textContent=tr('Chưa có nước đi');
     this.$('match-status').innerHTML=badge('queued');this.$('match-result').textContent=tr('Đang chờ máy chạy bot…');
   }
-  async history(){
+  async history(poll=false){
     // The official cursor also advances over private events filtered by API.
     for(let pages=0;pages<20;pages++){
-      const requested=this.seq,preloaded=this.initialHistory,h=preloaded||await this.api.request(this.path+'?after='+requested);this.initialHistory=null;if(this.disposed)return;
+      const requested=this.seq,preloaded=this.initialHistory,h=preloaded||await this.api.request(this.path+'?after='+requested,{poll});this.initialHistory=null;if(this.disposed)return;
       if(this.official&&h.attempt_id!==this.attempt){this.reset(h.attempt_id);if(requested>0)continue;}
       if(h.replay_pruned){this.terminal=true;this.$('match-status').innerHTML=badge('completed');this.$('match-result').textContent=tr('Kết quả vẫn được giữ trong lịch đấu.');this.message(tr('Replay đã quá hạn lưu; hub giữ các ván ladder và luyện tập gần nhất của mỗi đội.'));return;}
       const before=this.seq;
@@ -109,7 +109,7 @@ export class MatchBoard {
     if(this.disposed||this.terminal)return;
     this.feed?.close();this.feed=this.api.stream(this.path+'?after='+this.seq);
     this.feed.addEventListener('attempt',e=>{if(this.disposed)return;const {attempt_id}=JSON.parse(e.data);if(attempt_id!==this.attempt)this.reset(attempt_id);});
-    this.feed.addEventListener('attempt_changed',()=>{if(this.disposed)return;this.feed.close();this.reset(undefined);this.history().then(()=>this.connect()).catch(e=>{if(!this.disposed)this.onError?.(e);});});
+    this.feed.addEventListener('attempt_changed',()=>{if(this.disposed)return;this.feed.close();this.reset(undefined);this.history(true).then(()=>this.connect()).catch(e=>{if(!this.disposed)this.onError?.(e);});});
     this.feed.addEventListener('arena',e=>{if(!this.disposed)this.consume(JSON.parse(e.data));});
     this.feed.addEventListener('auth_expired',()=>{this.close();this.onExpired?.();});
     this.feed.addEventListener('unavailable',()=>{this.message(tr('Trận này không còn được công khai.'));this.close();});

@@ -25,8 +25,9 @@ export class APIError extends Error {
 export class ArenaAPI {
   csrf = null;
   admin = false;
-  async request(path, {method='GET', body, headers={}, signal}={}) {
+  async request(path, {method='GET', body, headers={}, signal, poll=false}={}) {
     if(method==='GET'&&!this.admin&&(snapshotPath(path)||path.split('?')[0].endsWith('/watch')))return publicRequest(this,path);
+    if (poll) headers = {...headers, 'X-Arena-Poll':'1'};
     if (method !== 'GET' && this.csrf) headers = {...headers, 'X-CSRF-Token':this.csrf};
     if (body !== undefined && !(body instanceof Blob)) {
       headers = {...headers, 'Content-Type':'application/json'}; body = JSON.stringify(body);
@@ -40,11 +41,11 @@ export class ArenaAPI {
     return result;
   }
   post(path, body={}, key) { return this.request(path, {method:'POST', body, headers:key?{'Idempotency-Key':key}:{}}); }
-  async all(path) {
+  async all(path, options={}) {
     if(!this.admin&&snapshotPath(path))return (await publicRequest(this,path)).items;
     const items=[]; let offset=0;
     while(true) {
-      const result=await this.request(path+(path.includes('?')?'&':'?')+`limit=100&offset=${offset}`);
+      const result=await this.request(path+(path.includes('?')?'&':'?')+`limit=100&offset=${offset}`,options);
       items.push(...result.items); if(result.items.length<100 || (result.total !== undefined && items.length>=result.total)) return items;
       offset+=100;
     }

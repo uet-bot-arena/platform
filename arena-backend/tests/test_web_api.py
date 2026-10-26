@@ -239,7 +239,7 @@ class WebAPI(APIHarness):
 
 
 class MigrationAndPersistence(unittest.TestCase):
-    def test_upgrade_v1_preserves_existing_credentials_and_session(self):
+    def test_upgrade_v1_preserves_credentials_but_revokes_legacy_sessions(self):
         from argon2 import PasswordHasher
         from arena_api.accounts import token_hash
         with tempfile.TemporaryDirectory() as directory:
@@ -251,9 +251,10 @@ class MigrationAndPersistence(unittest.TestCase):
                 store.db.execute("INSERT INTO accounts VALUES('existing-admin','organizer',?,'admin',NULL,0,0,0,?)", (encoded, now_ms()))
                 store.db.execute("INSERT INTO sessions VALUES(?,'existing-admin','existing-csrf',?)", (token_hash("migration-only-existing-token"), now_ms() + 60000))
             accounts = Accounts(store)
-            self.assertEqual(accounts.principal("migration-only-existing-token")["user"]["id"], "existing-admin")
+            with self.assertRaises(Fault):accounts.principal("migration-only-existing-token")
+            self.assertEqual(store.db.execute('SELECT COUNT(*) FROM sessions').fetchone()[0],0)
             self.assertTrue(accounts.verify(accounts.one("SELECT password_hash FROM accounts")["password_hash"], "migration-only-existing-password"))
-            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], list(range(1, 15)))
+            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], list(range(1, 16)))
             self.assertEqual(store.db.execute("SELECT COUNT(*) FROM competitions").fetchone()[0], 0)
             store.db.close()
 
@@ -303,7 +304,7 @@ class MigrationAndPersistence(unittest.TestCase):
             store = Store(directory, recover_jobs=False)
             accounts = Accounts(store)
             self.assertEqual(accounts.principal(token)["user"]["role"], "admin")
-            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], list(range(1, 15)))
+            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], list(range(1, 16)))
             store.db.close()
 
     def test_single_controller_lease_and_public_secure_cookie_config(self):

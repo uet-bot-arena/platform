@@ -101,7 +101,9 @@ class RetentionSettings:
 HUB_ENV = {"data_dir": "ARENA_API_DATA", "origin": "ARENA_API_ORIGIN", "cookie_secure": "ARENA_API_COOKIE_SECURE",
            "trusted_proxies": "ARENA_TRUSTED_PROXIES", "connection_limit": "ARENA_CONNECTION_LIMIT",
            "thread_limit": "ARENA_THREAD_LIMIT", "hash_workers": "ARENA_HASH_WORKERS", "read_workers": "ARENA_READ_WORKERS", "ui_root": "ARENA_UI_ROOT",
-           "port": "ARENA_PORT", "bind": "ARENA_BIND", "session_seconds": "ARENA_SESSION_SECONDS"}
+           "port": "ARENA_PORT", "bind": "ARENA_BIND", "session_seconds": "ARENA_SESSION_SECONDS",
+           "session_idle_seconds": "ARENA_SESSION_IDLE_SECONDS", "admin_session_seconds": "ARENA_ADMIN_SESSION_SECONDS",
+           "admin_session_idle_seconds": "ARENA_ADMIN_SESSION_IDLE_SECONDS"}
 
 
 @dataclass(frozen=True)
@@ -112,6 +114,9 @@ class Settings:
     bind: str = UNSET
     cookie_secure: bool = UNSET
     session_seconds: int = UNSET
+    session_idle_seconds: int = UNSET
+    admin_session_seconds: int = UNSET
+    admin_session_idle_seconds: int = UNSET
     trusted_proxies: tuple = UNSET
     # Sync endpoints and Argon2 waits run in this pool; the AnyIO default of 40 threads makes a
     # login burst block uploads and public reads.
@@ -158,7 +163,10 @@ def load(names, path=None, env=None):
     values["data"] = hub.path("data_dir", ".platform-state")
     values["origin"] = hub.string("origin", f"http://127.0.0.1:{port}")
     values["cookie_secure"] = hub.boolean("cookie_secure", False)
-    values["session_seconds"] = hub.integer("session_seconds", 14 * DAY, 300, 30 * DAY)
+    values["session_seconds"] = hub.integer("session_seconds", DAY, 300, 30 * DAY)
+    values["session_idle_seconds"] = hub.integer("session_idle_seconds", 3600, 300, DAY)
+    values["admin_session_seconds"] = hub.integer("admin_session_seconds", 43200, 300, 30 * DAY)
+    values["admin_session_idle_seconds"] = hub.integer("admin_session_idle_seconds", 1800, 300, DAY)
     values["trusted_proxies"] = hub.strings("trusted_proxies", [])
     values["connection_limit"] = hub.integer("connection_limit", 1024, 256, 16384)
     values["thread_limit"] = hub.integer("thread_limit", 256, 40, 4096)
@@ -307,6 +315,11 @@ def validate(settings):
         raise ConfigError("Cấu hình sai: hub.origin công khai phải dùng https và hub.cookie_secure = true")
     if not 300 <= settings.session_seconds <= 30 * DAY:
         raise ConfigError("Cấu hình sai: hub.session_seconds phải 300..2592000 (5 phút..30 ngày)")
+    if not 300 <= settings.admin_session_seconds <= 30 * DAY:
+        raise ConfigError("Cấu hình sai: hub.admin_session_seconds phải 300..2592000 (5 phút..30 ngày)")
+    for name, maximum in [('session_idle_seconds',settings.session_seconds),('admin_session_idle_seconds',settings.admin_session_seconds)]:
+        if not 300 <= getattr(settings,name) <= min(DAY,maximum):
+            raise ConfigError(f"Cấu hình sai: hub.{name} phải 300..86400 và không quá thời hạn tối đa của vai trò")
     if not isinstance(settings.secrets, Secrets):
         raise ConfigError("Cấu hình sai: secrets phải là đối tượng Secrets")
     _set(settings, "data", Path(settings.data).resolve())

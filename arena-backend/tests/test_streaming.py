@@ -15,6 +15,7 @@ class Streaming(unittest.IsolatedAsyncioTestCase):
             values=await asyncio.gather(*(cache.principal(accounts,'cookie') for _ in range(100)))
             self.assertTrue(all(v==values[0] for v in values))
             self.assertEqual(accounts.principal.call_count,1)
+            accounts.principal.assert_called_with('cookie',refresh=False)
         accounts.principal.side_effect=Fault('unauthorized','revoked')
         with patch('arena_api.broadcast.monotonic',return_value=113.9):
             await cache.principal(accounts,'cookie')

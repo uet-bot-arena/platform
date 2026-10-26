@@ -69,7 +69,7 @@ class Snapshots:
 
     async def principal(self, accounts, cookie):
         key = ('session', hashlib.sha256(cookie.encode()).hexdigest())
-        return await self.get_async(key, lambda: accounts.principal(cookie), ttl=14)  # plus the one-second heartbeat: revocation within 15 seconds
+        return await self.get_async(key, lambda: accounts.principal(cookie, refresh=False), ttl=14)  # plus the one-second heartbeat: revocation within 15 seconds
 
     def interest(self, job):
         with self.stream_lock:

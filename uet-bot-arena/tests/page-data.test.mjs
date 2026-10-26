@@ -4,11 +4,12 @@ import {readFileSync} from 'node:fs';
 import {participantData,privatePage} from '../dist/live/page-data.js';
 
 test('only automatic private reads request the poll bundle without competition data',async()=>{
- const calls=[],api={request:async path=>{calls.push(path);return path.includes('/ui/personal')&&!path.includes('poll=1')?{teamCompetitions:{items:[{id:'cup'}]}}:{};}};
+ const calls=[],options=[],api={request:async (path,option)=>{calls.push(path);options.push(option);return path.includes('/ui/personal')&&!path.includes('poll=1')?{teamCompetitions:{items:[{id:'cup'}]}}:{};}};
  assert.equal((await privatePage(api,'team')).teamCompetitions.items[0].id,'cup');
  assert.deepEqual(calls.splice(0),['/ui/personal?view=team','/ui/read?view=team']);
  assert.equal(Object.hasOwn(await privatePage(api,'team',true),'teamCompetitions'),false);
  assert.deepEqual(calls,['/ui/personal?view=team&poll=1','/ui/read?view=team']);
+ assert.deepEqual(options,[{poll:false},{poll:false},{poll:true},{poll:true}]);
 });
 
 test('navigation follows arena-backend/tests/fixtures/ui-routes.md request table, with at most two private API reads',async()=>{

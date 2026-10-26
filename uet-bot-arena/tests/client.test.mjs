@@ -2,6 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {APIError,ArenaAPI} from '../dist/live/client.js';
 
+test('automatic API reads carry poll header through pagination, manual reads do not',async()=>{
+  const original=globalThis.fetch,calls=[];
+  globalThis.fetch=async(url,options)=>{calls.push({url,...options});return Response.json({items:[],total:0});};
+  try{
+    const api=new ArenaAPI();api.admin=true;
+    await api.request('/auth/me');await api.request('/ui/personal?view=team&poll=1',{poll:true});
+    await api.all('/competitions',{poll:true});
+    assert.equal(calls[0].headers['X-Arena-Poll'],undefined);
+    assert.deepEqual(calls.slice(1).map(c=>c.headers['X-Arena-Poll']),['1','1']);
+  }finally{globalThis.fetch=original;}
+});
+
 test('plain-text admission 503 explains overload and retains retry metadata',()=>{
   const response=new Response('Service Unavailable',{status:503,headers:{'Retry-After':'2','X-Request-ID':'test-request'}});
   const error=new APIError(response,'Service Unavailable');

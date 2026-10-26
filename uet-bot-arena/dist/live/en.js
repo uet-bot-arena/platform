@@ -1,5 +1,6 @@
 // English translations of static UI copy. User content is never looked up here.
 export default {
+  "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.": "Your session has expired. Please sign in again.",
   "\nMật khẩu tạm: ": "\nTemporary password: ",
   " (giờ GitHub)": " (GitHub time)",
   " (Đạt) · hạn ": " (Pass) · deadline ",

@@ -135,7 +135,8 @@ def create_app(settings=None, start_worker=True):
             app.state.store = store
             import anyio.to_thread
             anyio.to_thread.current_default_thread_limiter().total_tokens = settings.thread_limit
-            app.state.accounts = Accounts(store, settings.session_seconds, settings.hash_workers)
+            app.state.accounts = Accounts(store, settings.session_seconds, settings.hash_workers, settings.session_idle_seconds,
+                                          settings.admin_session_seconds, settings.admin_session_idle_seconds)
             from arena_api.outbox import MailQueue
             app.state.mail = MailQueue(store, settings)
             from arena_api.people import People

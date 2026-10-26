@@ -36,6 +36,9 @@ def create_app(settings=None):
         store.db=sqlite3.connect((store.root/'arena.sqlite').as_uri()+'?mode=ro',uri=True,check_same_thread=False,isolation_level=None)
         store.db.execute('PRAGMA query_only=ON');store.db.execute('PRAGMA busy_timeout=5000')
         accounts=Accounts.__new__(Accounts);accounts.store,accounts.db=store,store.db
+        accounts.ttl,accounts.idle=settings.session_seconds,settings.session_idle_seconds
+        accounts.admin_ttl,accounts.admin_idle=settings.admin_session_seconds,settings.admin_session_idle_seconds
+        accounts.read_only=True
         service=Service.__new__(Service);service.store=store
         service.pending=DurableJobQueue.__new__(DurableJobQueue);service.pending.store=store
         service.timing=Timing.__new__(Timing);service.timing.store=store

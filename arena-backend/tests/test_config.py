@@ -43,7 +43,8 @@ class ConfigFile(unittest.TestCase):
         settings = Settings()
         self.assertEqual(settings.origin, "http://127.0.0.1:4181")
         self.assertEqual(settings.port, 4181)
-        self.assertEqual(settings.session_seconds, 14 * 86400)
+        self.assertEqual((settings.session_seconds,settings.session_idle_seconds), (86400,3600))
+        self.assertEqual((settings.admin_session_seconds,settings.admin_session_idle_seconds), (43200,1800))
         self.assertEqual(settings.verification.code_ttl_seconds, 600)
         self.assertEqual(settings.verification.resend_seconds, 60)
         self.assertEqual(settings.verification.drop_after_seconds, 1800)
@@ -211,7 +212,7 @@ class SecretsNeverLeak(unittest.TestCase):
         self.assertNotIn(SENTINEL, stream.getvalue())
 
     def test_session_lifetime_comes_from_settings(self):
-        settings = Settings(data=self.dir / "db", origin="http://127.0.0.1:4181", session_seconds=7 * 86400,
+        settings = Settings(data=self.dir / "db", origin="http://127.0.0.1:4181", admin_session_seconds=7 * 86400,
                             secrets=Secrets({}))
         app = create_app(settings, start_worker=False)
         with TestClient(app, base_url=settings.origin) as client:

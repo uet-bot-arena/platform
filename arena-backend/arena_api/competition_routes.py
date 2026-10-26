@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/v1", tags=["competitions"])
 def stream_identity(request):
     cookie=request.cookies.get(COOKIE,'')
     try:
-        value=request.app.state.accounts.principal(cookie) if cookie else None
+        value=request.app.state.accounts.principal(cookie, refresh=False) if cookie else None
     except Fault:
         value=None
     return (value['user']['id'],True) if value else ('guest:'+peer(request),False)

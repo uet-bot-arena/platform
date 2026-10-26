@@ -24,7 +24,7 @@ let emailPoll,githubPoll;
 let generation=0,board,competitionFeed,jobFeed,toastTimer,modalFocus,returnTo='home',issued=null,issuedGrader=null,refreshingGeneration=null;
 const refreshNotices=startAnnouncements(api);
 const authChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('uet-arena-session'):null;
-authChannel?.addEventListener('message',async()=>{try{const session=await api.request('/auth/me');Object.assign(s,defaults(),{user:session.user});openRoute();}catch(e){if(e.status===401){clearAccount();go('login');}else handleError(e);}});
+authChannel?.addEventListener('message',async()=>{try{const session=await api.request('/auth/me',{poll:true});Object.assign(s,defaults(),{user:session.user});openRoute();}catch(e){if(e.status===401)expired(false);else handleError(e);}});
 const authChanged=()=>authChannel?.postMessage({type:'changed'});
 const terminal=status=>['completed','failed','aborted'].includes(status);
 const uuid=()=>crypto.randomUUID();
@@ -36,7 +36,7 @@ function mobileSidebar(){const sidebar=document.querySelector('.sidebar');if(sid
 matchMedia('(max-width:760px)').addEventListener('change',mobileSidebar);
 function go(route){if(location.hash==='#/'+route)openRoute();else location.hash='/'+route;}
 function clearAccount(){Object.assign(s,defaults(),{user:null,emailRequest:null,emailAddress:'',emailPurpose:'verify',passwordFinished:false,inviteCode:''});api.csrf=null;api.admin=false;issued=null;}
-function expired(){clearAccount();toast(tr('Phiên đã hết hạn. Hãy đăng nhập lại.'));go('login');}
+function expired(notify=true){clearAccount();if(notify)authChanged();toast(tr('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.'));go('login');}
 async function refreshPerson(){
   const session=await api.request('/auth/me');s.user=session.user;authChanged();go('team');
 }
@@ -139,7 +139,7 @@ async function openRoute(){
         board?.close();
         board=new MatchBoard(api,{path:practice?'/jobs/'+s.job.id+'/events':'/competitions/'+s.competition.id+'/fixtures/'+current.id+'/events',official:!practice,initialHistory:practice?s.initialHistory:null,initialClock:practice?s.initialClock:null,terminal:practice?terminal(s.job.status):['completed','attention'].includes(current.status),onExpired:expired,onError:handleError,onReview:()=>competitionFeed?.pause()});
         if(reset)board.reset(undefined);
-        board.start();
+        board.start(reset);
       };
       if(options.officialLive){
         competitionFeed=new CompetitionFollow(api,{competitionId:s.competition.id,fixtureId:fixture.id,currentFixture:fixture,onExpired:expired,onError:handleError,
@@ -171,9 +171,9 @@ function watchElo(id){
     if(s.route==='queue')data.queue=await api.snapshot('queue.json');
     else if(s.route==='announcements')data.announcements=(await api.snapshot('announcements.json')).items;
     else{
-      data.competitions=await api.all('/competitions');
+      data.competitions=await api.all('/competitions',{poll:true});
       if(cid){
-        const [competition,standings,fixtures]=await Promise.all([api.request('/competitions/'+cid),api.request('/competitions/'+cid+'/standings'),api.request('/competitions/'+cid+'/fixtures')]);
+        const [competition,standings,fixtures]=await Promise.all([api.request('/competitions/'+cid,{poll:true}),api.request('/competitions/'+cid+'/standings',{poll:true}),api.request('/competitions/'+cid+'/fixtures',{poll:true})]);
         Object.assign(data,{competition,standings,fixtures:fixtures.items,historyTotal:fixtures.history_total});
       }
     }
@@ -193,7 +193,7 @@ function watchEmail(id){
   const r=s.emailRequest;
   if(id!==generation||!['register','recover','verify-email'].includes(s.route)||!r||r.verified_ms||r.status==='dropped'||r.status==='sent'&&!r.resend_after_seconds)return;
   emailPoll=visiblePoll(async()=>{
-    const next=await api.request('/auth/email/requests/'+r.id);
+    const next=await api.request('/auth/email/requests/'+r.id,{poll:true});
     if(id===generation&&s.emailRequest?.id===r.id&&!s.emailRequest.verified_ms){s.emailRequest=next;patchPage();if(next.verified_ms)emailPoll.close();}
   },3000,{onError:handleError});
 }
@@ -222,7 +222,7 @@ function watchJob(id){
     if(id!==generation)return;const event=JSON.parse(e.data);if(event.seq<=seq)return;seq=event.seq;
     if(event.type==='phase')s.job.status=event.data.phase;
     if(event.type==='progress')s.jobProgress=event.data;
-    if(terminal(event.type)&&!finishing){finishing=true;jobFeed.close();try{const job=await api.request('/jobs/'+s.job.id);if(id===generation){s.job=job;patchPage();}}catch(error){handleError(error);}return;}
+    if(terminal(event.type)&&!finishing){finishing=true;jobFeed.close();try{const job=await api.request('/jobs/'+s.job.id,{poll:true});if(id===generation){s.job=job;patchPage();}}catch(error){handleError(error);}return;}
     const node=document.getElementById('job-status');if(node)node.innerHTML=jobDetail(s);
   });
 }

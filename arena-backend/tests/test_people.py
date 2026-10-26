@@ -206,6 +206,8 @@ class PeopleAPI(APIHarness):
         self.assertEqual(b.get("/api/v1/competitions").status_code, 200)
         self.assertEqual(extra.post("/api/v1/auth/logout").status_code, 200)
         self.current += HOUR + 1
+        self.assertEqual(b.post("/api/v1/teams/join", json={"code": team["invite_code"]}).status_code, 401)
+        b, _ = self.login_person("26000002@vnu.test")
         self.assertEqual(b.post("/api/v1/teams/join", json={"code": team["invite_code"]}).status_code, 200)
 
     def test_two_joiners_cannot_both_take_the_fourth_seat(self):
@@ -356,7 +358,7 @@ class PeopleAPI(APIHarness):
 
 
 class PeopleMigration(unittest.TestCase):
-    def test_v6_upgrade_preserves_password_session_team_sources_and_results(self):
+    def test_v6_upgrade_preserves_password_team_sources_results_but_revokes_sessions(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = Store(tmp, recover_jobs=False)
             try:
@@ -376,7 +378,8 @@ class PeopleMigration(unittest.TestCase):
                 source = store.create("submission", "old-team", {"source": "sha256:" + "a" * 64})
                 result = store.create("job", "old-team", {"status": "completed", "kind": "match", "report": {"result": {"winner": "red"}}})
                 accounts = Accounts(store)
-                user = accounts.principal("legacy-session")["user"]
+                with self.assertRaises(Fault):accounts.principal("legacy-session")
+                user = accounts.public(accounts.one("SELECT * FROM accounts WHERE id='old-user'"))
                 self.assertEqual((user["id"], user["team_id"], user["username"], user["role"]), ("old-user", "old-team", "old-name", "guest"))
                 self.assertTrue(accounts.verify(accounts.one("SELECT password_hash FROM accounts WHERE id='old-user'")["password_hash"], PASSWORD))
                 self.assertEqual(store.get(source["id"], "old-team", "submission"), source)
