@@ -14,23 +14,26 @@ def competition_teams(comp, ident, team_id=None):
     item = comp.get(ident)
     elo = item['config']['format'] == 'elo'
     now = time.time_ns()//1_000_000
+    team_filter = ' AND team_id=?' if team_id else ''
+    team_args = (team_id,) if team_id else ()
     active = {r['team_id'] for r in comp.rows(
-        'SELECT DISTINCT team_id FROM elo_ratings WHERE competition_id=?' if elo else
-        'SELECT team_id FROM competition_entries WHERE competition_id=?', (ident,))}
+        ('SELECT DISTINCT team_id FROM elo_ratings WHERE competition_id=?' if elo else
+         'SELECT team_id FROM competition_entries WHERE competition_id=?')+team_filter, (ident,)+team_args)}
     passes = comp.elo.book.latest_passes(ident, now, team_id) if elo else {}
     excluded = comp.elo.exclusions(ident) if elo else set()
     scores = {r['team_id']: r for r in comp.standings(ident, True)['items']}
     if elo:
         stage = 'ladder' if item['status']=='open' else 'official'
-        for row in comp.rows('SELECT team_id,rating,games FROM elo_ratings WHERE competition_id=? AND stage=?', (ident,stage)):
+        for row in comp.rows('SELECT team_id,rating,games FROM elo_ratings WHERE competition_id=? AND stage=?'+team_filter, (ident,stage)+team_args):
             scores.setdefault(row['team_id'], dict(rating=row['rating'],played=row['games']))
-    repos = {r['team_id'] for r in comp.rows('SELECT team_id FROM github_repositories')}
+    repos = {r['team_id'] for r in comp.rows('SELECT team_id FROM github_repositories'+(' WHERE team_id=?' if team_id else ''),team_args)}
     teams = comp.rows('SELECT id,name FROM teams WHERE archived_ms IS NULL AND season_id=?'+
                       (' AND id=?' if team_id else '')+' ORDER BY name,id',
                       (comp.teams.season,)+((team_id,) if team_id else ()))
     result = []
     for team in teams:
         tid = team['id'];reasons = []
+        if item['status'] != 'open' and tid not in active and tid not in excluded:continue
         try:
             comp.teams.eligible(tid)
         except Fault:

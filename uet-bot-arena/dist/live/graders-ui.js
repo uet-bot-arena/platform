@@ -37,12 +37,12 @@ export const linuxRootfs=pkg=>{
 // One PowerShell block: download, verify SHA-256, unpack, install. Plain text for chat apps.
 export function installCommand(pkg,origin){
   const url=`${origin}${pkg.url}`,zip='$env:TEMP\\'+pkg.file;
-  return ['$ErrorActionPreference = "Stop"',`[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12`,
+  return ['& {','$ErrorActionPreference = "Stop"',`[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12`,
     `Invoke-WebRequest -UseBasicParsing "${url}" -OutFile "${zip}"`,
     `if ((Get-FileHash "${zip}" -Algorithm SHA256).Hash -ne "${pkg.sha256.toUpperCase()}") { throw "SHA-256 sai, dung lai" }`,
     `Expand-Archive "${zip}" -DestinationPath C:\\uet-grader -Force`,
     `cd C:\\uet-grader`,
-    `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\install-grader.ps1 -HubUrl ${origin} -Slots 2`].join('\n');
+    `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\install-grader.ps1 -HubUrl ${origin} -Slots 2`,'}'].join('\n');
 }
 
 // Linux/WSL2: one && chain, so a failed download or SHA-256 check stops everything after it.

@@ -80,3 +80,37 @@ class CompetitionViews(EloFixture):
         with self.store.transaction():self.store.db.execute("UPDATE competitions SET status='running' WHERE id=?",(self.ident,))
         own=team.get('/api/v1/team/competitions').json()['items'][0]
         self.assertEqual(own['state'],'active');self.assertEqual(own['rating'],1500);self.assertEqual(own['played'],0);self.assertIsNone(own['rank'])
+
+    def test_completed_round_robin_omits_nonparticipants_from_team_and_admin_views(self):
+        active=list(self.entries)[1:3]
+        with self.store.transaction():
+            self.store.db.execute("UPDATE competitions SET status='completed' WHERE id=?",(self.ident,))
+            for tid in active:
+                entry=self.entries[tid]
+                self.store.db.execute('INSERT INTO competition_entries VALUES(?,?,?,?,?,?)',(self.ident,tid,entry['submission_id'],entry['benchmark_id'],json.dumps(entry),1))
+        team=self.other_client();team.post('/api/v1/auth/login',json={'username':'elo-0','password':'test-only-new-team-password'})
+        self.assertEqual(team.get('/api/v1/team/competitions').json()['items'],[])
+        for path in ['/admin/accounts','/admin/users','/admin/teams']:
+            rows=self.client.get('/api/v1'+path,params={'competition':self.ident}).json()['items']
+            self.assertEqual(len(rows),2,path)
+            self.assertTrue(all(r['participation']['state']=='active' for r in rows))
+        summary=self.client.get(f'/api/v1/admin/competitions/{self.ident}/summary').json()
+        self.assertEqual(summary['counts'],dict(active=2,eligible=0,ineligible=0,excluded=0))
+        self.assertEqual(summary['reasons'],{})
+
+    def test_open_keeps_four_states_but_closed_keeps_only_active_and_excluded(self):
+        self.configure();self.repositories()
+        rid=self.book.start(self.ident,'ladder',1,1000,self.entries);self.complete_games(rid);self.book.finish(rid,2000)
+        self.create_team('Missing Team','missing-team')
+        excluded,eligible=list(self.entries)[:2]
+        with self.store.transaction():
+            self.store.db.execute('DELETE FROM elo_ratings WHERE competition_id=? AND team_id=?',(self.ident,eligible))
+            self.store.db.execute("INSERT INTO elo_exclusions(competition_id,team_id,excluded,reason,actor,created_ms) VALUES(?,?,1,'fixture','fixture',1)",(self.ident,excluded))
+        url=f'/api/v1/admin/competitions/{self.ident}/summary'
+        self.assertEqual(self.client.get(url).json()['counts'],dict(active=2,eligible=1,ineligible=1,excluded=1))
+        for status in ['locked','running','paused','completed']:
+            with self.subTest(status=status):
+                with self.store.transaction():self.store.db.execute('UPDATE competitions SET status=? WHERE id=?',(status,self.ident))
+                result=self.client.get(url).json()
+                self.assertEqual(result['counts'],dict(active=2,eligible=0,ineligible=0,excluded=1))
+                self.assertEqual(result['reasons'],{})
