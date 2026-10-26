@@ -1,7 +1,8 @@
 import {tr} from './i18n.js';
 import {esc,select,panel,table,link,note,date,badge,empty} from './view.js';
 
-const formats={elo:'Ladder Elo',double_round_robin:'Vòng tròn hai lượt',swiss:'Swiss'},phases={ladder:'Ladder',general:'Vòng chung',round_robin:'Vòng tròn'};
+export const formats={elo:'Ladder Elo',double_round_robin:'Vòng tròn hai lượt',swiss:'Swiss'};
+const phases={ladder:'Ladder',general:'Vòng chung',round_robin:'Vòng tròn'};
 const reasons={team_size:'Chưa đủ 4 người',repository:'Chưa gắn repo',passed_bot:'Chưa có bản Đạt'};
 export function participationLabel(item){
   if(!item)return '—';

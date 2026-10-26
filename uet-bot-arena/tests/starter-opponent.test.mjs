@@ -13,7 +13,7 @@ test('one built-in starter has no level or source-upload form and escapes names'
 });
 
 test('10-second ladder bank is selectable, labeled and serialized as ten seconds',()=>{
-  assert.equal(timeLabel({match_ms:10000}),'Ladder · 10 giây / đội');
+  assert.equal(timeLabel({match_ms:10000}),'Mỗi bot 10 giây cho cả ván');
   assert.match(timeField({match_ms:10000}),/value="10000" selected/);
   assert.deepEqual(timeBody(new Map([['match_ms','10000']])),{match_ms:10000});
 });

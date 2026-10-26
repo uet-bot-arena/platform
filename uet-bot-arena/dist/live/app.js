@@ -132,12 +132,13 @@ async function openRoute(){
       const teamName=tid=>s.competition.entries.find(e=>e.team_id===tid)?.name||short(tid);
       const name=sid=>s.submissions.find(x=>x.id===sid)?.version||short(sid);
       const options={title:practice?tr('Phòng luyện tập · ')+short(s.job.id):s.competition.title+tr(' · Trận ')+fixture.ordinal,red:practice?name(s.job.submission_ids[0]):teamName(fixture.red_team_id),blue:practice?name(s.job.submission_ids[1]):teamName(fixture.blue_team_id),back:practice?'practice':'competitions/'+s.competition.id,admin:!practice&&s.user?.role==='admin',officialLive:!practice&&s.route==='arena'};
+      options.format=practice?'practice':s.competition.config.format;
       options.profile=practice?s.job.profile:competitionProfile(s.competition);
       options.basicRules=(practice?s.job.basic_rules:s.competition.config.basic_rules)?.definition;
       app.innerHTML=shell(s,boardPage(options));mobileSidebar();document.title=options.title+' · UET Bot Arena';
       const mountBoard=(current,reset=false)=>{
         board?.close();
-        board=new MatchBoard(api,{path:practice?'/jobs/'+s.job.id+'/events':'/competitions/'+s.competition.id+'/fixtures/'+current.id+'/events',official:!practice,initialHistory:practice?s.initialHistory:null,initialClock:practice?s.initialClock:null,terminal:practice?terminal(s.job.status):['completed','attention'].includes(current.status),onExpired:expired,onError:handleError,onReview:()=>competitionFeed?.pause()});
+        board=new MatchBoard(api,{path:practice?'/jobs/'+s.job.id+'/events':'/competitions/'+s.competition.id+'/fixtures/'+current.id+'/events',official:!practice,review:s.route==='replay',initialHistory:practice?s.initialHistory:null,initialClock:practice?s.initialClock:null,profile:options.profile,terminal:practice?terminal(s.job.status):['completed','attention'].includes(current.status),onExpired:expired,onError:handleError,onReview:()=>competitionFeed?.pause()});
         if(reset)board.reset(undefined);
         board.start(reset);
       };

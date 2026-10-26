@@ -1,5 +1,17 @@
 // English translations of static UI copy. User content is never looked up here.
 export default {
+  "10 giây mỗi bot (mặc định)": "10 seconds per bot (default)",
+  "1 phút mỗi bot": "1 minute per bot",
+  "5 phút mỗi bot": "5 minutes per bot",
+  "Quỹ thời gian mỗi bot cho cả ván": "Time bank per bot for the whole game",
+  "Mỗi bot ": "Each bot gets ",
+  " cho cả ván": " for the whole game",
+  "Thời gian nghĩ: ": "Thinking time: ",
+  " · Thời gian nghĩ: ": " · Thinking time: ",
+  "giây mỗi bot": "seconds per bot",
+  "Thời gian còn lại của mỗi bot sau nước đang xem. Quỹ ": "Each bot’s remaining time after the selected move. A bank of ",
+  " giây cho cả ván, chỉ trừ khi tới lượt, không cộng giây.": " seconds for the whole game, used only on its turn, with no increment.",
+
   "Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.": "Your session has expired. Please sign in again.",
   "\nMật khẩu tạm: ": "\nTemporary password: ",
   " (giờ GitHub)": " (GitHub time)",
