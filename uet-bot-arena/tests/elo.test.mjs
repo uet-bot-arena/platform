@@ -1,9 +1,22 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {eloStandings,eloProgress,eloTeam} from '../dist/live/elo.js';
-import {readTournamentOptions} from '../dist/live/tournament-options.js';
+import {readTournamentOptions,tournamentOptions,ladderHours,ladderCalendar,ladderDuration} from '../dist/live/tournament-options.js';
 import {setLanguage} from '../dist/live/i18n.js';
 import {page} from '../dist/live/pages.js';
+
+test('numeric ladder interval previews daily boundaries including the shorter last interval',()=>{
+ assert.match(tournamentOptions(),/name="ladder-hours" type="number" min="1" max="24" step="1" value="2"/);
+ assert.equal(ladderHours(2).length,12);assert.deepEqual(ladderHours(5),[0,5,10,15,20]);assert.deepEqual(ladderHours(24),[0]);
+ assert.match(ladderCalendar(5),/00:00, 05:00, 10:00, 15:00, 20:00.*20:00 → 0:00 chỉ 4 giờ/);
+ const start=Date.parse('2026-10-27T00:00:00+07:00');
+ assert.deepEqual(ladderDuration(2,start+14*86400000,start),{days:14,rounds:168});
+ assert.deepEqual(ladderDuration(5,start+86400000,start),{days:1,rounds:5});
+ assert.deepEqual(ladderDuration(24,start+86400000,start),{days:1,rounds:1});
+ assert.deepEqual(ladderDuration(5,start+86400000,start+20*3600000),{days:1/6,rounds:1});
+ assert.equal(ladderDuration(0,start+86400000,start),null);
+ setLanguage('en');try{assert.match(ladderCalendar(5),/last interval is shorter.*only 4 hours/);}finally{setLanguage('vi');}
+});
 
 test('round robin names the frozen rating from the stage that actually ran in either language',()=>{
  const standings={ranking:'round_robin_points',items:[],matrix:[],progress:{rounds:[{phase:'ladder'}]}};

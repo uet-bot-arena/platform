@@ -1,5 +1,18 @@
 // English translations of static UI copy. User content is never looked up here.
 export default {
+  "Hạn nộp GitHub (giờ trên máy BTC)": "GitHub submission deadline (organizer local time)",
+  "Đợt mở lúc ": "Rounds start at ",
+  " mỗi ngày (giờ Việt Nam)": " every day (Vietnam time)",
+  "; đợt cuối ngày ngắn hơn (": "; the last interval is shorter (",
+  ":00 → 0:00 chỉ ": ":00 → 0:00 is only ",
+  " giờ)": " hours)",
+  "Chọn khoảng giờ từ 1 đến 24.": "Choose an interval from 1 to 24 hours.",
+  "Chọn hạn nộp để ước tính số ngày và số đợt ladder.": "Choose a submission deadline to estimate ladder days and rounds.",
+  "Hạn nộp sửa được tới trước khi qua hạn.": "The submission deadline can be edited until it has passed.",
+  "Ladder chạy từ lúc Mở giải tới hạn nộp: khoảng ": "Ladder runs from opening the competition until the deadline: about ",
+  " ngày, ": " days, ",
+  " đợt": " rounds",
+
   "10 giây mỗi bot (mặc định)": "10 seconds per bot (default)",
   "1 phút mỗi bot": "1 minute per bot",
   "5 phút mỗi bot": "5 minutes per bot",

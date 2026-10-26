@@ -8,6 +8,22 @@ import test_competitions as competition_helpers
 
 
 class EloScheduling(EloFixture):
+    def test_ladder_accepts_odd_intervals_and_resets_at_vietnam_midnight(self):
+        from datetime import datetime,timedelta
+        from arena.ladder_clock import VN
+        body=dict(title='Three-hour ladder',format='elo',max_teams=1000,match_ms=10000,submission_deadline=9_000_000_000_000,ladder=dict(round_hours=3))
+        item=self.post(self.client,'/admin/competitions',body,expected=201)
+        self.assertEqual(item['config']['ladder'],dict(round_hours=3))
+        five=self.post(self.client,'/admin/competitions',dict(body,ladder=dict(round_hours=5)),expected=201)
+        self.assertEqual(five['config']['ladder'],dict(round_hours=5))
+        midnight=datetime(2026,10,27,tzinfo=VN)
+        for hour in range(0,24,3):
+            current=int((midnight+timedelta(hours=hour)).timestamp()*1000)
+            self.assertEqual(datetime.fromtimestamp(boundary(current,3)/1000,VN).hour,hour)
+            self.assertEqual(boundary(current,3,next=True)-current,3*3600000)
+        twenty=int((midnight+timedelta(hours=20)).timestamp()*1000)
+        self.assertEqual(boundary(twenty,5,next=True)-twenty,4*3600000)
+
     def test_one_tick_fills_free_slots_and_reconcile_skips_active_reports(self):
         self.configure()
         rid=self.book.start(self.ident,'ladder',1,1000,self.entries)
