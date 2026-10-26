@@ -184,7 +184,7 @@ function watchGitHub(id){
   githubPoll?.close();
   if(!s.user?.team_id||!['team','submissions'].includes(s.route)||id!==generation)return;
   githubPoll=visiblePoll(async()=>{
-    const next=await privatePage(api,s.route);
+    const next=await privatePage(api,s.route,true);
     if(id===generation){Object.assign(s,next);patchPage();}
   },()=>githubPollMs(s.github),{onError:handleError});
 }

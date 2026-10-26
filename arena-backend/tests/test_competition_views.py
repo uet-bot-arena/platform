@@ -6,6 +6,18 @@ import test_elo_scheduler as scheduling
 class CompetitionViews(EloFixture):
     configure = scheduling.EloScheduling.configure
 
+    def test_personal_poll_omits_competitions_without_computing_them(self):
+        from unittest.mock import patch
+        self.configure();self.repositories()
+        team=self.other_client();team.post('/api/v1/auth/login',json={'username':'elo-0','password':'test-only-new-team-password'})
+        for view in ['home','team']:
+            with self.subTest(view=view):
+                with patch('arena_api.competition_views.team_competitions',side_effect=AssertionError('Poll must not compute competitions')):
+                    response=team.get('/api/v1/ui/personal',params=dict(view=view,poll=1))
+                    self.assertEqual(response.status_code,200)
+                    self.assertNotIn('teamCompetitions',response.json())
+                self.assertIn('teamCompetitions',team.get('/api/v1/ui/personal',params=dict(view=view)).json())
+
     def repositories(self):
         with self.store.transaction():
             for i,(team,entry) in enumerate(self.entries.items()):

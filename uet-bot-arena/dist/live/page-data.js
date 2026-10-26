@@ -1,8 +1,8 @@
 import {language} from './i18n.js';
 import {loadBotGuide} from './bot-guide.js';
 
-export async function privatePage(api,view){
-  const [personal,data]=await Promise.all([api.request('/ui/personal?view='+view),api.request('/ui/read?view='+view)]);
+export async function privatePage(api,view,poll=false){
+  const [personal,data]=await Promise.all([api.request('/ui/personal?view='+view+(poll?'&poll=1':'')),api.request('/ui/read?view='+view)]);
   return {...personal,...data};
 }
 

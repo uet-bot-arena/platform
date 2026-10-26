@@ -225,6 +225,75 @@
         }
       }
     },
+    "/api/v1/team/competitions": {
+      "get": {
+        "tags": [
+          "competition-views"
+        ],
+        "summary": "Các giải và trạng thái của chính đội đang đăng nhập",
+        "operationId": "own_competitions_api_v1_team_competitions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/competitions/{ident}/summary": {
+      "get": {
+        "tags": [
+          "competition-views"
+        ],
+        "summary": "Tổng hợp đội, điều kiện, đợt và hàng đợi theo giải",
+        "operationId": "summary_api_v1_admin_competitions__ident__summary_get",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/auth/enroll": {
       "post": {
         "tags": [
@@ -744,6 +813,22 @@
               "default": 0,
               "title": "Offset"
             }
+          },
+          {
+            "name": "competition",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Competition"
+            }
           }
         ],
         "responses": {
@@ -802,6 +887,22 @@
               "minimum": 0,
               "default": 0,
               "title": "Offset"
+            }
+          },
+          {
+            "name": "competition",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Competition"
             }
           }
         ],
@@ -1392,6 +1493,22 @@
               "minimum": 0,
               "default": 0,
               "title": "Offset"
+            }
+          },
+          {
+            "name": "competition",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Competition"
             }
           }
         ],
@@ -2467,6 +2584,16 @@
               "type": "string",
               "default": "home",
               "title": "View"
+            }
+          },
+          {
+            "name": "poll",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Poll"
             }
           }
         ],
@@ -5548,6 +5675,93 @@
         ]
       }
     },
+    "/api/v1/admin/grader-package": {
+      "get": {
+        "tags": [
+          "graders"
+        ],
+        "summary": "Gói cài và link riêng có hạn bảy ngày, chỉ BTC",
+        "operationId": "package_api_v1_admin_grader_package_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/grader/download/{exp}/{sig}/{file}": {
+      "get": {
+        "tags": [
+          "graders"
+        ],
+        "summary": "Tải gói bằng chữ ký có hạn, nginx phát file nội bộ",
+        "operationId": "download_api_v1_grader_download__exp___sig___file__get",
+        "parameters": [
+          {
+            "name": "exp",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Exp"
+            }
+          },
+          {
+            "name": "sig",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sig"
+            }
+          },
+          {
+            "name": "file",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "graderToken": []
+          }
+        ]
+      }
+    },
     "/api/v1/grader/hello": {
       "post": {
         "tags": [
@@ -8471,21 +8685,6 @@
             "type": "string",
             "title": "Name"
           },
-          "email": {
-            "type": "string",
-            "title": "Email"
-          },
-          "phone": {
-            "type": "string",
-            "title": "Phone"
-          },
-          "members": {
-            "items": {
-              "$ref": "#/components/schemas/Member"
-            },
-            "type": "array",
-            "title": "Members"
-          },
           "created_ms": {
             "type": "integer",
             "title": "Created Ms"
@@ -8532,11 +8731,6 @@
             "title": "Recruiting",
             "default": 0
           },
-          "legacy_roster": {
-            "type": "integer",
-            "title": "Legacy Roster",
-            "default": 1
-          },
           "repo_code": {
             "type": "string",
             "title": "Repo Code"
@@ -8547,9 +8741,6 @@
         "required": [
           "id",
           "name",
-          "email",
-          "phone",
-          "members",
           "created_ms",
           "repo_code"
         ],

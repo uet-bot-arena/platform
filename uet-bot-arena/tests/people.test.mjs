@@ -10,6 +10,7 @@ test('personal registration verifies email before showing a password and keeps S
   html=personalAuthPage({route:'register',emailRequest:{id:'a',verified_ms:1,verification_token:'private-test-proof'}});
   assert.match(html,/personal-password-form/);assert.doesNotMatch(html,/private-test-proof/);assert.match(html,/autocomplete="new-password"/);
   assert.match(personalAuthPage({route:'recover'}),/Quên mật khẩu/);
+  for(const route of ['register','recover'])assert.match(personalAuthPage({route}),/class="table-actions people-auth-links"><a[^>]+>.*?<\/a><a[^>]+>.*?<\/a><\/div>/);
   assert.ok(publicRoute('register'));assert.ok(publicRoute('recover'));assert.equal(publicRoute('matching'),false);
 });
 test('captain controls, invite state and member names are escaped',()=>{
