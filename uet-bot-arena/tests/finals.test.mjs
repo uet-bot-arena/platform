@@ -23,3 +23,8 @@ test('export automatically selects completed native finals; imports link back to
  assert.doesNotMatch(exportForm({competitions:[],finals:[final]}),/name="finals"/);
  assert.match(importedCards({importedEvents:[{id:'e',name:'LAN',competitions:[],finals:[final]}]}),/#\/finals\/f/);
 });
+test('imported rank and score fields remain text even if the JSON contains HTML',()=>{
+ const attack='<img src=x onerror=alert(1)>',row={team_id:'t',name:'Team',rank:attack,points:attack};
+ const f={...final,teams:[{team_id:'t',name:'Team'}],slots:{A:{status:'completed',competition_id:'c',rows:[row]},TK1:{status:'completed',competition_id:'k',team_ids:['t'],rows:[row]}}};
+ const html=finalsPage({final:f,query:new URLSearchParams()});assert.doesNotMatch(html,/<img/);assert.match(html,/&lt;img/);
+});
