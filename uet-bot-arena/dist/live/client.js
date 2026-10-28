@@ -38,7 +38,7 @@ export class ArenaAPI {
   csrf = null;
   admin = false;
   async request(path, {method='GET', body, headers={}, signal, poll=false}={}) {
-    if(method==='GET'&&!this.admin&&(snapshotPath(path)||path.split('?')[0].endsWith('/watch')))return publicRequest(this,path);
+    if(method==='GET'&&(!this.admin||this.imported?.has(path.split('/')[2]))&&(snapshotPath(path)||path.split('?')[0].endsWith('/watch')))return publicRequest(this,path);
     if (poll) headers = {...headers, 'X-Arena-Poll':'1'};
     if (method !== 'GET' && this.csrf) headers = {...headers, 'X-CSRF-Token':this.csrf};
     if (body !== undefined && !(body instanceof Blob)) {

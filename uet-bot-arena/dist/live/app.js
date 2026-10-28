@@ -1,3 +1,4 @@
+import {importedEventFor,importedBanner,exportForm,importForm} from './imported-results.js';
 import {readPracticeFile} from './quick-practice.js';
 import {competitionRoute} from './competition-ui.js';
 import {participantData,privatePage} from './page-data.js';
@@ -19,9 +20,9 @@ import {publicRoute} from './access.js';
 import {readRuleForm,ruleEditor,rulePreviewMarkup,botRulesetField,botRulesetSelection,ruleFingerprint} from './experimental-ui.js';
 
 const api=new ArenaAPI(),app=document.getElementById('app'),modalRoot=document.getElementById('modal-root');
-const defaults=()=>({recentMatch:null,initialHistory:null,initialClock:null,announcements:[],adminAnnouncements:[],duplicates:[],queue:null,rankingLookup:null,historyTotal:null,teamElo:null,teamCompetitions:null,competitionSummary:null,selectedCompetition:'',github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
+const defaults=()=>({importedEvents:[],importedEvent:null,recentMatch:null,initialHistory:null,initialClock:null,announcements:[],adminAnnouncements:[],duplicates:[],queue:null,rankingLookup:null,historyTotal:null,teamElo:null,teamCompetitions:null,competitionSummary:null,selectedCompetition:'',github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
 const s={...defaults(),user:null,emailRequest:null,emailAddress:'',route:'home',ids:[],loading:false,adminTab:'accounts',registrationStatus:'pending',adminVisibility:'active',adminSearch:'',adminPage:1,opsTab:'jobs',opsPage:1,opsSearch:'',opsStatus:'',opsKind:'',opsTeam:''};
-let emailPoll,githubPoll;
+let emailPoll,githubPoll,resultsFile,resultsPreview,resultsSelection=[];
 let generation=0,board,competitionFeed,jobFeed,toastTimer,modalFocus,returnTo='home',issued=null,issuedGrader=null,refreshingGeneration=null;
 const refreshNotices=startAnnouncements(api);
 const authChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('uet-arena-session'):null;
@@ -44,6 +45,18 @@ async function refreshPerson(){
 function handleError(e){if(e.status===401&&s.user)expired();else if(e.code==='password_change_required')go('change-password');else toast(e.message);}
 function parseRoute(){const raw=location.hash.replace(/^#\/?/,'')||'home',[path,query='']=raw.split('?'),parts=path.split('/');return{route:parts[0],ids:parts.slice(1),query:new URLSearchParams(query),raw};}
 async function loadData(route,ids,q){
+  api.admin=s.user?.role==='admin';
+  let items=[];
+  if(['home','competitions','standings','schedule','arena','replay'].includes(route)){
+    try{items=(await api.snapshot('imported.json')).items;}catch(error){if(error.status!==404)throw error;}
+  }
+  api.imported=new Set(items.flatMap(e=>e.competitions.map(c=>c.id)));
+  const importedEvent=importedEventFor(items,route,ids,q);
+  const data=importedEvent?await participantData(api,null,route,ids,q):await loadRouteData(route,ids,q);
+  if(importedEvent&&data.competition&&!data.competitions.some(c=>c.id===data.competition.id))data.competitions.push(data.competition);
+  return {...data,importedEvent,importedEvents:items};
+}
+async function loadRouteData(route,ids,q){
   api.admin=s.user?.role==='admin';
   if(!api.admin)return participantData(api,s.user,route,ids,q);
   const data={selectedCompetition:q.get('competition')||''};
@@ -133,11 +146,11 @@ async function openRoute(){
       if(!practice&&!fixture)throw new Error(tr('Không tìm thấy trận trong giải này.'));
       const teamName=tid=>s.competition.entries.find(e=>e.team_id===tid)?.name||short(tid);
       const name=sid=>s.submissions.find(x=>x.id===sid)?.version||short(sid);
-      const options={title:practice?tr('Phòng luyện tập · ')+short(s.job.id):s.competition.title+tr(' · Trận ')+fixture.ordinal,red:practice?name(s.job.submission_ids[0]):teamName(fixture.red_team_id),blue:practice?name(s.job.submission_ids[1]):teamName(fixture.blue_team_id),back:practice?'practice':'competitions/'+s.competition.id,admin:!practice&&s.user?.role==='admin',officialLive:!practice&&s.route==='arena'};
+      const options={title:practice?tr('Phòng luyện tập · ')+short(s.job.id):s.competition.title+tr(' · Trận ')+fixture.ordinal,red:practice?name(s.job.submission_ids[0]):teamName(fixture.red_team_id),blue:practice?name(s.job.submission_ids[1]):teamName(fixture.blue_team_id),back:practice?'practice':'competitions/'+s.competition.id,admin:!practice&&!s.importedEvent&&s.user?.role==='admin',officialLive:!practice&&!s.importedEvent&&s.route==='arena'};
       options.format=practice?'practice':s.competition.config.format;
       options.profile=practice?s.job.profile:competitionProfile(s.competition);
       options.basicRules=(practice?s.job.basic_rules:s.competition.config.basic_rules)?.definition;
-      app.innerHTML=shell(s,boardPage(options));mobileSidebar();document.title=options.title+' · UET Bot Arena';
+      app.innerHTML=shell(s,(s.importedEvent?importedBanner(s.importedEvent):'')+boardPage(options));mobileSidebar();document.title=options.title+' · UET Bot Arena';
       const mountBoard=(current,reset=false)=>{
         board?.close();
         board=new MatchBoard(api,{path:practice?'/jobs/'+s.job.id+'/events':'/competitions/'+s.competition.id+'/fixtures/'+current.id+'/events',official:!practice,review:s.route==='replay',initialHistory:practice?s.initialHistory:null,initialClock:practice?s.initialClock:null,profile:options.profile,terminal:practice?terminal(s.job.status):['completed','attention'].includes(current.status),onExpired:expired,onError:handleError,onReview:()=>competitionFeed?.pause()});
@@ -286,6 +299,12 @@ document.addEventListener('submit',e=>{
     }else if(form.id==='password-form'){
       const pw=data.get('new-password');if(pw.length<8)throw new Error(tr('Mật khẩu mới phải có ít nhất 8 ký tự.'));if(pw!==data.get('confirm-password'))throw new Error(tr('Hai lần nhập mật khẩu mới chưa khớp.'));
       const result=await api.post('/auth/password',{current_password:data.get('current-password'),new_password:pw});s.user=result.user;s.canManageGraders=result.can_manage_graders;form.reset();authChanged();toast(tr('Đã đổi mật khẩu và thu hồi các phiên cũ.'));go('home');
+    }else if(form.id==='results-export-form'){
+      const selected=resultsSelection;if(!selected.length)throw new Error(tr('Chọn ít nhất một giải đã hoàn tất.'));
+      const query=new URLSearchParams({name:v('event_name'),competitions:selected.join(',')}),stamp=new Date().toISOString().replace(/\D/g,'').slice(0,12);saveBlob('ket-qua-'+stamp.slice(0,8)+'-'+stamp.slice(8)+'.json.gz',await api.blob('/admin/results-export?'+query));closeModal();
+    }else if(form.id==='results-import-form'){
+      resultsFile=data.get('results');if(!resultsFile?.size||resultsFile.size>64*1024*1024)throw new Error(tr('File kết quả tối đa 64 MB'));
+      resultsPreview=await api.request('/admin/results-import?preview=1',{method:'POST',body:resultsFile,headers:{'Content-Type':'application/gzip'}});modal(tr('Nạp kết quả từ hub LAN'),importForm(resultsPreview));
     }else if(form.id==='quick-practice-form'){
       await api.post('/practice-submissions',{runtime:v('runtime'),code:data.get('code')},keyFor(form));toast(tr('Đã nạp bot và xếp hàng kiểm 72 mẫu.'));openRoute();
     }else if(form.id==='zip-form'){
@@ -333,6 +352,9 @@ document.addEventListener('input',e=>{
   if(e.target.name==='ops-search'){s.opsSearch=e.target.value;s.opsPage=1;refreshOperationsBody();}
 });
 document.addEventListener('change',async e=>{
+  if(e.target.name==='competitions'&&e.target.form?.id==='results-export-form'){
+    resultsSelection=resultsSelection.filter(id=>id!==e.target.value);if(e.target.checked)resultsSelection.push(e.target.value);
+  }
   if(e.target.name==='format'&&e.target.form?.id==='competition-form'){
     const elo=e.target.value==='elo',form=e.target.form;
     form.querySelector('[data-competition-time]').hidden=elo;
@@ -490,6 +512,13 @@ document.addEventListener('click',async e=>{
     }
     if(action==='account-lock'){const locked=b.dataset.locked!=='true';confirmAction(locked?tr('Khóa tài khoản?'):tr('Mở khóa tài khoản?'),locked?tr('Đội sẽ bị đăng xuất và không thể đăng nhập cho tới khi mở khóa.'):tr('Đội có thể đăng nhập lại với mật khẩu hiện tại.'),()=>api.post('/admin/accounts/'+b.dataset.id+'/lock',{locked}));return;}
     if(action==='delivered'){b.disabled=true;await api.post('/admin/accounts/'+b.dataset.id+'/delivered');await refreshAdmin();return;}
+    if(action==='results-export'){resultsSelection=[];modal(tr('Xuất kết quả lên web'),exportForm(s));return;}
+    if(action==='results-import'){resultsFile=null;resultsPreview=null;modal(tr('Nạp kết quả từ hub LAN'),importForm());return;}
+    if(action==='results-confirm'){
+      if(!resultsFile||!resultsPreview)return;b.disabled=true;
+      try{await api.request('/admin/results-import?confirm='+encodeURIComponent(resultsPreview.sha256),{method:'POST',body:resultsFile,headers:{'Content-Type':'application/gzip'}});resultsFile=null;resultsPreview=null;closeModal();toast(tr('Đã đăng kết quả lên web.'));await refreshData();}finally{b.disabled=false;}return;
+    }
+    if(action==='hide-imported'){confirmAction(tr('Ẩn kết quả đã nạp?'),tr('Sự kiện sẽ không còn xuất hiện công khai.'),async()=>{await api.post('/admin/results-import/'+encodeURIComponent(b.dataset.id)+'/hide',{});await refreshData();});return;}
     if(action==='copy-grader-controls'){await copyMessage(controlsMessage(b.dataset.platform==='linux'?'linux':'windows'),tr('Đã sao chép lệnh dừng/gỡ.'));return;}
     if(action==='copy-grader-message'){if(issuedGrader&&s.graderPackage){await copyMessage(graderMessage(issuedGrader,s.graderPackage,location.origin,b.dataset.platform==='linux'?'linux':'windows'),tr('Đã sao chép tin nhắn cài máy chấm.'));}return;}
     if(action==='copy-grader-token'){if(issuedGrader){await copyMessage(issuedGrader.token,tr('Đã sao chép mã máy chấm.'));}return;}

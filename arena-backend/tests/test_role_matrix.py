@@ -65,6 +65,7 @@ class RoleMatrix(APIHarness):
                     path=re.sub(r'\{number\}','1',route.path)
                     path=re.sub(r'\{[^}]+\}','a'*32,path)
                     headers={'Idempotency-Key':'matrix-idempotency','X-Submission-Version':'v1.0.0','X-Bot-Name':'matrix'}
+                    query={p['name']:data(p['schema']) for p in op.get('parameters',[]) if p['in']=='query' and p.get('required')}
                     for p in op.get('parameters',[]):
                         if p['in']=='header' and p.get('required'):headers[p['name']]=str(data(p['schema']))
                     body=None
@@ -84,7 +85,7 @@ class RoleMatrix(APIHarness):
                             # Grader endpoints accept only a grader token, never a session cookie.
                             # Signed downloads authenticate in the real handler, covered by test_grader_downloads.
                             if route.path=='/api/v1/grader/download/{exp}/{sig}/{file}':expected=200
-                            elif route.path=='/api/v1/admin/grader-package' and role in ('guest','locked','archived','grader'):expected=403
+                            elif (route.path=='/api/v1/admin/grader-package' or route.path.startswith('/api/v1/admin/results-')) and role in ('guest','locked','archived','grader'):expected=403
                             elif route.path.startswith('/api/v1/grader/'):expected=200 if role=='grader' else 401
                             elif route.path in public or method=='GET' and route.path in SPECTATOR_PATHS:expected=200
                             elif role in ('guest','locked','archived','grader'):expected=401
@@ -93,7 +94,7 @@ class RoleMatrix(APIHarness):
                             elif '/admin/' in route.path and role!='admin':expected=403
                             elif role=='admin' and route.path not in principal_only and route.path not in shared and '/admin/' not in route.path:expected=403
                             else:expected=200
-                            response=client.request(method,path,headers=h,**({'json':body} if body is not None else {'content':b''} if method in ('POST','PUT') else {}))
+                            response=client.request(method,path,headers=h,params=query,**({'json':body} if body is not None else {'content':b''} if method in ('POST','PUT') else {}))
                             rows.append({'method':method,'path':route.path,'role':role,'csrf':csrf,'expected':expected,'actual':response.status_code})
                             self.assertEqual(response.status_code,expected,(rows[-1],response.text))
             finally:route.dependant.call=original

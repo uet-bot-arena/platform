@@ -257,6 +257,8 @@ class Publisher:
             from arena_api.announcements import public as public_notice
             notices=[public_notice(json.loads(r[0])) for r in self.db.execute("SELECT data FROM documents WHERE kind='announcement' AND json_extract(data,'$.archived_ms') IS NULL ORDER BY rowid DESC")]
             self.write('announcements.json',dict(items=notices))
+            from arena_api.results import listing as imported_events
+            self.write('imported.json', imported_events(self.db))
             self.db.commit()
             partial = self.cursor_file.with_suffix('.tmp')
             partial.write_text(str(version),encoding='ascii');partial.replace(self.cursor_file)

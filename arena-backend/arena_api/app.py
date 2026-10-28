@@ -35,6 +35,8 @@ def body_limit(method, path):
     """(bytes, binary?) accepted for a mutation on this path."""
     if path == '/api/v1/practice-submissions':
         return 6 * 200_000 + 1024, False  # JSON escaping can use six bytes per source byte.
+    if path == '/api/v1/admin/results-import':
+        return 64 * MIB, True
     if path == "/api/v1/submissions":
         return 10 * MIB, True  # LAN ZIP; online handler still rejects this channel
     if path == "/api/v1/admin/sample-bots" or path.startswith("/api/v1/admin/teams/") and path.endswith("/submissions"):
@@ -148,6 +150,8 @@ def create_app(settings=None, start_worker=True):
             app.state.accounts.team_size = settings.account_rules.team_size
             app.state.accounts.admin_login_lockout = settings.account_rules.admin_login_lockout
             app.state.accounts.login_ip_limit = settings.account_rules.login_ip_limit
+            from arena_api.results import Results
+            app.state.results = Results(store, app.state.accounts, settings)
             app.state.teams = Teams(app.state.accounts, settings.account_rules)
             app.state.clock_id = secrets.token_hex(16)
             service = Service(store, start_worker=start_worker, grader=settings.grader)
@@ -216,6 +220,8 @@ def create_app(settings=None, start_worker=True):
     app.add_middleware(RequestBoundary, settings=settings)
     from arena_api import snapshot_routes
     app.include_router(snapshot_routes.router)
+    from arena_api import results_routes
+    app.include_router(results_routes.router)
     app.include_router(auth_routes.router)
     from arena_api import people_routes, competition_views
     app.include_router(competition_views.router)
