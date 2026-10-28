@@ -35,6 +35,9 @@ class EmailProvider:
 
 @dataclass(frozen=True)
 class AccountRules:
+    admin_login_lockout: bool = True
+    login_ip_limit: int = 600
+    grader_admins: tuple = ()
     # Student addresses: 8-digit student number at the university domain. No faculty filter.
     student_email: str = r"^\d{8}@vnu\.edu\.vn$"
     # Other addresses under these domains become staff accounts; any other domain is refused.
@@ -125,6 +128,7 @@ class Settings:
     hash_workers: int = UNSET
     read_workers: int = UNSET
     team_zip_upload: bool = UNSET
+    practice_upload: bool = UNSET
     ui_root: Path = UNSET
     email_providers: tuple = UNSET
     account_rules: AccountRules = UNSET
@@ -174,6 +178,7 @@ def load(names, path=None, env=None):
     values["hash_workers"] = hub.integer("hash_workers", 4, 1, 32)
     values['read_workers'] = hub.integer('read_workers',0,0,2)
     values['team_zip_upload'] = hub.boolean('team_zip_upload',False)
+    values['practice_upload'] = hub.boolean('practice_upload',True)
     values["ui_root"] = hub.path("ui_root", str(Path(__file__).resolve().parents[2] / "uet-bot-arena" / "dist"))
     hub.finish()
     values["email_providers"] = email_providers(data)
@@ -277,6 +282,9 @@ def email_providers(data):
 def account_rules(data):
     section = Reader(data, "accounts")
     rules = AccountRules(
+        admin_login_lockout=section.boolean('admin_login_lockout', True),
+        login_ip_limit=section.integer('login_ip_limit', 600, 100, 10000),
+        grader_admins=tuple(x.casefold() for x in section.strings('grader_admins', [])),
         student_email=section.string("student_email", AccountRules.student_email),
         staff_domains=section.strings("staff_domains", list(AccountRules.staff_domains)),
         block_plus=section.boolean("block_plus", True),

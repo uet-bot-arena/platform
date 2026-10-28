@@ -33,6 +33,8 @@ MIB = 1024 * 1024
 
 def body_limit(method, path):
     """(bytes, binary?) accepted for a mutation on this path."""
+    if path == '/api/v1/practice-submissions':
+        return 6 * 200_000 + 1024, False  # JSON escaping can use six bytes per source byte.
     if path == "/api/v1/submissions":
         return 10 * MIB, True  # LAN ZIP; online handler still rejects this channel
     if path == "/api/v1/admin/sample-bots" or path.startswith("/api/v1/admin/teams/") and path.endswith("/submissions"):
@@ -144,6 +146,8 @@ def create_app(settings=None, start_worker=True):
             app.state.people = People(app.state.accounts, app.state.mail, settings.account_rules)
             app.state.accounts.season_id = settings.account_rules.season_id
             app.state.accounts.team_size = settings.account_rules.team_size
+            app.state.accounts.admin_login_lockout = settings.account_rules.admin_login_lockout
+            app.state.accounts.login_ip_limit = settings.account_rules.login_ip_limit
             app.state.teams = Teams(app.state.accounts, settings.account_rules)
             app.state.clock_id = secrets.token_hex(16)
             service = Service(store, start_worker=start_worker, grader=settings.grader)

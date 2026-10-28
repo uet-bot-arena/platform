@@ -83,6 +83,7 @@ class Publisher:
         store.db.execute('PRAGMA busy_timeout=5000')
         self.store, self.db = store, store.db
         self.fixture_cache = OrderedDict()
+        self.recent_games = {}
         accounts = Accounts.__new__(Accounts)
         accounts.db, accounts.store = self.db, store
         service = Service.__new__(Service)
@@ -167,7 +168,7 @@ class Publisher:
         # Keep every unfinished game; a large round robin must not hide the
         # early active boards behind thousands of future games.
         if self.comp.get(ident)['config']['format']=='elo':
-            query='SELECT g.id,g.ordinal,g.red_team_id,g.blue_team_id,g.status,g.result,r.competition_id,r.phase,r.started_ms,r.number FROM elo_games g JOIN elo_rounds r ON r.id=g.round_id WHERE r.competition_id=?'
+            query='SELECT g.id,g.ordinal,g.red_team_id,g.blue_team_id,g.status,g.result,g.current_job_id,r.competition_id,r.phase,r.started_ms,r.number FROM elo_games g JOIN elo_rounds r ON r.id=g.round_id WHERE r.competition_id=?'
             rows=self.comp.rows(query+" AND g.status<>'completed'",(ident,))
             rows+=self.comp.rows(query+" AND g.status='completed' ORDER BY r.started_ms DESC,r.phase DESC,r.number DESC,g.ordinal DESC LIMIT 1000",(ident,))
             rows.sort(key=lambda r:(r['started_ms'],r['phase'],r['number'],r['ordinal']))
@@ -178,6 +179,12 @@ class Publisher:
             rows.sort(key=lambda r:r['ordinal'])
             total = self.comp.one('SELECT COUNT(*) AS n FROM competition_fixtures WHERE competition_id=?',(ident,))['n']
         items = [self.comp.fixture_view(r) | ({'phase':r['phase']} if r.get('phase') else {}) for r in rows]
+        for row, item in zip(rows, items):
+            if row['status'] == 'completed' and row.get('current_job_id'):
+                event = self.db.execute('SELECT data FROM events WHERE job=? ORDER BY seq DESC LIMIT 1', (row['current_job_id'],)).fetchone()
+                item['completed_ms'] = json.loads(event[0])['server_unix_ms'] if event else 0
+        finished = [item for item in items if item['status'] == 'completed']
+        self.recent_games[ident] = max(finished, key=lambda f:(f.get('completed_ms',0), f['ordinal']), default=None)
         self.write(f'fixtures/{ident}.json', dict(items=items,total=len(items),history_total=total,recent_completed_limit=1000,offset=0))
 
     def remove_competition(self, ident):
@@ -228,6 +235,9 @@ class Publisher:
                 self.schedule(ident)
             for ident in sorted(visible):
                 item = public_competition(self.comp.view(ident))
+                recent = self.recent_games.get(ident)
+                if recent:
+                    item['recent_completed'] = {'id':recent['id'], 'completed_ms':recent.get('completed_ms',0)}
                 self.write(f'competitions/{ident}.json',item)
                 if item['config']['format']=='elo' and ident not in changed:
                     path=self.output/f'standings/{ident}.json.gz'

@@ -17,8 +17,10 @@ def login(body: Login, request: Request, response: Response):
 
 
 @router.get("/auth/me", response_model=SessionView, summary="Khôi phục phiên và CSRF token sau khi tải lại UI")
-def me(auth=Depends(principal)):
-    return {key: value for key, value in auth.items() if key != "token_hash"}
+def me(request: Request, auth=Depends(principal)):
+    from arena_api.dependencies import can_manage_graders
+    return {**{key: value for key, value in auth.items() if key != "token_hash"},
+            "can_manage_graders": can_manage_graders(request, auth)}
 
 
 @router.post("/auth/logout", summary="Thu hồi phiên hiện tại")

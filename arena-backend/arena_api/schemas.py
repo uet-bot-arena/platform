@@ -139,6 +139,7 @@ class UserView(Model):
 
 class SessionView(Model):
     user: UserView
+    can_manage_graders: bool = False
     csrf_token: str
     expires_ms: int
 

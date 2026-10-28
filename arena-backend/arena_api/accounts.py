@@ -32,6 +32,7 @@ class Accounts:
         self.store, self.db, self.ttl = store, store.db, session_seconds
         self.idle, self.admin_ttl, self.admin_idle = session_idle_seconds, admin_session_seconds, admin_session_idle_seconds
         self.read_only = False
+        self.admin_login_lockout, self.login_ip_limit = True, 600
         migrate(store)
         self.hasher = PasswordHasher(time_cost=2, memory_cost=65536, parallelism=1)
         self.hash_slots = threading.BoundedSemaphore(hash_workers)
@@ -127,17 +128,18 @@ class Accounts:
 
     def login(self, username, password, peer):
         username = username.casefold().strip()
-        # Every attempt costs an Argon2 hash, so all attempts count per address (a campus NAT fits 600 per
-        # 15 minutes). Per account only wrong passwords count, 10 per 15 minutes as Windows 11 does by
-        # default, so correct sign-ins (BTC scripts included) never lock an account.
-        self.rate_limit("login-ip:" + peer, 600, 900)
+        # Count all attempts per IP; account failures have a separate, configurable admin exemption.
+        self.rate_limit("login-ip:" + peer, self.login_ip_limit, 900)
         failures = "login-account:" + username
-        self.rate_limit(failures, 10, 900, count=False)
         with self.store.lock:
             account = self.one("SELECT * FROM accounts WHERE username=?", (username,))
+        lockout = not (account and account['role'] == 'admin' and not self.admin_login_lockout)
+        if lockout:
+            self.rate_limit(failures, 10, 900, count=False)
         valid = self.verify(account["password_hash"] if account else self.dummy_hash, password)
         if not valid or not account or account["locked"]:
-            self.rate_count(failures, 900)
+            if lockout:
+                self.rate_count(failures, 900)
             raise Fault("unauthorized", "Invalid username or password")
         with self.store.lock, self.db:
             latest = self.one("SELECT * FROM accounts WHERE id=?", (account["id"],))

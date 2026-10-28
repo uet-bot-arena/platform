@@ -4,6 +4,7 @@
 # Đường dẫn tương đối tính từ thư mục chứa file này; C:/... tự đổi thành /mnt/c/... khi chạy trong WSL.
 
 [hub]
+practice_upload = true
 read_workers = 0 # 0: mọi API ở hub chính; VPS 4 vCPU có thể đặt 2 rồi chạy lại install-hub.sh.
 origin = "http://127.0.0.1:4181"      # công khai thì phải https và cookie_secure = true
 port = 4181
@@ -54,6 +55,10 @@ hourly_limit = 100
 # hourly_limit = 100000
 
 [accounts]
+# Temporary peer-review policy is configured on the deployed hub only.
+admin_login_lockout = true
+login_ip_limit = 600
+grader_admins = []
 student_email = '^\d{8}@vnu\.edu\.vn$'   # MSSV 8 số, không lọc mã đơn vị
 staff_domains = ["vnu.edu.vn"]           # địa chỉ khác cùng đuôi này thành tài khoản cán bộ
 block_plus = true

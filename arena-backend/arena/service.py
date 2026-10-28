@@ -148,18 +148,24 @@ class Service:
             raise Fault('unsupported_protocol', 'Chỉ hỗ trợ SDK v2 (OTTv2) hoặc v3 (Experimental)')
         if runtime not in ("cpp17", "c11", "python3"):
             raise Fault("unsupported_runtime", "Choose cpp17, c11 or python3")
-        if channel not in ("internal", "github") or (channel == "github" and
+        if channel not in ("internal", "github", "practice") or (channel == "github" and
                 (not isinstance(channel_ref, str) or not re.fullmatch(r"[0-9a-f]{40}", channel_ref) or version != channel_ref[:7])):
             raise Fault("invalid_request", "Invalid submission provenance")
-        if channel != "github" and not re.fullmatch(r"v?\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]{1,24})?", version):
+        if channel == "internal" and not re.fullmatch(r"v?\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]{1,24})?", version):
             raise Fault("invalid_request", "Expected semantic version, e.g. v1.0.0")
         source_hash = hashlib.sha256(raw).hexdigest()
+        if channel == "practice":
+            version = "thu-" + source_hash[:7]
         operation_hash = digest({"version": version, "runtime": runtime, "zip_sha256": source_hash,
                                  **({'protocol_version': 3} if protocol_version == 3 else {}),
-                                 **({"channel": channel, "channel_ref": channel_ref} if channel == "github" else {})})
+                                 **({"channel": channel, "channel_ref": channel_ref} if channel != "internal" else {})})
 
         def check():
             previous = self.store.list("submission", team)
+            if channel == "practice" and any(s["version"] == version for s in previous):
+                raise Fault("version_conflict", "Bạn đã nạp đúng mã này")
+            if channel == "practice" and sum(s.get("channel") == "practice" and s["created_unix_ms"] > now_ms() - 3_600_000 for s in previous) >= 10:
+                raise Fault("rate_limited", "Tối đa 10 bản thử nhanh mỗi giờ")
             if sum(s["created_unix_ms"] > now_ms() - 3_600_000 for s in previous) >= self.max_submissions_per_hour:
                 raise Fault("rate_limited", "Đã hết lượt nhận bài trong giờ; hub sẽ thử lại sau")
             if channel != "github" and any(s["version"] == version for s in previous):

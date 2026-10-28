@@ -4,6 +4,8 @@ Bài tập lớn Lập trình mạng — Nhóm 5.
 
 Web: **https://uetbotarena.id.vn**
 
+Chỉ tài khoản BTC `organizer` được tạo, thu hồi hoặc xóa máy chấm và lấy gói cài; các tài khoản BTC khác xem được trang Máy chấm nhưng không đổi được.
+
 Giải đấu, thiết kế và cách sử dụng: [TAI-LIEU.docx](TAI-LIEU.docx).
 
 | Thư mục | Nội dung |

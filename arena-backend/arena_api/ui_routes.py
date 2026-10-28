@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/v1", tags=["platform"])
 
 @router.get("/platform", summary="Thông tin nền tảng công khai cho trang chủ và đăng ký")
 def platform(request: Request):
-    return {"team_zip_upload": request.app.state.settings.team_zip_upload, "name": "UET Bot Arena", "version": "0.6.0", "engine_id": engine.ENGINE_ID, "adjudication": dict(CURRENT),
+    return {"practice_upload": request.app.state.settings.practice_upload, "team_zip_upload": request.app.state.settings.team_zip_upload, "name": "UET Bot Arena", "version": "0.6.0", "engine_id": engine.ENGINE_ID, "adjudication": dict(CURRENT),
             "runtimes": ["cpp17", "c11", "python3"], "codon_enabled": False, "match_options_ms": [10000, 60000, 300000],
             "profile": match_profile().public(), "registration_members": {"min": 3, "max": 4}}
 

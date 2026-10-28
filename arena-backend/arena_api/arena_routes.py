@@ -13,7 +13,7 @@ from arena.config import profile, match_profile
 from arena.protocol import Fault
 from arena.service import TERMINAL
 from arena_api.dependencies import COOKIE, team_principal, admin_principal
-from arena_api.schemas import Benchmark, Match, TeamView
+from arena_api.schemas import Benchmark, Match, TeamView, Model
 from arena_api.teams import public_team
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,9 +51,9 @@ def page_bundle(request,view,job_id,auth,section='all',poll=False):
     if view in ('team','submissions'):
         data['github']=state.github.view(team_id)
     if view=='team':data['teamElo']=state.competitions.elo.team_view(team_id)
-    if view in ('home','benchmark','practice','competitions','arena') or view=='submissions' and state.settings.team_zip_upload:
+    if view in ('home','benchmark','practice','competitions','arena','submissions'):
         data['submissions']=[state.service.public_submission(s) for s in state.store.list('submission',team_id)]
-    if view in ('home','benchmark','practice','competitions') or view=='submissions' and state.settings.team_zip_upload:
+    if view in ('home','benchmark','practice','competitions','submissions'):
         jobs=state.store.list('job',team_id,summary=True)
         data['jobs']=[public_job(j) for j in jobs]
         if view=='home':
@@ -183,6 +183,29 @@ def submissions(request: Request, limit: int = Query(50, ge=1, le=100), offset: 
     service = request.app.state.service
     items = request.app.state.store.list("submission", auth["user"]["team_id"])
     return JSONResponse({"items": [service.public_submission(s) for s in items[offset:offset + limit]], "total": len(items), "limit": limit, "offset": offset})
+
+
+class PracticeSubmission(Model):
+    runtime: Literal['cpp17', 'c11', 'python3']
+    code: str
+
+
+@router.post('/practice-submissions', status_code=201, summary='Dán mã nguồn để kiểm 72 mẫu và luyện tập, không dùng dự giải')
+async def practice_submission(body: PracticeSubmission, request: Request, idempotency_key: str = Header(alias='Idempotency-Key'), auth=Depends(team_principal)):
+    if not request.app.state.settings.practice_upload:
+        raise Fault('forbidden', 'Hub này không nhận bản thử nhanh')
+    if not body.code.strip() or len(body.code.encode('utf-8')) > 200_000:
+        raise Fault('invalid_request', 'Mã nguồn không được rỗng và tối đa 200.000 byte UTF-8')
+    raw = io.BytesIO()
+    with zipfile.ZipFile(raw, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+        entry = zipfile.ZipInfo({'cpp17':'bot.cpp', 'c11':'bot.c', 'python3':'bot.py'}[body.runtime], (1980,1,1,0,0,0))
+        entry.external_attr = 0o644 << 16
+        archive.writestr(entry, body.code.encode('utf-8'))
+    from starlette.concurrency import run_in_threadpool
+    service, team = request.app.state.service, auth['user']['team_id']
+    item = await run_in_threadpool(lambda: service.submit(team, '', body.runtime, raw.getvalue(), idempotency_key, channel='practice'))
+    await run_in_threadpool(service.enqueue, team, 'benchmark', {'submission_id':item['id']}, 'practice-check-'+item['id'])
+    return service.public_submission(item)
 
 
 @router.post("/submissions", status_code=201, summary="Đội nạp ZIP khi hub LAN cho phép")

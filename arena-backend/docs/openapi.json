@@ -2937,6 +2937,62 @@
         ]
       }
     },
+    "/api/v1/practice-submissions": {
+      "post": {
+        "tags": [
+          "arena"
+        ],
+        "summary": "Dán mã nguồn để kiểm 72 mẫu và luyện tập, không dùng dự giải",
+        "operationId": "practice_submission_api_v1_practice_submissions_post",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PracticeSubmission"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/teams/{ident}/submissions": {
       "post": {
         "tags": [
@@ -8411,6 +8467,30 @@
         "type": "object",
         "title": "Play"
       },
+      "PracticeSubmission": {
+        "properties": {
+          "runtime": {
+            "type": "string",
+            "enum": [
+              "cpp17",
+              "c11",
+              "python3"
+            ],
+            "title": "Runtime"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "runtime",
+          "code"
+        ],
+        "title": "PracticeSubmission"
+      },
       "Preview": {
         "properties": {
           "definition": {
@@ -8706,6 +8786,11 @@
         "properties": {
           "user": {
             "$ref": "#/components/schemas/UserView"
+          },
+          "can_manage_graders": {
+            "type": "boolean",
+            "title": "Can Manage Graders",
+            "default": false
           },
           "csrf_token": {
             "type": "string",

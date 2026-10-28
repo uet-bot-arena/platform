@@ -52,6 +52,9 @@ class PublisherTests(APIHarness):
             publisher.db.execute("UPDATE competitions SET title='must not write'")
         publisher.db.rollback()
         result=publisher.publish();self.assertLess(result['seconds'],10)
+        latest=self.read('competitions.json')['items'][0]['recent_completed']
+        self.assertEqual(latest['id'],fixture)
+        self.assertGreater(latest['completed_ms'],0)
         for path in publisher.output.rglob('*.gz'):
             self.assertNotIn(sentinel,gzip.decompress(path.read_bytes()).decode(),path)
         self.assertFalse(list(publisher.output.rglob('*.tmp')))

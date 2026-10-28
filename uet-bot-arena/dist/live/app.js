@@ -1,3 +1,4 @@
+import {readPracticeFile} from './quick-practice.js';
 import {competitionRoute} from './competition-ui.js';
 import {participantData,privatePage} from './page-data.js';
 import {visiblePoll,githubPollMs} from './polling.js';
@@ -18,13 +19,13 @@ import {publicRoute} from './access.js';
 import {readRuleForm,ruleEditor,rulePreviewMarkup,botRulesetField,botRulesetSelection,ruleFingerprint} from './experimental-ui.js';
 
 const api=new ArenaAPI(),app=document.getElementById('app'),modalRoot=document.getElementById('modal-root');
-const defaults=()=>({initialHistory:null,initialClock:null,announcements:[],adminAnnouncements:[],duplicates:[],queue:null,rankingLookup:null,historyTotal:null,teamElo:null,teamCompetitions:null,competitionSummary:null,selectedCompetition:'',github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
+const defaults=()=>({recentMatch:null,initialHistory:null,initialClock:null,announcements:[],adminAnnouncements:[],duplicates:[],queue:null,rankingLookup:null,historyTotal:null,teamElo:null,teamCompetitions:null,competitionSummary:null,selectedCompetition:'',github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
 const s={...defaults(),user:null,emailRequest:null,emailAddress:'',route:'home',ids:[],loading:false,adminTab:'accounts',registrationStatus:'pending',adminVisibility:'active',adminSearch:'',adminPage:1,opsTab:'jobs',opsPage:1,opsSearch:'',opsStatus:'',opsKind:'',opsTeam:''};
 let emailPoll,githubPoll;
 let generation=0,board,competitionFeed,jobFeed,toastTimer,modalFocus,returnTo='home',issued=null,issuedGrader=null,refreshingGeneration=null;
 const refreshNotices=startAnnouncements(api);
 const authChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('uet-arena-session'):null;
-authChannel?.addEventListener('message',async()=>{try{const session=await api.request('/auth/me',{poll:true});Object.assign(s,defaults(),{user:session.user});openRoute();}catch(e){if(e.status===401)expired(false);else handleError(e);}});
+authChannel?.addEventListener('message',async()=>{try{const session=await api.request('/auth/me',{poll:true});Object.assign(s,defaults(),{user:session.user,canManageGraders:session.can_manage_graders});openRoute();}catch(e){if(e.status===401)expired(false);else handleError(e);}});
 const authChanged=()=>authChannel?.postMessage({type:'changed'});
 const terminal=status=>['completed','failed','aborted'].includes(status);
 const enc=encodeURIComponent;
@@ -38,7 +39,7 @@ function go(route){if(location.hash==='#/'+route)openRoute();else location.hash=
 function clearAccount(){Object.assign(s,defaults(),{user:null,emailRequest:null,emailAddress:'',emailPurpose:'verify',passwordFinished:false,inviteCode:''});api.csrf=null;api.admin=false;issued=null;}
 function expired(notify=true){clearAccount();if(notify)authChanged();toast(tr('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.'));go('login');}
 async function refreshPerson(){
-  const session=await api.request('/auth/me');s.user=session.user;authChanged();go('team');
+  const session=await api.request('/auth/me');s.user=session.user;s.canManageGraders=session.can_manage_graders;authChanged();go('team');
 }
 function handleError(e){if(e.status===401&&s.user)expired();else if(e.code==='password_change_required')go('change-password');else toast(e.message);}
 function parseRoute(){const raw=location.hash.replace(/^#\/?/,'')||'home',[path,query='']=raw.split('?'),parts=path.split('/');return{route:parts[0],ids:parts.slice(1),query:new URLSearchParams(query),raw};}
@@ -90,7 +91,7 @@ async function loadData(route,ids,q){
   if(route==='email')work.push(api.request('/admin/email').then(x=>data.mail=x));
   if(route==='graders'){work.push(api.request('/admin/graders').then(x=>data.graders=x));
     // A local hub may not publish a grader package.
-    work.push(api.request('/admin/grader-package').catch(()=>null).then(x=>data.graderPackage=validPackage(x)));}
+    if(s.canManageGraders!==false)work.push(api.request('/admin/grader-package').catch(()=>null).then(x=>data.graderPackage=validPackage(x)));}
   const settled=await Promise.allSettled(work);for(const item of settled)if(item.status==='rejected')throw item.reason;
   const cid=route==='competitions'?ids[0]:['arena','replay'].includes(route)?ids[0]==='practice'?null:ids[0]:route==='benchmark'?q.get('competition'):['schedule','live','standings'].includes(route)?q.get('competition')||data.competitions?.find(c=>!c.archived_ms)?.id:null;
   if(cid){
@@ -236,6 +237,8 @@ document.addEventListener('input',e=>{if(e.target.form)pendingKeys.delete(e.targ
 // Wrong login shows one plain sentence; the support ID is only useful for server-side failures.
 function showFormError(form,e){const el=form.querySelector('.form-error');const message=form.id==='login-form'&&e.status===401?tr('Sai tài khoản hoặc mật khẩu.'):e.message;if(el){el.classList.add('visible');el.textContent=message+(e.requestId&&(!e.status||e.status>=500)?tr(' · Mã hỗ trợ ')+e.requestId:'');}else toast(message);if(e.status===401&&s.user)expired();}
 async function runForm(form,task){if(form.dataset.busy)return;form.dataset.busy='1';const controls=[...form.querySelectorAll('button')],error=form.querySelector('.form-error');controls.forEach(b=>b.disabled=true);const loginButton=form.id==='login-form'?form.querySelector('[type=submit]'):null,loginLabel=loginButton?.textContent;if(loginButton)loginButton.textContent=tr('Đang đăng nhập…');if(error){error.classList.remove('visible');error.textContent='';}try{await task();pendingKeys.delete(form);}catch(e){showFormError(form,e);}finally{delete form.dataset.busy;controls.forEach(b=>b.disabled=false);if(loginButton)loginButton.textContent=loginLabel;}}
+document.addEventListener('change',async e=>{if(e.target.id!=='practice-file'||!e.target.files[0])return;const form=e.target.form;try{const value=await readPracticeFile(e.target.files[0]);form.elements.code.value=value.code;form.elements.runtime.value=value.runtime;pendingKeys.delete(form);}catch(error){showFormError(form,error);}});
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-action=practice-example]');if(!b)return;try{const response=await fetch('/_ui/bot-example.cpp');if(!response.ok)throw new Error(tr('Không đọc được file.'));b.form.elements.code.value=await response.text();b.form.elements.runtime.value='cpp17';pendingKeys.delete(b.form);}catch(error){showFormError(b.form,error);}});
 document.addEventListener('submit',e=>{
   const form=e.target;if(!form.matches('.real-form'))return;e.preventDefault();const data=new FormData(form),v=name=>String(data.get(name)||'').trim();
   runForm(form,async()=>{
@@ -251,7 +254,7 @@ document.addEventListener('submit',e=>{
       const result=await api.post('/admin/rulesets/import',{package:pack,publish:data.get('publish-import')==='on'},keyFor(form));
       s.ruleEditing=result;s.ruleDraft=null;s.ruleNotes=null;s.rulePreview=null;s.rulePreviewActions=[];await refreshRules();toast(result.status==='published'?tr('Đã nhập, kiểm tra và công bố ruleset.'):tr('Đã nhập và kiểm tra. Bạn có thể chỉnh tiếp hoặc công bố.'));
     }else if(form.id==='login-form'){
-      const result=await api.post('/auth/login',{username:v('username'),password:data.get('login-password')});clearAccount();api.csrf=result.csrf_token;s.user=result.user;form.reset();authChanged();go(result.user.must_change_password?'change-password':returnTo);returnTo='home';
+      const result=await api.post('/auth/login',{username:v('username'),password:data.get('login-password')});clearAccount();api.csrf=result.csrf_token;s.user=result.user;s.canManageGraders=result.can_manage_graders;form.reset();authChanged();go(result.user.must_change_password?'change-password':returnTo);returnTo='home';
     }else if(form.id==='registration-form'){
       const draft=draftRegistration();s.registrationDraft=draft;
       const ids=draft.members.map(m=>m.student_id.toLowerCase());if(new Set(ids).size!==ids.length)throw new Error(tr('Mã sinh viên của các thành viên phải khác nhau.'));
@@ -282,7 +285,9 @@ document.addEventListener('submit',e=>{
     }else if(form.id==='recovery-form'){await api.post('/auth/recovery',{username:v('username'),email:v('email')});s.recoverySent=true;render();
     }else if(form.id==='password-form'){
       const pw=data.get('new-password');if(pw.length<8)throw new Error(tr('Mật khẩu mới phải có ít nhất 8 ký tự.'));if(pw!==data.get('confirm-password'))throw new Error(tr('Hai lần nhập mật khẩu mới chưa khớp.'));
-      const result=await api.post('/auth/password',{current_password:data.get('current-password'),new_password:pw});s.user=result.user;form.reset();authChanged();toast(tr('Đã đổi mật khẩu và thu hồi các phiên cũ.'));go('home');
+      const result=await api.post('/auth/password',{current_password:data.get('current-password'),new_password:pw});s.user=result.user;s.canManageGraders=result.can_manage_graders;form.reset();authChanged();toast(tr('Đã đổi mật khẩu và thu hồi các phiên cũ.'));go('home');
+    }else if(form.id==='quick-practice-form'){
+      await api.post('/practice-submissions',{runtime:v('runtime'),code:data.get('code')},keyFor(form));toast(tr('Đã nạp bot và xếp hàng kiểm 72 mẫu.'));openRoute();
     }else if(form.id==='zip-form'){
       await api.request('/submissions',{method:'POST',body:data.get('source'),headers:{'Content-Type':'application/zip','X-Submission-Version':v('version'),'X-Arena-Runtime':v('runtime'),'Idempotency-Key':keyFor(form)}});toast(tr('Đã nạp bot và xếp hàng kiểm 72 mẫu.'));openRoute();
     }else if(form.id==='admin-entry-form'){
@@ -514,7 +519,7 @@ document.addEventListener('keydown',e=>{
 });
 window.addEventListener('hashchange',openRoute);window.addEventListener('beforeunload',clearView);
 async function boot(){
-  try{s.platform=await api.request('/platform');try{const session=await api.request('/auth/me');s.user=session.user;}catch(e){if(e.status!==401)throw e;}await openRoute();}
+  try{s.platform=await api.request('/platform');try{const session=await api.request('/auth/me');s.user=session.user;s.canManageGraders=session.can_manage_graders;}catch(e){if(e.status!==401)throw e;}await openRoute();}
   catch(e){s.loading=false;s.error=e.message;render();}
 }
 boot();

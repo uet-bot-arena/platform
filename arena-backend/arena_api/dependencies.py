@@ -70,6 +70,18 @@ def admin_principal(request: Request):
     return value
 
 
+def can_manage_graders(request, auth):
+    allowed = request.app.state.settings.account_rules.grader_admins
+    return auth['user']['role'] == 'admin' and (not allowed or auth['user']['username'].casefold() in allowed)
+
+
+def grader_admin_principal(request: Request):
+    auth = admin_principal(request)
+    if not can_manage_graders(request, auth):
+        raise Fault('forbidden', 'Chỉ tài khoản quản lý máy chấm được làm việc này')
+    return auth
+
+
 def peer(request):
     import ipaddress
     host = request.client.host if request.client else "unknown"
@@ -92,4 +104,5 @@ def set_session(request, response, result):
     settings = request.app.state.settings
     response.set_cookie(COOKIE, result["token"], httponly=True, secure=settings.cookie_secure,
                         samesite="strict", path="/api", max_age=settings.admin_session_seconds if result['user']['role']=='admin' else settings.session_seconds)
-    return {key: value for key, value in result.items() if key != "token"}
+    return {**{key: value for key, value in result.items() if key != "token"},
+            'can_manage_graders': can_manage_graders(request, result)}

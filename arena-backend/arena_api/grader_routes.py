@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import Field
 from starlette.concurrency import run_in_threadpool
 from arena.protocol import Fault
-from arena_api.dependencies import admin_principal
+from arena_api.dependencies import admin_principal, grader_admin_principal
 from arena_api.schemas import Model
 
 router = APIRouter(prefix="/api/v1", tags=["graders"])
@@ -28,7 +28,7 @@ def download_signature(request, file, exp):
 
 def package_admin(request: Request):
     try:
-        return admin_principal(request)
+        return grader_admin_principal(request)
     except Fault as exc:
         if exc.code != 'unauthorized':
             raise
@@ -194,7 +194,7 @@ def listing(request: Request, auth=Depends(admin_principal)):
 
 
 @router.post("/admin/graders", status_code=201, summary="Tạo mã máy chấm; mã chỉ hiện một lần, DB chỉ lưu bản băm")
-def create(body: GraderCreate, request: Request, auth=Depends(admin_principal)):
+def create(body: GraderCreate, request: Request, auth=Depends(grader_admin_principal)):
     item = request.app.state.service.create_grader(body.name, auth["user"]["id"])
     with request.app.state.store.lock, request.app.state.store.db:
         request.app.state.accounts.audit(auth["user"]["id"], "grader.created", item["id"])
@@ -202,7 +202,7 @@ def create(body: GraderCreate, request: Request, auth=Depends(admin_principal)):
 
 
 @router.post("/admin/graders/{ident}/revoke", summary="Thu hồi mã; máy đó mất kết nối trong vài giây, job đang chạy được trả lại")
-def revoke(ident: str, request: Request, auth=Depends(admin_principal)):
+def revoke(ident: str, request: Request, auth=Depends(grader_admin_principal)):
     item = request.app.state.service.revoke_grader(ident, auth["user"]["id"])
     with request.app.state.store.lock, request.app.state.store.db:
         request.app.state.accounts.audit(auth["user"]["id"], "grader.revoked", ident)
@@ -210,7 +210,7 @@ def revoke(ident: str, request: Request, auth=Depends(admin_principal)):
 
 
 @router.post("/admin/graders/{ident}/delete", summary="Xóa máy chấm đã thu hồi khỏi danh sách; lịch sử ván vẫn ghi tên máy")
-def delete_grader(ident: str, request: Request, auth=Depends(admin_principal)):
+def delete_grader(ident: str, request: Request, auth=Depends(grader_admin_principal)):
     item = request.app.state.service.delete_grader(ident)
     with request.app.state.store.lock, request.app.state.store.db:
         request.app.state.accounts.audit(auth["user"]["id"], "grader.deleted", ident)

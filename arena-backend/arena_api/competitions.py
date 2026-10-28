@@ -216,6 +216,8 @@ class Competitions:
 
     def qualification(self, config, team, submission_id, benchmark_id):
         source = self.store.get(submission_id, team, "submission")
+        if source.get("channel") == "practice":
+            raise Fault('qualification_required', 'Bản thử nhanh chỉ dùng để kiểm và luyện tập; giải nhận bot từ GitHub')
         job = self.store.get(benchmark_id, team, "job")
         report = job.get("report") or job.get('qualification') or {}
         check_profile=benchmark_profile()
