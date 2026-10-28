@@ -30,6 +30,60 @@ class PublisherTests(APIHarness):
         self.addCleanup(value.close)
         return value
 
+    def test_restart_refreshes_completed_round_robin_and_elo_snapshots_once(self):
+        from arena_api.elo_rounds import RoundBook
+        from arena_api.publisher import atomic_gzip
+        source=self.store.create('submission','fixture',dict(version='restart-fixture'))
+        teams=('restart-team-a','restart-team-b')
+        elo=self.comp.create('test',dict(title='Completed Elo fixture',format='elo',max_teams=2,
+            runtime_id='sha256:'+'1'*64,submission_deadline=1_900_000_000_000),'publisher-restart-elo')
+        with self.store.transaction():
+            for team in teams:
+                self.store.db.execute('INSERT INTO teams(id,name,name_key,email,phone,members,created_ms) VALUES(?,?,?,?,?,?,?)',
+                    (team,team,team,'fixture@example.invalid','','[]',1))
+                self.store.db.execute('INSERT INTO competition_entries VALUES(?,?,?,?,?,?)',
+                    (self.ident,team,source['id'],source['id'],json.dumps(dict(version='restart-fixture')),1))
+        book=RoundBook(self.comp)
+        entries={team:dict(team_id=team,github_sha=str(i)*40) for i,team in enumerate(teams,1)}
+        book.seed_official(elo['id'],entries,1000)
+        rid=book.start(elo['id'],'round_robin',1,1000,entries)
+        for n,(red,blue) in enumerate((teams,teams[::-1]),1):
+            for cid in (self.ident,elo['id']):
+                result=dict(winner='red',reason='base_capture')
+                job=self.store.create('job','competition:'+cid,dict(kind='match',status='completed',report={}))
+                self.store.event(job['id'],'completed',dict(result=result))
+                with self.store.transaction():
+                    if cid==self.ident:
+                        self.store.db.execute("INSERT INTO competition_fixtures(id,competition_id,ordinal,red_team_id,blue_team_id,status,current_job_id,result) VALUES(?,?,?,?,?,'completed',?,?)",
+                            (uuid.uuid4().hex,cid,n,red,blue,job['id'],json.dumps(result)))
+                    else:
+                        self.store.db.execute("UPDATE elo_games SET status='completed',current_job_id=?,result=? WHERE round_id=? AND ordinal=?",(job['id'],json.dumps(result),rid,n))
+        book.finish(rid,2000)
+        with self.store.transaction():
+            for cid in (self.ident,elo['id']):self.store.db.execute("UPDATE competitions SET status='completed' WHERE id=?",(cid,))
+        first=Publisher(self.settings)
+        try:first.publish()
+        finally:first.close()
+        # Keep the saved cursor but emulate the snapshots left by an older publisher.
+        for cid in (self.ident,elo['id']):
+            cup=self.read(f'competitions/{cid}.json');cup.pop('recent_completed',None)
+            atomic_gzip(self.settings.data/f'snapshots/competitions/{cid}.json.gz',cup)
+            fixtures=self.read(f'fixtures/{cid}.json')
+            for row in fixtures['items']:row.pop('completed_ms',None)
+            atomic_gzip(self.settings.data/f'snapshots/fixtures/{cid}.json.gz',fixtures)
+        restarted=self.publisher()
+        with patch.object(restarted,'schedule',wraps=restarted.schedule) as schedule:
+            restarted.publish()
+            self.assertEqual({call.args[0] for call in schedule.call_args_list},{self.ident,elo['id']})
+            for cid in (self.ident,elo['id']):
+                fixtures=self.read(f'fixtures/{cid}.json')['items']
+                self.assertEqual(len(fixtures),2)
+                self.assertTrue(all(row['completed_ms']>0 for row in fixtures))
+                recent=self.read(f'competitions/{cid}.json')['recent_completed']
+                self.assertGreater(recent['completed_ms'],0)
+                self.assertIn(recent['id'],{row['id'] for row in fixtures})
+            schedule.reset_mock();restarted.publish();schedule.assert_not_called()
+
     def test_read_only_privacy_gzip_etag_and_visibility_tombstone(self):
         publisher=self.publisher()
         sentinel='PRIVATE-CANARY-do-not-publish'

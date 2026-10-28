@@ -233,7 +233,7 @@ class Publisher:
                     value = self.fixture(row)
                     boards.append(dict(competition_id=row['competition_id'],fixture_id=row['id'],**value))
             items = []
-            for ident in sorted(changed & visible):
+            for ident in sorted((changed & visible) | (visible - self.recent_games.keys())):
                 self.schedule(ident)
             for ident in sorted(visible):
                 item = public_competition(self.comp.view(ident))

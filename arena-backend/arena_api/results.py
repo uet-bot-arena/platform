@@ -14,6 +14,7 @@ from arena_api.snapshot_routes import PUBLIC_PATH, ID
 import re
 
 MAX_BYTES = 64 * 1024 * 1024
+MAX_JSON_BYTES = 64 * 1024 * 1024
 FORMAT = 'uet-arena-results/1'
 
 
@@ -87,7 +88,11 @@ class Results:
     def validate(self, raw):
         if len(raw)>MAX_BYTES:raise Fault('invalid_request','File kết quả tối đa 64 MB')
         try:
-            value=strict_json(gzip.decompress(raw))
+            d=zlib.decompressobj(16 + zlib.MAX_WBITS)
+            out=d.decompress(raw, MAX_JSON_BYTES + 1)
+            if len(out)>MAX_JSON_BYTES or not d.eof or d.unused_data:
+                raise Fault('invalid_request','File kết quả sau giải nén tối đa 64 MB')
+            value=strict_json(out)
         except (OSError,EOFError,ValueError,zlib.error) as exc:
             raise Fault('invalid_request','File gzip hoặc JSON không hợp lệ') from exc
         if not isinstance(value,dict) or value.get('format')!=FORMAT or not isinstance(value.get('name'),str) or not value['name'].strip():

@@ -82,6 +82,17 @@ class ResultImport(APIHarness):
             self.assertEqual(self.post(raw).status_code,400)
         self.assertEqual(self.app.state.accounts.rows('SELECT * FROM imported_events'),[])
 
+    def test_decompressed_upload_budget_rejects_a_gzip_bomb(self):
+        raw=gzip.compress(b'\0'*(65*1024*1024))
+        response=self.post(raw)
+        self.assertEqual(response.status_code,400,response.text)
+        self.assertEqual(response.json()['error']['detail'],'File kết quả sau giải nén tối đa 64 MB')
+
+    def test_real_export_still_previews_with_the_decompression_limit(self):
+        response=self.post(self.export())
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json()['competitions'][0]['id'],self.cid)
+
     def test_finals_export_includes_children_and_imported_catalog(self):
         final=dict(id='f'*32,name='Chung kết LAN',status='completed',teams=[],slots={'A':dict(competition_id=self.cid)},podium=[])
         atomic_gzip(self.source/('finals/'+final['id']+'.json.gz'),final)
