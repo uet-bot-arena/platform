@@ -1,3 +1,4 @@
+import {auditPath} from './audit-ui.js';
 import {importedEventFor,importedBanner,exportForm,importForm} from './imported-results.js';
 import {readPracticeFile} from './quick-practice.js';
 import {finalsForm,finalPairDetail} from './finals.js';
@@ -22,7 +23,7 @@ import {readRuleForm,ruleEditor,rulePreviewMarkup,botRulesetField,botRulesetSele
 
 const api=new ArenaAPI(),app=document.getElementById('app'),modalRoot=document.getElementById('modal-root');
 const defaults=()=>({finals:[],final:null,finalTeams:[],importedFinal:null,importedEvents:[],importedEvent:null,recentMatch:null,initialHistory:null,initialClock:null,announcements:[],adminAnnouncements:[],duplicates:[],queue:null,rankingLookup:null,historyTotal:null,teamElo:null,teamCompetitions:null,competitionSummary:null,selectedCompetition:'',github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
-const s={...defaults(),user:null,emailRequest:null,emailAddress:'',route:'home',ids:[],loading:false,adminTab:'accounts',registrationStatus:'pending',adminVisibility:'active',adminSearch:'',adminPage:1,opsTab:'jobs',opsPage:1,opsSearch:'',opsStatus:'',opsKind:'',opsTeam:''};
+const s={...defaults(),user:null,emailRequest:null,emailAddress:'',route:'home',ids:[],loading:false,adminTab:'accounts',registrationStatus:'pending',adminVisibility:'active',adminSearch:'',adminPage:1,opsTab:'jobs',opsPage:1,opsSearch:'',opsStatus:'',opsKind:'',opsTeam:'',auditRole:'',auditGroup:'',auditSearch:''};
 let emailPoll,githubPoll,resultsFile,resultsPreview,resultsSelection=[];
 let generation=0,board,competitionFeed,jobFeed,toastTimer,modalFocus,returnTo='home',issued=null,issuedGrader=null,refreshingGeneration=null;
 const refreshNotices=startAnnouncements(api);
@@ -112,7 +113,7 @@ async function loadRouteData(route,ids,q){
     work.push(api.all('/admin/submissions').then(x=>data.adminSubmissions=x));
     work.push(api.all('/admin/accounts').then(x=>data.accounts=x));
   }
-  if(route==='audit')work.push(api.all('/admin/audit').then(x=>data.audit=x));
+  if(route==='audit')work.push(api.all(auditPath(s)).then(x=>data.audit=x));
   if(route==='email')work.push(api.request('/admin/email').then(x=>data.mail=x));
   if(route==='graders'){work.push(api.request('/admin/graders').then(x=>data.graders=x));
     // A local hub may not publish a grader package.
@@ -384,6 +385,8 @@ document.addEventListener('change',async e=>{
     form.querySelector('[data-elo-time]').hidden=!elo;
   }
   const name=e.target.name,value=e.target.value;
+  const auditFilters={'audit-role':'auditRole','audit-group':'auditGroup','audit-search':'auditSearch'};
+  if(auditFilters[name]){s[auditFilters[name]]=value;try{await refreshData();}catch(error){handleError(error);}return;}
   if(name==='competition-scope'){go(competitionRoute(parseRoute().raw,value));return;}
   if(name==='use-experimental'){const label=e.target.form.querySelector('[data-experimental-select]'),select=label.querySelector('select');label.hidden=!e.target.checked;select.required=e.target.checked;if(!e.target.checked)select.value='';}
 

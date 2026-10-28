@@ -1,0 +1,1 @@
+ALTER TABLE audit ADD COLUMN ip TEXT;

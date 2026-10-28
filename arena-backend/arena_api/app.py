@@ -15,11 +15,11 @@ from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from arena.protocol import Fault
 from arena.service import Service, TERMINAL
 from arena.store import Store
-from arena_api.accounts import Accounts
+from arena_api.accounts import Accounts, audit_ip
 from arena_api.settings import Lease, Settings
 from arena_api import auth_routes, admin_routes, arena_routes, competition_routes, ui_routes, ruleset_routes, sample_bots, grader_routes, email_routes
 from arena_api.competitions import Competitions
-from arena_api.dependencies import SPECTATOR_PATHS
+from arena_api.dependencies import SPECTATOR_PATHS, peer
 
 ERROR_STATUS = {"not_found": 404, "unauthorized": 401, "forbidden": 403, "password_change_required": 403,
                 "quota_exceeded": 429, "rate_limited": 429, "worker_unavailable": 503,
@@ -77,6 +77,13 @@ class RequestBoundary:
             response = JSONResponse({"error": {"code": code, "detail": detail}, "request_id": ident}, status_code=status)
             await response(scope, receive, safe_send)
 
+        async def dispatch(receiver):
+            token=audit_ip.set(peer(Request(scope)))
+            try:
+                return await self.app(scope, receiver, safe_send)
+            finally:
+                audit_ip.reset(token)
+
         tunnel_webhook = (headers.get("host") in self.settings.github.webhook_hosts
                           and scope["path"] == "/api/v1/github/webhook" and scope["method"] == "POST")
         if headers.get("host") != urlsplit(self.settings.origin).netloc and not tunnel_webhook:
@@ -124,8 +131,8 @@ class RequestBoundary:
                     delivered = True
                     return {"type": "http.request", "body": bytes(body), "more_body": False}
                 return await receive()
-            return await self.app(scope, replay_body, safe_send)
-        await self.app(scope, receive, safe_send)
+            return await dispatch(replay_body)
+        await dispatch(receive)
 
 
 def create_app(settings=None, start_worker=True):

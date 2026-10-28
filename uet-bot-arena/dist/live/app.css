@@ -577,3 +577,6 @@ body:has(.real-auth) #announcements-banner { margin-left: 0; }
 .email-sent-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .practice-code{font-family:monospace;resize:vertical;width:100%;padding:12px;border:1px solid var(--line);border-radius:6px;color:var(--ink);background:var(--paper)}.recent-match{display:flex;align-items:center;gap:24px;flex-wrap:wrap}.recent-board{width:360px;max-width:100%}.recent-board .board-wrap{width:100%;margin:0}.recent-board .live-board{width:100%}.btn:disabled[title]{opacity:.55;cursor:not-allowed}
+
+.admin-filters>.field.competition-filter{flex:1;min-width:160px}.admin-filters>.admin-search-filter{flex:2}.scope-filter>.competition-filter,.people-filters>.competition-filter{max-width:360px}.audit-ip{white-space:nowrap}
+@media(max-width:480px){.admin-filters>.field.competition-filter,.admin-filters>.field.admin-search-filter{flex:1 1 100%;min-width:0;max-width:none}}

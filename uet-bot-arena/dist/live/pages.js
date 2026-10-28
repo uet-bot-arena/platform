@@ -1,3 +1,4 @@
+import {auditPage} from './audit-ui.js';
 import {importedBanner,resultsTools} from './imported-results.js';
 import {finalCard,finalsPage} from './finals.js';
 import {recentMatchPanel,submissionLabel} from './quick-practice.js';
@@ -157,6 +158,6 @@ export function page(s) {
   if(s.route==='guest-register')return authPage({...s,route:'register'});
   if(s.route==='guest-recover')return authPage({...s,route:'recover'});
   if(['login','register','recover','change-password'].includes(s.route)) return authPage(s);
-  let content=s.loading?empty(tr('Đang tải dữ liệu…')):s.error?`${head(tr('Chưa tải được trang.'))}<div class="form-error visible">${esc(s.error)}</div>${button(tr('Thử lại'),'refresh')}`:({rulesets:x=>x.ids?.[0]?addonDetailPage(x):addonPage(x),graders:gradersPage,email:emailPage,users:peopleAdminPage,matching:matchingPage,home,submissions,benchmark,practice,competitions,standings,limits:limitsPage,announcements:announcementsPage,queue:queuePage,team:x=>x.personal?accountTeamPage(x):team(x),admin,operations:x=>adminOperations(x)+sampleAdmin(x),guide,jobs:job,live:x=>schedule(x,true),schedule:x=>schedule(x,false),audit:x=>head(tr('Nhật ký quản trị.'),tr('Theo dõi thao tác; không ghi mật khẩu hoặc source.'))+panel(tr('Nhật ký'),table([tr('Người thực hiện'),tr('Thao tác'),tr('Đối tượng'),tr('Thời gian')],x.audit.map(a=>`<tr><td class="mono">${esc(a.actor)}</td><td>${esc(a.action)}</td><td class="mono">${esc(a.target)}</td><td>${date(a.created_ms)}</td></tr>`)))}[s.route]?.(s)||'');
+  let content=s.loading?empty(tr('Đang tải dữ liệu…')):s.error?`${head(tr('Chưa tải được trang.'))}<div class="form-error visible">${esc(s.error)}</div>${button(tr('Thử lại'),'refresh')}`:({rulesets:x=>x.ids?.[0]?addonDetailPage(x):addonPage(x),graders:gradersPage,email:emailPage,users:peopleAdminPage,matching:matchingPage,home,submissions,benchmark,practice,competitions,standings,limits:limitsPage,announcements:announcementsPage,queue:queuePage,team:x=>x.personal?accountTeamPage(x):team(x),admin,operations:x=>adminOperations(x)+sampleAdmin(x),guide,jobs:job,live:x=>schedule(x,true),schedule:x=>schedule(x,false),audit:auditPage}[s.route]?.(s)||'');
   return shell(s,content);
 }

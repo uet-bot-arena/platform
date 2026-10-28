@@ -7,11 +7,15 @@ import threading
 import time
 import unicodedata
 import uuid
+import ipaddress
+from contextvars import ContextVar
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError, InvalidHashError
 from arena.protocol import Fault
 from arena_api.migrations import migrate
+
+audit_ip = ContextVar('audit_ip', default=None)
 
 
 def now_ms():
@@ -66,8 +70,8 @@ class Accounts:
             return [dict(zip(keys, row)) for row in cursor.fetchall()]
 
     def audit(self, actor, action, target):
-        # Deliberately records identifiers only, never request bodies or secrets.
-        self.db.execute("INSERT INTO audit(actor,action,target,created_ms) VALUES(?,?,?,?)", (actor, action, target, now_ms()))
+        # Never record request bodies or secrets.
+        self.db.execute("INSERT INTO audit(actor,action,target,created_ms,ip) VALUES(?,?,?,?,?)", (actor, action, target, now_ms(), audit_ip.get()))
 
     @staticmethod
     def public(account):
@@ -318,6 +322,34 @@ class Accounts:
                 self.audit(actor, 'recovery.resolved', ident)
             return {'ok': True}
 
-    def audit_log(self, limit, offset):
+    def audit_log(self, limit, offset, role=None, group=None, q='', full_ip=True):
+        where=[];args=[]
+        if role=='admin':where.append("actor.role='admin'")
+        elif role=='team':where.append("actor.role IN ('guest','student','team')")
+        elif role=='system':where.append('actor.id IS NULL')
+        groups={'auth':['auth.'],'competition':['competition.','elo.','finals.','season.'],'grader':['grader.'],
+                'account':['team.','registration.','person.','account.','admin.','recovery.'],
+                'results':['results.'],'bot':['submission.','github.','sample_bot.']}
+        if group in groups:
+            where.append('('+' OR '.join('instr(a.action,?)=1' for _ in groups[group])+')')
+            args.extend(groups[group])
+        if q:
+            where.append("(instr(lower(COALESCE(actor.username,'')),lower(?))>0 OR instr(lower(COALESCE(a.ip,'')),lower(?))>0)")
+            args.extend([q,q])
+        sql="""SELECT a.*,actor.username AS actor_username,actor.role AS actor_role,
+               COALESCE(account.username,team.name,cup.title,final.name,grader.name) AS target_label
+               FROM audit a LEFT JOIN accounts actor ON actor.id=a.actor
+               LEFT JOIN accounts account ON account.id=a.target LEFT JOIN teams team ON team.id=a.target
+               LEFT JOIN competitions cup ON cup.id=a.target LEFT JOIN finals final ON final.id=a.target
+               LEFT JOIN graders grader ON grader.id=a.target"""
+        if where:sql+=' WHERE '+' AND '.join(where)
         with self.store.lock:
-            return self.rows("SELECT * FROM audit ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset))
+            rows=self.rows(sql+' ORDER BY a.id DESC LIMIT ? OFFSET ?',(*args,limit,offset))
+        if not full_ip:
+            for row in rows:
+                if not row['ip']:continue
+                try:
+                    ip=ipaddress.ip_address(row['ip'])
+                    row['ip']='.'.join(str(ip).split('.')[:2])+'.x.x' if ip.version==4 else ':'.join(f'{int(part,16):x}' for part in ip.exploded.split(':')[:2])+':x:x:x:x:x:x'
+                except ValueError:row['ip']=None
+        return rows
