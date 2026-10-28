@@ -386,7 +386,7 @@ document.addEventListener('change',async e=>{
   }
   const name=e.target.name,value=e.target.value;
   const auditFilters={'audit-role':'auditRole','audit-group':'auditGroup','audit-search':'auditSearch'};
-  if(auditFilters[name]){s[auditFilters[name]]=value;try{await refreshData();}catch(error){handleError(error);}return;}
+  if(auditFilters[name]){s[auditFilters[name]]=value;await openRoute();return;}
   if(name==='competition-scope'){go(competitionRoute(parseRoute().raw,value));return;}
   if(name==='use-experimental'){const label=e.target.form.querySelector('[data-experimental-select]'),select=label.querySelector('select');label.hidden=!e.target.checked;select.required=e.target.checked;if(!e.target.checked)select.value='';}
 
