@@ -39,6 +39,8 @@ class Competitions:
         self.suite_sha256 = digest(fixtures())
         from arena_api.elo_scheduler import EloScheduler
         self.elo = EloScheduler(self)
+        from arena_api.finals import Finals
+        self.finals = Finals(self)
         # Running competitions keep scheduling; interrupted games get a fresh attempt.
         # A competition explicitly paused by the organiser stays paused.
         self.reconcile()
@@ -94,36 +96,39 @@ class Competitions:
         """(grader_platform, runtime_id) official work must run on. Older configs: linux + image_id."""
         return config.get("grader_platform", "linux"), runtime_of(config)
 
-    def create(self, actor, body, key):
+    def config_for(self, body):
+        snapshot = self.service.rulesets.resolve(body.get("ruleset_id")) if self.service.rulesets else None
+        platform = body.get("grader_platform", "windows")
+        runtime_id = body.get("runtime_id") or self.service.runtime_for(platform)
+        if not runtime_id:
+            raise Fault("competition_conflict", f"Chưa có máy chấm {platform} nào kết nối; chạy máy chấm trước hoặc ghi rõ runtime_id")
+        config = {"format": "double_round_robin", "ranking": "points_h2h_wins", "scoring": dict(body.get("scoring", SCORING)), "max_teams": body["max_teams"], "adjudication": dict(CURRENT),
+                  "profile": request_profile(body).public(), "runtime": "cpp17", "protocol_version": 2,
+                  "grader_platform": platform, "runtime_id": runtime_id, "engine_id": engine.ENGINE_ID, "engine_sha256": engine.ENGINE_SHA256,
+                  "sdk_sha256": sandbox.sdk_hash(),
+                  "build_flags": BUILD_FLAGS, "suite_id": "ottv2-public-smoke-v1", "suite_sha256": self.suite_sha256}
+        if snapshot:
+            config.update(ruleset=snapshot,protocol_version=3,engine_id=experimental.ENGINE_ID,
+                          engine_sha256=experimental.ENGINE_SHA256,sdk_sha256=experimental.sdk_hash(),suite_id='ottv2-experimental-smoke-v1',
+                          suite_sha256=digest(fixtures(experimental.provider(snapshot))))
+        if body.get("basic_rules"):
+            pack = basic_rules.validated_snapshot(body["basic_rules"])
+            d = pack["definition"]
+            config.update(basic_rules=pack, profile=scale_profile(request_profile(body), d["rows"]*d["cols"]).public(),
+                          suite_sha256=digest(fixtures(basic_rules.provider(pack))))
+        config.update(format=body.get("format", "double_round_robin"), rounds=body.get("rounds"),
+                      runtime_flags={r:runtime_flags(r) for r in ("cpp17","c11","python3")},
+                      runtimes=["cpp17", "c11", "python3"], python_interpreter="pypy3",
+                      toolchains={"cpp17":"g++ -std=c++17 -O2", "c11":"gcc -std=c11 -O2", "python3":PYTHON_TOOLCHAIN})
+        if config["format"] == "swiss":
+            config["ranking"] = "points_buchholz"
+        if config['format']=='elo':
+            config.update(ladder=body.get('ladder',dict(round_hours=2)),official=dict({'match_ms':10000},**body.get('official',dict(general_rounds=20,group_size=64,finalists=16,k=[[20,32],[None,16]]))),ranking='round_robin_points',scoring=dict(win=1,draw=.5,loss=0))
+        return config
+
+    def create(self, actor, body, key, *, pinned_config=None):
         def prepare():
-            snapshot = self.service.rulesets.resolve(body.get("ruleset_id")) if self.service.rulesets else None
-            platform = body.get("grader_platform", "windows")
-            runtime_id = body.get("runtime_id") or self.service.runtime_for(platform)
-            if not runtime_id:
-                raise Fault("competition_conflict", f"Chưa có máy chấm {platform} nào kết nối; chạy máy chấm trước hoặc ghi rõ runtime_id")
-            config = {"format": "double_round_robin", "ranking": "points_shared_rank", "scoring": dict(body.get("scoring", SCORING)), "max_teams": body["max_teams"], "adjudication": dict(CURRENT),
-                      "profile": request_profile(body).public(), "runtime": "cpp17", "protocol_version": 2,
-                      "grader_platform": platform, "runtime_id": runtime_id, "engine_id": engine.ENGINE_ID, "engine_sha256": engine.ENGINE_SHA256,
-                      "sdk_sha256": sandbox.sdk_hash(),
-                      "build_flags": BUILD_FLAGS, "suite_id": "ottv2-public-smoke-v1", "suite_sha256": self.suite_sha256}
-            if snapshot:
-                config.update(ruleset=snapshot,protocol_version=3,engine_id=experimental.ENGINE_ID,
-                              engine_sha256=experimental.ENGINE_SHA256,sdk_sha256=experimental.sdk_hash(),suite_id='ottv2-experimental-smoke-v1',
-                              suite_sha256=digest(fixtures(experimental.provider(snapshot))))
-            if body.get("basic_rules"):
-                pack = basic_rules.validated_snapshot(body["basic_rules"])
-                d = pack["definition"]
-                config.update(basic_rules=pack, profile=scale_profile(request_profile(body), d["rows"]*d["cols"]).public(),
-                              suite_sha256=digest(fixtures(basic_rules.provider(pack))))
-            config.update(format=body.get("format", "double_round_robin"), rounds=body.get("rounds"),
-                          runtime_flags={r:runtime_flags(r) for r in ("cpp17","c11","python3")},
-                          runtimes=["cpp17", "c11", "python3"], python_interpreter="pypy3",
-                          toolchains={"cpp17":"g++ -std=c++17 -O2", "c11":"gcc -std=c11 -O2", "python3":PYTHON_TOOLCHAIN})
-            if config["format"] == "swiss":
-                config["ranking"] = "points_buchholz"
-            if config['format']=='elo':
-                config.update(ladder=body.get('ladder',dict(round_hours=2)),official=dict({'match_ms':10000},**body.get('official',dict(general_rounds=20,group_size=64,finalists=16,k=[[20,32],[None,16]]))),ranking='round_robin_points',scoring=dict(win=1,draw=.5,loss=0))
-            return config
+            return dict(pinned_config, max_teams=body["max_teams"]) if pinned_config else self.config_for(body)
         def action(config):
             if self.db.execute("SELECT COUNT(*) FROM competitions").fetchone()[0] >= 100:
                 raise Fault("quota_exceeded", "Local beta allows 100 competitions")
@@ -259,7 +264,7 @@ class Competitions:
     def add_team(self, actor, team, ident, key):
         return self.enter(actor, team, ident, {'team_id':team}, key, admin=True)
 
-    def enter(self, actor, team, ident, body, key, *, admin=False):
+    def enter(self, actor, team, ident, body, key, *, admin=False, pinned=False):
         def action():
             if hasattr(self, "teams"):
                 self.teams.eligible(team)
@@ -270,7 +275,7 @@ class Competitions:
             count = self.db.execute("SELECT COUNT(*) FROM competition_entries WHERE competition_id=? AND team_id<>?", (ident, team)).fetchone()[0]
             if count >= item["config"]["max_teams"]:
                 raise Fault("quota_exceeded", "Competition entry limit reached")
-            selected = self.latest_qualified(item["config"], team) if admin else body
+            selected = self.latest_qualified(item["config"], team) if admin and not pinned else body
             snapshot = self.qualification(item["config"], team, selected["submission_id"], selected["benchmark_id"])
             self.db.execute("INSERT INTO competition_entries VALUES(?,?,?,?,?,?) ON CONFLICT(competition_id,team_id) DO UPDATE SET submission_id=excluded.submission_id, benchmark_id=excluded.benchmark_id, snapshot=excluded.snapshot, accepted_ms=excluded.accepted_ms",
                             (ident, team, selected["submission_id"], selected["benchmark_id"], json.dumps(snapshot), now_ms()))
@@ -509,6 +514,7 @@ class Competitions:
     def tick(self):
         self.elo.tick()
         self.reconcile()
+        self.finals.tick()
         with self.store.lock:
             if self.stop.is_set() or self.service.stop.is_set() or self.service.pending.full():
                 return
@@ -644,7 +650,10 @@ class Competitions:
                 opponents[fixture["red_team_id"]].add(fixture["blue_team_id"])
             for t, team in scores.items():
                 team["buchholz"] = sum(scores[o]["points"] for o in opponents[t])
-        rows = sorted(scores.values(), key=lambda s: (-s["points"], -s.get("buchholz",0), s["team_id"]))
+        if not swiss:
+            from arena_api.ranking import head_to_head
+            head_to_head(scores, self.rows("SELECT * FROM competition_fixtures WHERE competition_id=? AND status='completed'", (ident,)), scoring)
+        rows = sorted(scores.values(), key=lambda s: (-s["points"], -s.get("buchholz",0), -s.get("head_to_head",0), -s["wins"] if not swiss else 0, s["team_id"]))
         previous, rank = None, 0
         index = 0
         for row in rows:
@@ -654,11 +663,11 @@ class Competitions:
                 row["rank"] = None
                 continue
             index += 1
-            key = (row["points"], row.get("buchholz",0))
+            key = (row["points"], row.get("buchholz",0)) if swiss else (row["points"], row["head_to_head"], row["wins"])
             if key != previous:
                 rank = index
             row["rank"], previous = rank, key
-        return {"competition_id": ident, "ranking": "points_buchholz" if swiss else "points_shared_rank", "scoring": dict(scoring),
+        return {"competition_id": ident, "ranking": "points_buchholz" if swiss else "points_h2h_wins", "scoring": dict(scoring),
                 "provisional": item["status"] != "completed", "items": rows}
 
     def attempts(self, ident, fixture_id):

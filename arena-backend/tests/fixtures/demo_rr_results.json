@@ -1,0 +1,457 @@
+{
+  "scoring": {
+    "win": 3,
+    "draw": 1,
+    "loss": 0
+  },
+  "games": [
+    {
+      "red": "DEMO 8",
+      "blue": "DEMO 3",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 1",
+      "blue": "DEMO 2",
+      "result": {
+        "winner": "blue",
+        "reason": "type_eliminated"
+      }
+    },
+    {
+      "red": "DEMO 7",
+      "blue": "DEMO 4",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 6",
+      "blue": "DEMO 5",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 1",
+      "blue": "DEMO 8",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 3",
+      "blue": "DEMO 4",
+      "result": {
+        "winner": "red",
+        "reason": "type_eliminated"
+      }
+    },
+    {
+      "red": "DEMO 6",
+      "blue": "DEMO 2",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 7",
+      "blue": "DEMO 5",
+      "result": {
+        "winner": "red",
+        "reason": "type_eliminated"
+      }
+    },
+    {
+      "red": "DEMO 8",
+      "blue": "DEMO 4",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 6",
+      "blue": "DEMO 1",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 3",
+      "blue": "DEMO 5",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 7",
+      "blue": "DEMO 2",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 6",
+      "blue": "DEMO 8",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 4",
+      "blue": "DEMO 5",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 7",
+      "blue": "DEMO 1",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 3",
+      "blue": "DEMO 2",
+      "result": {
+        "winner": "red",
+        "reason": "type_eliminated"
+      }
+    },
+    {
+      "red": "DEMO 8",
+      "blue": "DEMO 5",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 7",
+      "blue": "DEMO 6",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 4",
+      "blue": "DEMO 2",
+      "result": {
+        "winner": "red",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 3",
+      "blue": "DEMO 1",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 7",
+      "blue": "DEMO 8",
+      "result": {
+        "winner": "red",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 5",
+      "blue": "DEMO 2",
+      "result": {
+        "winner": "red",
+        "reason": "type_eliminated"
+      }
+    },
+    {
+      "red": "DEMO 3",
+      "blue": "DEMO 6",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 4",
+      "blue": "DEMO 1",
+      "result": {
+        "winner": "red",
+        "reason": "type_eliminated"
+      }
+    },
+    {
+      "red": "DEMO 8",
+      "blue": "DEMO 2",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 3",
+      "blue": "DEMO 7",
+      "result": {
+        "winner": "red",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 5",
+      "blue": "DEMO 1",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 4",
+      "blue": "DEMO 6",
+      "result": {
+        "winner": "red",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 3",
+      "blue": "DEMO 8",
+      "result": {
+        "winner": "red",
+        "reason": "type_eliminated"
+      }
+    },
+    {
+      "red": "DEMO 2",
+      "blue": "DEMO 1",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 4",
+      "blue": "DEMO 7",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 5",
+      "blue": "DEMO 6",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 8",
+      "blue": "DEMO 1",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 4",
+      "blue": "DEMO 3",
+      "result": {
+        "winner": "red",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 2",
+      "blue": "DEMO 6",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 5",
+      "blue": "DEMO 7",
+      "result": {
+        "winner": "blue",
+        "reason": "type_eliminated"
+      }
+    },
+    {
+      "red": "DEMO 4",
+      "blue": "DEMO 8",
+      "result": {
+        "winner": "red",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 1",
+      "blue": "DEMO 6",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 5",
+      "blue": "DEMO 3",
+      "result": {
+        "winner": "red",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 2",
+      "blue": "DEMO 7",
+      "result": {
+        "winner": "blue",
+        "reason": "type_eliminated"
+      }
+    },
+    {
+      "red": "DEMO 8",
+      "blue": "DEMO 6",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 5",
+      "blue": "DEMO 4",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 1",
+      "blue": "DEMO 7",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 2",
+      "blue": "DEMO 3",
+      "result": {
+        "winner": "blue",
+        "reason": "type_eliminated"
+      }
+    },
+    {
+      "red": "DEMO 5",
+      "blue": "DEMO 8",
+      "result": {
+        "winner": "red",
+        "reason": "type_eliminated"
+      }
+    },
+    {
+      "red": "DEMO 6",
+      "blue": "DEMO 7",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 2",
+      "blue": "DEMO 4",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 1",
+      "blue": "DEMO 3",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 8",
+      "blue": "DEMO 7",
+      "result": {
+        "winner": "red",
+        "reason": "type_eliminated"
+      }
+    },
+    {
+      "red": "DEMO 2",
+      "blue": "DEMO 5",
+      "result": {
+        "winner": "red",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 6",
+      "blue": "DEMO 3",
+      "result": {
+        "winner": "blue",
+        "reason": "type_eliminated"
+      }
+    },
+    {
+      "red": "DEMO 1",
+      "blue": "DEMO 4",
+      "result": {
+        "winner": "red",
+        "reason": "type_eliminated"
+      }
+    },
+    {
+      "red": "DEMO 2",
+      "blue": "DEMO 8",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 7",
+      "blue": "DEMO 3",
+      "result": {
+        "winner": "red",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 1",
+      "blue": "DEMO 5",
+      "result": {
+        "winner": "blue",
+        "reason": "base_capture"
+      }
+    },
+    {
+      "red": "DEMO 6",
+      "blue": "DEMO 4",
+      "result": {
+        "winner": "red",
+        "reason": "type_eliminated"
+      }
+    }
+  ]
+}

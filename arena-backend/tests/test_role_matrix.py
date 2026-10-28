@@ -77,6 +77,7 @@ class RoleMatrix(APIHarness):
                             if '/teams'==route.path.removeprefix('/api/v1/admin'):body={'profile':registration(),'username':'matrixuser'}
                             if route.path.endswith('/teams/{ident}/edit'):body={**registration(),'expected_revision':1}
                             if route.path.endswith('/matches'):body={'red_submission_id':'a'*32,'blue_submission_id':'b'*32,'delegate_timeout_claims':True}
+                            if route.path=='/api/v1/admin/finals':body={'name':'Matrix finals','teams':[dict(team_id=format(i,'032x'),online_rank=i) for i in range(1,17)]}
                         else:headers['Content-Type']='application/zip'
                     for role,client in clients.items():
                         for csrf in (False,True):
@@ -85,7 +86,7 @@ class RoleMatrix(APIHarness):
                             # Grader endpoints accept only a grader token, never a session cookie.
                             # Signed downloads authenticate in the real handler, covered by test_grader_downloads.
                             if route.path=='/api/v1/grader/download/{exp}/{sig}/{file}':expected=200
-                            elif (route.path=='/api/v1/admin/grader-package' or route.path.startswith('/api/v1/admin/results-')) and role in ('guest','locked','archived','grader'):expected=403
+                            elif (route.path=='/api/v1/admin/grader-package' or route.path.startswith(('/api/v1/admin/results-','/api/v1/admin/finals'))) and role in ('guest','locked','archived','grader'):expected=403
                             elif route.path.startswith('/api/v1/grader/'):expected=200 if role=='grader' else 401
                             elif route.path in public or method=='GET' and route.path in SPECTATOR_PATHS:expected=200
                             elif role in ('guest','locked','archived','grader'):expected=401

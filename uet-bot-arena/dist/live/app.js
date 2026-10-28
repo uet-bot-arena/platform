@@ -20,7 +20,7 @@ import {publicRoute} from './access.js';
 import {readRuleForm,ruleEditor,rulePreviewMarkup,botRulesetField,botRulesetSelection,ruleFingerprint} from './experimental-ui.js';
 
 const api=new ArenaAPI(),app=document.getElementById('app'),modalRoot=document.getElementById('modal-root');
-const defaults=()=>({importedEvents:[],importedEvent:null,recentMatch:null,initialHistory:null,initialClock:null,announcements:[],adminAnnouncements:[],duplicates:[],queue:null,rankingLookup:null,historyTotal:null,teamElo:null,teamCompetitions:null,competitionSummary:null,selectedCompetition:'',github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
+const defaults=()=>({finals:[],final:null,finalTeams:[],importedFinal:null,importedEvents:[],importedEvent:null,recentMatch:null,initialHistory:null,initialClock:null,announcements:[],adminAnnouncements:[],duplicates:[],queue:null,rankingLookup:null,historyTotal:null,teamElo:null,teamCompetitions:null,competitionSummary:null,selectedCompetition:'',github:null,personal:null,people:[],matching:null,teamPolicy:null,teamMerges:null,teamChoices:[],team:null,competitions:[],competition:null,fixtures:[],standings:null,submissions:[],jobs:[],job:null,dashboard:null,registrations:[],accounts:[],recoveries:[],audit:[],jobProgress:null,metrics:null,adminJobs:[],adminSubmissions:[],rulesetCatalog:null,ruleEditing:null,ruleDraft:null,ruleNotes:null,ruleDetail:null,rulePlay:null,rulePlayActions:[],rulePreview:null,rulePreviewDefinition:null,rulePreviewActions:[]});
 const s={...defaults(),user:null,emailRequest:null,emailAddress:'',route:'home',ids:[],loading:false,adminTab:'accounts',registrationStatus:'pending',adminVisibility:'active',adminSearch:'',adminPage:1,opsTab:'jobs',opsPage:1,opsSearch:'',opsStatus:'',opsKind:'',opsTeam:''};
 let emailPoll,githubPoll,resultsFile,resultsPreview,resultsSelection=[];
 let generation=0,board,competitionFeed,jobFeed,toastTimer,modalFocus,returnTo='home',issued=null,issuedGrader=null,refreshingGeneration=null;
@@ -46,6 +46,17 @@ function handleError(e){if(e.status===401&&s.user)expired();else if(e.code==='pa
 function parseRoute(){const raw=location.hash.replace(/^#\/?/,'')||'home',[path,query='']=raw.split('?'),parts=path.split('/');return{route:parts[0],ids:parts.slice(1),query:new URLSearchParams(query),raw};}
 async function loadData(route,ids,q){
   api.admin=s.user?.role==='admin';
+  let finals=[];
+  if(['home','competitions','finals'].includes(route))finals=(await api.snapshot('finals.json')).items;
+  if(route==='finals'){
+    const events=(await api.snapshot('imported.json')).items;
+    const importedFinal=events.find(e=>(e.finals||[]).some(f=>f.id===ids[0]));
+    const native=api.admin&&!importedFinal&&q.get('chieu')!=='1';
+    if(native)finals=(await api.request('/admin/finals')).items.concat(finals.filter(f=>events.some(e=>(e.finals||[]).some(x=>x.id===f.id))));
+    const final=ids[0]?await (native?api.request('/admin/finals/'+enc(ids[0])):api.snapshot('finals/'+enc(ids[0])+'.json')):null;
+    const extra=api.admin&&!ids[0]?{finalTeams:[...new Map((await api.all('/admin/accounts')).filter(a=>a.team&&!a.team.archived_ms).map(a=>[a.team.id,a.team])).values()],rulesetCatalog:await api.request('/admin/rulesets')}:{};
+    return {finals,final,importedFinal,...extra};
+  }
   let items=[];
   if(['home','competitions','standings','schedule','arena','replay'].includes(route)){
     try{items=(await api.snapshot('imported.json')).items;}catch(error){if(error.status!==404)throw error;}
@@ -54,7 +65,7 @@ async function loadData(route,ids,q){
   const importedEvent=importedEventFor(items,route,ids,q);
   const data=importedEvent?await participantData(api,null,route,ids,q):await loadRouteData(route,ids,q);
   if(importedEvent&&data.competition&&!data.competitions.some(c=>c.id===data.competition.id))data.competitions.push(data.competition);
-  return {...data,importedEvent,importedEvents:items};
+  return {...data,finals,importedEvent,importedEvents:items};
 }
 async function loadRouteData(route,ids,q){
   api.admin=s.user?.role==='admin';
@@ -120,7 +131,7 @@ async function loadRouteData(route,ids,q){
 async function openRoute(){
   const parsed=parseRoute(),id=++generation;clearView();
   if(parsed.route==='experimental'){history.replaceState(null,'','#/rulesets');openRoute();return;}
-  const supported=['home','login','verify-email','set-password','guest-register','guest-recover','email','register','recover','change-password','guide','team','matching','users','submissions','benchmark','practice','competitions','jobs','admin','operations','graders','rulesets','audit','schedule','live','standings','queue','announcements','limits','arena','replay'];
+  const supported=['home','login','verify-email','set-password','guest-register','guest-recover','email','register','recover','change-password','guide','team','matching','users','submissions','benchmark','practice','competitions','finals','jobs','admin','operations','graders','rulesets','audit','schedule','live','standings','queue','announcements','limits','arena','replay'];
   if(!supported.includes(parsed.route)){go('home');return;}
   if(!s.user&&!publicRoute(parsed.route,parsed.ids)){returnTo=parsed.raw;go('login');return;}
   if(s.user?.must_change_password&&parsed.route!=='change-password'){go('change-password');return;}
@@ -179,6 +190,9 @@ let eloPoll;
 function watchElo(id){
   eloPoll?.close();
   if(id!==generation)return;
+  if(s.route==='finals'){
+    eloPoll=visiblePoll(async()=>{const data=await loadData(s.route,s.ids,s.query);if(id===generation){Object.assign(s,data);patchPage();}},s.query.get('chieu')==='1'?3000:30000,{onError:handleError});return;
+  }
   const cid=s.competition?.id,common=['home','competitions','schedule','live','standings','queue','announcements'].includes(s.route);
   if(!common)return;
   eloPoll=visiblePoll(async()=>{
@@ -300,8 +314,11 @@ document.addEventListener('submit',e=>{
       const pw=data.get('new-password');if(pw.length<8)throw new Error(tr('Mật khẩu mới phải có ít nhất 8 ký tự.'));if(pw!==data.get('confirm-password'))throw new Error(tr('Hai lần nhập mật khẩu mới chưa khớp.'));
       const result=await api.post('/auth/password',{current_password:data.get('current-password'),new_password:pw});s.user=result.user;s.canManageGraders=result.can_manage_graders;form.reset();authChanged();toast(tr('Đã đổi mật khẩu và thu hồi các phiên cũ.'));go('home');
     }else if(form.id==='results-export-form'){
-      const selected=resultsSelection;if(!selected.length)throw new Error(tr('Chọn ít nhất một giải đã hoàn tất.'));
-      const query=new URLSearchParams({name:v('event_name'),competitions:selected.join(',')}),stamp=new Date().toISOString().replace(/\D/g,'').slice(0,12);saveBlob('ket-qua-'+stamp.slice(0,8)+'-'+stamp.slice(8)+'.json.gz',await api.blob('/admin/results-export?'+query));closeModal();
+      const selected=resultsSelection,finalIds=data.getAll('finals');if(!selected.length&&!finalIds.length)throw new Error(tr('Chọn ít nhất một giải đã hoàn tất.'));
+      const query=new URLSearchParams({name:v('event_name'),competitions:selected.join(','),finals:finalIds.join(',')}),stamp=new Date().toISOString().replace(/\D/g,'').slice(0,12);saveBlob('ket-qua-'+stamp.slice(0,8)+'-'+stamp.slice(8)+'.json.gz',await api.blob('/admin/results-export?'+query));closeModal();
+    }else if(form.id==='finals-form'){
+      const teams=Array.from({length:16},(_,i)=>({team_id:v('team-'+i),online_rank:Number(v('rank-'+i))}));
+      const final=await api.post('/admin/finals',{name:v('name'),teams,...timeBody(data),grader_platform:v('grader_platform'),pause_between_rounds:data.get('pause_between_rounds')==='on',...(v('ruleset_id')?{ruleset_id:v('ruleset_id')}:{})},keyFor(form));go('finals/'+final.id);
     }else if(form.id==='results-import-form'){
       resultsFile=data.get('results');if(!resultsFile?.size||resultsFile.size>64*1024*1024)throw new Error(tr('File kết quả tối đa 64 MB'));
       resultsPreview=await api.request('/admin/results-import?preview=1',{method:'POST',body:resultsFile,headers:{'Content-Type':'application/gzip'}});modal(tr('Nạp kết quả từ hub LAN'),importForm(resultsPreview));
@@ -512,6 +529,10 @@ document.addEventListener('click',async e=>{
     }
     if(action==='account-lock'){const locked=b.dataset.locked!=='true';confirmAction(locked?tr('Khóa tài khoản?'):tr('Mở khóa tài khoản?'),locked?tr('Đội sẽ bị đăng xuất và không thể đăng nhập cho tới khi mở khóa.'):tr('Đội có thể đăng nhập lại với mật khẩu hiện tại.'),()=>api.post('/admin/accounts/'+b.dataset.id+'/lock',{locked}));return;}
     if(action==='delivered'){b.disabled=true;await api.post('/admin/accounts/'+b.dataset.id+'/delivered');await refreshAdmin();return;}
+    if(action==='finals-command'){
+      if(b.dataset.command==='stop'&&!confirm(tr('Dừng tự động và giữ các giải con để điều hành bằng tay?')))return;
+      b.disabled=true;await api.post('/admin/finals/'+enc(s.final.id)+'/'+b.dataset.command,{});await refreshData();return;
+    }
     if(action==='results-export'){resultsSelection=[];modal(tr('Xuất kết quả lên web'),exportForm(s));return;}
     if(action==='results-import'){resultsFile=null;resultsPreview=null;modal(tr('Nạp kết quả từ hub LAN'),importForm());return;}
     if(action==='results-confirm'){

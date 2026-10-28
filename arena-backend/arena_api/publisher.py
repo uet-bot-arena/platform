@@ -95,6 +95,8 @@ class Publisher:
         comp = Competitions.__new__(Competitions)
         comp.store, comp.db, comp.accounts, comp.service = store, self.db, accounts, service
         comp.elo = EloScheduler(comp)
+        from arena_api.finals import Finals
+        comp.finals = Finals(comp)
         self.comp, self.service = comp, service
         self.cursor_file = self.output/'.cursor'
         self.cursor = int(self.cursor_file.read_text()) if self.cursor_file.exists() else 0
@@ -259,6 +261,10 @@ class Publisher:
             self.write('announcements.json',dict(items=notices))
             from arena_api.results import listing as imported_events
             self.write('imported.json', imported_events(self.db))
+            finals=self.comp.finals.listing()['items']
+            for item in finals:self.write('finals/'+item['id']+'.json',item)
+            imported=imported_events(self.db)['items']
+            self.write('finals.json',dict(items=finals+[f for event in imported for f in event.get('finals',[])]))
             self.db.commit()
             partial = self.cursor_file.with_suffix('.tmp')
             partial.write_text(str(version),encoding='ascii');partial.replace(self.cursor_file)

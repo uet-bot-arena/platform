@@ -254,7 +254,7 @@ class MigrationAndPersistence(unittest.TestCase):
             with self.assertRaises(Fault):accounts.principal("migration-only-existing-token")
             self.assertEqual(store.db.execute('SELECT COUNT(*) FROM sessions').fetchone()[0],0)
             self.assertTrue(accounts.verify(accounts.one("SELECT password_hash FROM accounts")["password_hash"], "migration-only-existing-password"))
-            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], list(range(1, 17)))
+            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], list(range(1, 18)))
             self.assertEqual(store.db.execute("SELECT COUNT(*) FROM competitions").fetchone()[0], 0)
             store.db.close()
 
@@ -304,7 +304,7 @@ class MigrationAndPersistence(unittest.TestCase):
             store = Store(directory, recover_jobs=False)
             accounts = Accounts(store)
             self.assertEqual(accounts.principal(token)["user"]["role"], "admin")
-            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], list(range(1, 17)))
+            self.assertEqual([r[0] for r in store.db.execute("SELECT version FROM schema_migrations ORDER BY version")], list(range(1, 18)))
             store.db.close()
 
     def test_single_controller_lease_and_public_secure_cookie_config(self):

@@ -310,9 +310,9 @@ class CompetitionAPI(APIHarness):
         result(b,d,b,status='attention')   # Unscored errors never earn points.
         scores = self.comp.standings(comp['id'])
         by_team = {r['team_id']:r for r in scores['items']}
-        self.assertEqual(scores['ranking'], 'points_shared_rank')
-        self.assertEqual([(r['points'],r['rank']) for r in scores['items']], [(5,1),(3,2),(3,2),(1,4)])
-        self.assertEqual((by_team[a]['wins'],by_team[a]['draws'],by_team[a]['rank']), (0,3,2))
+        self.assertEqual(scores['ranking'], 'points_h2h_wins')
+        self.assertEqual([(r['points'],r['rank']) for r in scores['items']], [(5,1),(3,2),(3,3),(1,4)])
+        self.assertEqual((by_team[a]['wins'],by_team[a]['draws'],by_team[a]['rank']), (0,3,3))
         self.assertEqual((by_team[b]['wins'],by_team[b]['losses'],by_team[b]['rank']), (1,1,2))
         self.assertEqual(by_team[b]['point_breakdown'], {'wins':3,'draws':0,'losses':0})
         self.assertEqual(self.comp.standings(comp['id']), scores)

@@ -26,10 +26,21 @@
           {
             "name": "competitions",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
+              "default": "",
               "title": "Competitions"
+            }
+          },
+          {
+            "name": "finals",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Finals"
             }
           }
         ],
@@ -130,6 +141,267 @@
         ],
         "summary": "Ẩn sự kiện đã nạp; không sửa dữ liệu giải online",
         "operationId": "hide_api_v1_admin_results_import__ident__hide_post",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/finals": {
+      "post": {
+        "tags": [
+          "finals"
+        ],
+        "summary": "Tạo chung kết 16 đội có hạng online duy nhất",
+        "operationId": "create_api_v1_admin_finals_post",
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      },
+      "get": {
+        "tags": [
+          "finals"
+        ],
+        "summary": "Danh sách chung kết gồm bản nháp",
+        "operationId": "listing_api_v1_admin_finals_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/finals/{ident}": {
+      "get": {
+        "tags": [
+          "finals"
+        ],
+        "summary": "Trạng thái điều phối chung kết của BTC",
+        "operationId": "view_api_v1_admin_finals__ident__get",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/finals/{ident}/start-groups": {
+      "post": {
+        "tags": [
+          "finals"
+        ],
+        "summary": "Ghim một bot mỗi đội và bắt đầu bốn bảng",
+        "operationId": "start_api_v1_admin_finals__ident__start_groups_post",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/finals/{ident}/start-round": {
+      "post": {
+        "tags": [
+          "finals"
+        ],
+        "summary": "Cho chạy vòng tiếp theo đã chốt khi bật chờ giữa vòng",
+        "operationId": "start_round_api_v1_admin_finals__ident__start_round_post",
+        "parameters": [
+          {
+            "name": "ident",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ident"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": [],
+            "csrfAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/finals/{ident}/stop": {
+      "post": {
+        "tags": [
+          "finals"
+        ],
+        "summary": "Dừng tự động, giữ nguyên các giải con để BTC điều hành tay",
+        "operationId": "stop_api_v1_admin_finals__ident__stop_post",
         "parameters": [
           {
             "name": "ident",
@@ -8031,6 +8303,198 @@
           "events"
         ],
         "title": "Events"
+      },
+      "FinalCreate": {
+        "properties": {
+          "match_ms": {
+            "type": "integer",
+            "title": "Match Ms",
+            "default": 300000
+          },
+          "turn_ms": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "enum": [
+                  15000,
+                  30000,
+                  60000,
+                  300000
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Ms"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "default": "Chung kết"
+          },
+          "submission_deadline": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Deadline"
+          },
+          "max_teams": {
+            "type": "integer",
+            "maximum": 4096.0,
+            "minimum": 2.0,
+            "title": "Max Teams",
+            "default": 16
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "double_round_robin",
+              "swiss",
+              "elo"
+            ],
+            "title": "Format",
+            "default": "double_round_robin"
+          },
+          "rounds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 64.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rounds"
+          },
+          "ladder": {
+            "$ref": "#/components/schemas/LadderOptions",
+            "default": {
+              "round_hours": 2
+            }
+          },
+          "official": {
+            "$ref": "#/components/schemas/OfficialOptions",
+            "default": {
+              "match_ms": 10000,
+              "general_rounds": 20,
+              "group_size": 64,
+              "finalists": 16,
+              "k": [
+                [
+                  20,
+                  32
+                ],
+                [
+                  null,
+                  16
+                ]
+              ]
+            }
+          },
+          "basic_rules": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basic Rules"
+          },
+          "ruleset_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{32}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ruleset Id"
+          },
+          "grader_platform": {
+            "type": "string",
+            "enum": [
+              "windows",
+              "linux"
+            ],
+            "title": "Grader Platform",
+            "default": "windows"
+          },
+          "runtime_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 3,
+            "title": "Name"
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/FinalTeam"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "minItems": 16,
+            "title": "Teams"
+          },
+          "pause_between_rounds": {
+            "type": "boolean",
+            "title": "Pause Between Rounds",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "teams"
+        ],
+        "title": "FinalCreate"
+      },
+      "FinalTeam": {
+        "properties": {
+          "team_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "title": "Team Id"
+          },
+          "online_rank": {
+            "type": "integer",
+            "maximum": 16.0,
+            "minimum": 1.0,
+            "title": "Online Rank"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "team_id",
+          "online_rank"
+        ],
+        "title": "FinalTeam"
       },
       "Finish": {
         "properties": {

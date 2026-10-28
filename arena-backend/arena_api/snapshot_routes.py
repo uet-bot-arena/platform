@@ -7,7 +7,7 @@ from arena.protocol import Fault
 
 router=APIRouter()
 ID=r'[A-Za-z0-9_-]{1,100}'
-PUBLIC_PATH=re.compile(rf'(?:competitions|queue|featured|announcements|imported)\.json|(?:competitions|fixtures)/{ID}\.json|standings/{ID}\.(?:json|csv)|(?:standings|fixtures)/{ID}/{ID}\.json')
+PUBLIC_PATH=re.compile(rf'(?:competitions|queue|featured|announcements|imported|finals)\.json|(?:competitions|fixtures|finals)/{ID}\.json|standings/{ID}\.(?:json|csv)|(?:standings|fixtures)/{ID}/{ID}\.json')
 
 
 @router.api_route('/snapshots/{name:path}',methods=['GET','HEAD'],include_in_schema=False)

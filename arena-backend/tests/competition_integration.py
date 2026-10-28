@@ -174,7 +174,7 @@ def main():
             standings = request(a, "GET", f"/competitions/{ident}/standings").json()
             assert not standings["provisional"]
             assert [(s["rank"], s["wins"], s["losses"], s["played"]) for s in standings["items"]] == [(1, 1, 1, 2)] * 2
-            assert standings["ranking"] == "points_shared_rank"
+            assert standings["ranking"] == "points_h2h_wins"
             assert standings["scoring"] == {"win": 3, "draw": 1, "loss": 0}
             assert [s["points"] for s in standings["items"]] == [3, 3]
             for _ in range(3):
@@ -238,7 +238,7 @@ json choose_repeat(const json& state, const json& legal) {
                 assert [(r['played'],r['wins'],r['draws'],r['losses']) for r in scores['items']]==[expected_scores]*2, scores
                 expected_points = 3 * expected_scores[1] + expected_scores[2]
                 assert [r['points'] for r in scores['items']] == [expected_points] * 2, scores
-                assert scores['ranking'] == 'points_shared_rank' and scores['scoring'] == {'win':3,'draw':1,'loss':0}
+                assert scores['ranking'] == 'points_h2h_wins' and scores['scoring'] == {'win':3,'draw':1,'loss':0}
                 replay = request(a,'GET',f"/competitions/{sid}/fixtures/{fixtures[0]['id']}/events").json()
                 states = [e['data']['state'] for e in replay['items'] if e['type']=='state']
                 assert states[-1]['result']=={'winner':winner,'reason':reason}

@@ -24,12 +24,12 @@ def belongs(path, cid):
 
 
 def event_view(row):
-    return {k:json.loads(row[k]) if k=='competitions' else row[k] for k in ('id','name','sha256','imported_ms','hidden_ms','competitions')}
+    return {k:json.loads(row[k]) if k in ('competitions','finals') else row[k] for k in ('id','name','sha256','imported_ms','hidden_ms','competitions','finals')}
 
 
 def listing(db):
-    rows=db.execute('SELECT id,name,sha256,imported_ms,hidden_ms,competitions FROM imported_events WHERE hidden_ms IS NULL ORDER BY imported_ms DESC,id').fetchall()
-    return {'items':[dict(zip(('id','name','sha256','imported_ms','hidden_ms','competitions'),r)) | {'competitions':json.loads(r[5])} for r in rows]}
+    rows=db.execute('SELECT id,name,sha256,imported_ms,hidden_ms,competitions,finals FROM imported_events WHERE hidden_ms IS NULL ORDER BY imported_ms DESC,id').fetchall()
+    return {'items':[dict(zip(('id','name','sha256','imported_ms','hidden_ms','competitions','finals'),r)) | {'competitions':json.loads(r[5]),'finals':json.loads(r[6])} for r in rows]}
 
 
 class Results:
@@ -49,7 +49,17 @@ class Results:
             temporary.replace(self.output/'imported.json.gz')
         finally:temporary.unlink(missing_ok=True)
 
-    def export(self, actor, name, ids):
+    def export(self, actor, name, ids, final_ids=()):
+        ids=list(ids);finals=[]
+        for fid in final_ids:
+            if not re.fullmatch(ID,fid):raise Fault('invalid_request','Mã chung kết không hợp lệ')
+            path=self.output/f'finals/{fid}.json.gz'
+            if not path.is_file():raise Fault('not_found','Chưa có snapshot chung kết')
+            final=strict_json(gzip.decompress(path.read_bytes()))
+            if final.get('status')!='completed':raise Fault('competition_conflict','Chung kết chưa hoàn tất: '+final.get('name',fid))
+            for slot in final['slots'].values():
+                if slot['competition_id'] not in ids:ids.append(slot['competition_id'])
+            finals.append(final)
         if not name.strip() or not ids or len(set(ids))!=len(ids):
             raise Fault('invalid_request','Chọn các giải khác nhau và nhập tên sự kiện')
         competitions=[]
@@ -69,6 +79,7 @@ class Results:
                 files[relative]=raw.decode('utf-8') if relative.endswith('.csv') else strict_json(raw)
             competitions.append({'id':cid,'files':files})
         envelope={'format':FORMAT,'name':name.strip(),'exported_ms':now_ms(),'origin':self.settings.origin,'competitions':competitions}
+        if finals:envelope['finals']=finals
         raw=json.dumps(envelope,ensure_ascii=False,separators=(',',':'),allow_nan=False).encode()
         with self.store.transaction():self.accounts.audit(actor,'results.export',','.join(ids))
         return gzip.compress(raw,mtime=0)
@@ -102,25 +113,39 @@ class Results:
             metadata.append({'id':cid,'title':competition.get('title',cid),'format':config.get('format'),'teams':len(entries),
                 'games':fixtures.get('history_total',fixtures.get('total',len(fixtures.get('items',[])))),
                 'replays':sum(p.startswith(f'fixtures/{cid}/') and bool(v.get('items')) and not v.get('replay_pruned') for p,v in files.items() if isinstance(v,dict))})
+        finals=value.get('finals',[])
+        if not isinstance(finals,list):raise Fault('invalid_request','Danh sách chung kết không hợp lệ')
+        final_seen=set()
+        for final in finals:
+            if (not isinstance(final,dict) or not isinstance(final.get('id'),str) or not re.fullmatch(ID,final['id']) or final['id'] in final_seen
+                    or final.get('status')!='completed' or not isinstance(final.get('name'),str) or not isinstance(final.get('slots'),dict)
+                    or not final['slots'] or not isinstance(final.get('teams'),list)
+                    or any(not isinstance(slot,dict) or slot.get('competition_id') not in seen for slot in final['slots'].values())):
+                raise Fault('invalid_request','Chung kết phải hoàn tất và có đủ các giải con trong file')
+            final_seen.add(final['id'])
         return value,metadata,hashlib.sha256(raw).hexdigest()
 
-    def conflicts(self, metadata):
+    def conflicts(self, metadata, finals=()):
         for cup in metadata:
             if self.accounts.one('SELECT id FROM competitions WHERE id=?',(cup['id'],)):
                 raise Fault('competition_conflict','Mã giải đã có trên hub này: '+cup['id'])
             for event in self.index()['items']:
                 if any(c['id']==cup['id'] for c in event['competitions']):raise Fault('competition_conflict','Mã giải đã thuộc sự kiện khác: '+cup['id'])
+        for final in finals:
+            if self.accounts.one('SELECT id FROM finals WHERE id=?',(final['id'],)) or any(any(f['id']==final['id'] for f in e['finals']) for e in self.index()['items']):
+                raise Fault('competition_conflict','Mã chung kết đã tồn tại: '+final['id'])
 
     def ingest(self, actor, raw, confirm=None):
         if confirm is not None and hashlib.sha256(raw).hexdigest()!=confirm:
             raise Fault('idempotency_conflict','SHA không khớp file đã xem trước')
         value,metadata,sha=self.validate(raw)
+        finals=value.get('finals',[])
         if confirm is not None and confirm!=sha:raise Fault('idempotency_conflict','SHA không khớp file đã xem trước')
         with self.store.lock:
             old=self.accounts.one('SELECT * FROM imported_events WHERE sha256=?',(sha,))
             if old:return dict(event_view(old),duplicate=True)
-            self.conflicts(metadata)
-        preview={'name':value['name'].strip(),'sha256':sha,'competitions':metadata}
+            self.conflicts(metadata,finals)
+        preview={'name':value['name'].strip(),'sha256':sha,'competitions':metadata,'finals':finals}
         if confirm is None:return preview
         stage=self.root/('.tmp-'+uuid.uuid4().hex);target=self.root/sha[:16]
         try:
@@ -128,17 +153,18 @@ class Results:
             for cup in value['competitions']:
                 for path,content in cup['files'].items():
                     atomic_gzip(stage/(path+'.gz'),content.encode('utf-8') if isinstance(content,str) else content)
+            for final in finals:atomic_gzip(stage/('finals/'+final['id']+'.json.gz'),final)
             (stage/'sha256').write_text(sha,encoding='ascii')
             with self.store.transaction():
                 old=self.accounts.one('SELECT * FROM imported_events WHERE sha256=?',(sha,))
                 if old:return dict(event_view(old),duplicate=True)
-                self.conflicts(metadata)
+                self.conflicts(metadata,finals)
                 if target.exists():
                     if not (target/'sha256').is_file() or (target/'sha256').read_text(encoding='ascii')!=sha:
                         raise Fault('competition_conflict','Thư mục sự kiện đã tồn tại; không ghi đè')
                 else:stage.rename(target)
                 ident=uuid.uuid4().hex
-                self.db.execute('INSERT INTO imported_events VALUES(?,?,?,?,?,NULL,?)',(ident,preview['name'],sha,now_ms(),actor,json.dumps(metadata,ensure_ascii=False)))
+                self.db.execute('INSERT INTO imported_events(id,name,sha256,imported_ms,actor_id,hidden_ms,competitions,finals) VALUES(?,?,?,?,?,NULL,?,?)',(ident,preview['name'],sha,now_ms(),actor,json.dumps(metadata,ensure_ascii=False),json.dumps(finals,ensure_ascii=False)))
                 self.accounts.audit(actor,'results.import',ident)
             self.publish_index()
             return self.get(ident)
@@ -160,7 +186,7 @@ class Results:
     def snapshot_path(self, name):
         with self.store.lock:
             for event in self.index()['items']:
-                if any(belongs(name,cup['id']) for cup in event['competitions']):
+                if any(belongs(name,cup['id']) for cup in event['competitions']) or any(name=='finals/'+f['id']+'.json' for f in event['finals']):
                     path=self.root/event['sha256'][:16]/(name+'.gz')
                     if path.is_file() and not path.is_symlink():return path
         return None

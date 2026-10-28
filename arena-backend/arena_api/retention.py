@@ -82,6 +82,8 @@ class Retention:
         # A season uses one frozen bot; preserve older active cups rather than deleting their binary.
         active_official = {r[0] for r in db.execute("SELECT e.submission_id FROM competition_entries e JOIN competitions c ON c.id=e.competition_id WHERE e.team_id=? AND c.status IN ('locked','running','paused')", (team,))}
         tournament = active_official | set(official[:1])
+        # Keep the all-day finals version even while waiting between child cups.
+        tournament.update(r[0] for r in db.execute("SELECT json_extract(b.value,'$.submission_id') FROM finals f,json_each(f.state,'$.bots') b WHERE f.status IN ('groups','knockout') AND b.key=?",(team,)))
         observed = db.execute('SELECT g.submission_id FROM github_observations o JOIN github_commits g USING(team_id,sha) WHERE g.team_id=? AND g.submission_id IS NOT NULL ORDER BY o.id DESC LIMIT 1', (team,)).fetchone()
         latest = {observed[0]} if observed else ({sources[0]['id']} if sources else set())
         pinned = {last_pass} if last_pass else set()

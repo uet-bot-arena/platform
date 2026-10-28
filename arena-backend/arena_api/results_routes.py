@@ -13,8 +13,8 @@ def publication_admin(request: Request):
         raise
 
 @router.get('/admin/results-export',summary='Xuất dữ liệu công khai và replay của các giải đã hoàn tất')
-def export(request: Request,name: str,competitions: str,auth=Depends(publication_admin)):
-    raw=request.app.state.results.export(auth['user']['id'],name,competitions.split(','))
+def export(request: Request,name: str,competitions: str='',finals: str='',auth=Depends(publication_admin)):
+    raw=request.app.state.results.export(auth['user']['id'],name,competitions.split(',') if competitions else [],finals.split(',') if finals else [])
     return Response(raw,media_type='application/gzip',headers={'Content-Disposition':'attachment; filename="ket-qua-'+datetime.now().strftime('%Y%m%d-%H%M')+'.json.gz"'})
 
 @router.post('/admin/results-import',summary='Xem trước hoặc xác nhận nạp kết quả bằng SHA-256')
