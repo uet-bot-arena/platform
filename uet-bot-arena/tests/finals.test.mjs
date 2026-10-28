@@ -13,6 +13,9 @@ test('projector bypasses sidebar; imported events never expose admin actions',()
  const html=page({route:'finals',final,query:new URLSearchParams('chieu=1')});assert.match(html,/finals-projection/);assert.doesNotMatch(html,/sidebar|topbar/);
  const admin=finalsPage({final:{...final,status:'draft'},query:new URLSearchParams(),user:{role:'admin'}});assert.match(admin,/start-groups/);assert.match(admin,/data-command="stop"/);
  const imported=finalsPage({final,query:new URLSearchParams(),user:{role:'admin'},importedFinal:{imported_ms:1,sha256:'a'.repeat(64)}});assert.doesNotMatch(imported,/data-command=/);
+ assert.match(imported,/aaaaaaaaaaaa/);
+ const importedProjection=page({route:'finals',final,query:new URLSearchParams('chieu=1'),importedFinal:{imported_ms:1,sha256:'a'.repeat(64)}});
+ assert.match(importedProjection,/finals-projection/);assert.doesNotMatch(importedProjection,/aaaaaaaaaaaa/);
 });
 test('form has sixteen online ranks, pause option, default five-minute clock; stage waits for every cup',()=>{
  const html=finalsForm({finalTeams:[]});assert.equal((html.match(/name="rank-/g)||[]).length,16);assert.match(html,/value="300000" selected/);assert.match(html,/pause_between_rounds/);
