@@ -2,16 +2,11 @@ import {tr} from './i18n.js';
 import {esc,panel,note,link,button,field,submit,errors,table,date} from './view.js';
 import {formats} from './competition-ui.js';
 
-export function importedCards(s){
-  const items=s.importedEvents||[];
-  if(!items.length)return '';
-  return panel(tr('Kết quả từ hub chung kết'),`<div class="real-card-grid">${items.map(event=>`<article class="real-card"><h3>${esc(event.name)}</h3><p>${tr('Nạp lúc ')}${date(event.imported_ms)}</p>${(event.finals||[]).map(f=>link('finals/'+f.id,f.name)).join('')}<ol>${event.competitions.map(c=>`<li>${link('competitions/'+c.id,c.title)}</li>`).join('')}</ol>${s.user?.role==='admin'?button(tr('Ẩn'),'hide-imported',`data-id="${esc(event.id)}"`,'small danger-button'):''}</article>`).join('')}</div>`);
-}
 export function importedBanner(event){
-  return panel(tr('Kết quả từ hub chung kết'),note(tr('Kết quả nhập từ hub LAN lúc ')+date(event.imported_ms)+' · SHA '+esc(event.sha256.slice(0,12))));
+  return `<p class="imported-caption muted">${tr('Nạp từ hub LAN lúc ')}${date(event.imported_ms)} · SHA ${esc(event.sha256.slice(0,12))}</p>`;
 }
 export function resultsTools(s){
-  return s.user?.role==='admin'?`<div class="page-actions">${button(tr('Xuất kết quả lên web'),'results-export')}${button(tr('Nạp kết quả từ hub LAN'),'results-import')}</div>`:'';
+  return s.user?.role==='admin'?button(tr('Xuất kết quả lên web'),'results-export')+button(tr('Nạp kết quả từ hub LAN'),'results-import'):'';
 }
 export function exportForm(s){
   const cups=s.competitions.filter(c=>c.status==='completed'&&!c.archived_ms);

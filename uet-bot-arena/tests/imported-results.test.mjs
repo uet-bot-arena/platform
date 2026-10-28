@@ -1,13 +1,14 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {importedCards,importedBanner,exportForm,importForm,importedEventFor} from '../dist/live/imported-results.js';
+import {importedBanner,exportForm,importForm,importedEventFor} from '../dist/live/imported-results.js';
+import {compCards} from '../dist/live/pages.js';
 import {ArenaAPI} from '../dist/live/client.js';
 const event={id:'event',name:'LAN <finals>',sha256:'a'.repeat(64),imported_ms:1000,competitions:[{id:'c',title:'Bảng A',format:'double_round_robin',teams:4,games:12,replays:12}]};
 test('imported cards preserve order, escape names and show hide only to admin',()=>{
- const html=importedCards({importedEvents:[event]});assert.match(html,/#\/competitions\/c/);assert.doesNotMatch(html,/<finals>|hide-imported/);
- assert.match(importedCards({importedEvents:[event],user:{role:'admin'}}),/hide-imported/);
+ const html=compCards({importedEvents:[event]});assert.match(html,/#\/competitions\/c/);assert.doesNotMatch(html,/<finals>|hide-imported/);
+ assert.match(compCards({importedEvents:[event],user:{role:'admin'}}),/hide-imported/);
  assert.match(importedBanner(event),/aaaaaaaaaaaa/);
- assert.equal(importedCards({importedEvents:[]}),'');
+ assert.doesNotMatch(compCards({importedEvents:[]}),/real-card-grid/);
  assert.equal(importedEventFor([event],'replay',['c','f'],new URLSearchParams()),event);
 });
 test('export only offers finished competitions and import has explicit preview and confirmation',()=>{

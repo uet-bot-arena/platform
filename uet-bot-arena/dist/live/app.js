@@ -1,5 +1,6 @@
 import {importedEventFor,importedBanner,exportForm,importForm} from './imported-results.js';
 import {readPracticeFile} from './quick-practice.js';
+import {finalsForm,finalPairDetail} from './finals.js';
 import {competitionRoute} from './competition-ui.js';
 import {participantData,privatePage} from './page-data.js';
 import {visiblePoll,githubPollMs} from './polling.js';
@@ -55,7 +56,7 @@ async function loadData(route,ids,q){
     if(native)finals=(await api.request('/admin/finals')).items.concat(finals.filter(f=>events.some(e=>(e.finals||[]).some(x=>x.id===f.id))));
     const final=ids[0]?await (native?api.request('/admin/finals/'+enc(ids[0])):api.snapshot('finals/'+enc(ids[0])+'.json')):null;
     const extra=api.admin&&!ids[0]?{finalTeams:[...new Map((await api.all('/admin/accounts')).filter(a=>a.team&&!a.team.archived_ms).map(a=>[a.team.id,a.team])).values()],rulesetCatalog:await api.request('/admin/rulesets')}:{};
-    return {finals,final,importedFinal,...extra};
+    return {finals,final,importedFinal,importedEvents:events,...extra};
   }
   let items=[];
   if(['home','competitions','standings','schedule','arena','replay'].includes(route)){
@@ -151,6 +152,7 @@ async function openRoute(){
   try{
     const data=await loadData(parsed.route,parsed.ids,parsed.query);if(id!==generation)return;
     Object.assign(s,data,{loading:false,offline:false});
+    if(s.route==='finals'&&!s.ids[0]&&s.user?.role!=='admin'&&s.finals.length===1){location.replace('#/finals/'+s.finals[0].id);return;}
     if(['arena','replay'].includes(s.route)){
       const practice=s.ids[0]==='practice',fixture=s.fixtures.find(f=>f.id===s.ids[1]);
       if(practice&&s.job?.kind!=='match')throw new Error(tr('Tác vụ này không phải trận đấu.'));
@@ -161,7 +163,9 @@ async function openRoute(){
       options.format=practice?'practice':s.competition.config.format;
       options.profile=practice?s.job.profile:competitionProfile(s.competition);
       options.basicRules=(practice?s.job.basic_rules:s.competition.config.basic_rules)?.definition;
-      app.innerHTML=shell(s,(s.importedEvent?importedBanner(s.importedEvent):'')+boardPage(options));mobileSidebar();document.title=options.title+' · UET Bot Arena';
+      app.innerHTML=shell(s,boardPage(options));
+      if(s.importedEvent)document.querySelector('#main .page-heading').insertAdjacentHTML('afterend',importedBanner(s.importedEvent));
+      mobileSidebar();document.title=options.title+' · UET Bot Arena';
       const mountBoard=(current,reset=false)=>{
         board?.close();
         board=new MatchBoard(api,{path:practice?'/jobs/'+s.job.id+'/events':'/competitions/'+s.competition.id+'/fixtures/'+current.id+'/events',official:!practice,review:s.route==='replay',initialHistory:practice?s.initialHistory:null,initialClock:practice?s.initialClock:null,profile:options.profile,terminal:practice?terminal(s.job.status):['completed','attention'].includes(current.status),onExpired:expired,onError:handleError,onReview:()=>competitionFeed?.pause()});
@@ -529,6 +533,12 @@ document.addEventListener('click',async e=>{
     }
     if(action==='account-lock'){const locked=b.dataset.locked!=='true';confirmAction(locked?tr('Khóa tài khoản?'):tr('Mở khóa tài khoản?'),locked?tr('Đội sẽ bị đăng xuất và không thể đăng nhập cho tới khi mở khóa.'):tr('Đội có thể đăng nhập lại với mật khẩu hiện tại.'),()=>api.post('/admin/accounts/'+b.dataset.id+'/lock',{locked}));return;}
     if(action==='delivered'){b.disabled=true;await api.post('/admin/accounts/'+b.dataset.id+'/delivered');await refreshAdmin();return;}
+    if(action==='finals-create'){modal(tr('Tạo chung kết 16 đội'),finalsForm(s));return;}
+    if(action==='final-pair'){
+      if(s.query.get('chieu')==='1')return;
+      const dialog=document.getElementById('final-pair-dialog');dialog.innerHTML=finalPairDetail(s.final,b.dataset.key);dialog.showModal();return;
+    }
+    if(action==='close-final-pair'){document.getElementById('final-pair-dialog').close();return;}
     if(action==='finals-command'){
       if(b.dataset.command==='stop'&&!confirm(tr('Dừng tự động và giữ các giải con để điều hành bằng tay?')))return;
       b.disabled=true;await api.post('/admin/finals/'+enc(s.final.id)+'/'+b.dataset.command,{});await refreshData();return;

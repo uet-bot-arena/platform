@@ -113,13 +113,25 @@ class Finals:
         allowed=stage in state['started_rounds'] or not item['config']['pause_between_rounds']
         if cup['status']=='locked' and allowed:self.comp.transition(actor,cid,'running',prefix+'start')
 
-    def result(self, item, slot, online):
+    def result(self, item, slot):
         state=item['state'];entry=state['slots'].get(slot)
         if not entry or self.comp.get(entry['competition_id'])['status']!='completed':return None
         if slot not in state['results']:
             rows=self.comp.standings(entry['competition_id'],True)['items']
-            groups={r['team_id']:r for rows in state['groups'].values() for r in rows}
-            state['results'][slot]=pair_winner(rows,groups,online);self.save(item,'result_'+slot)
+            games=[]
+            for fixture in self.comp.rows('SELECT * FROM competition_fixtures WHERE competition_id=? ORDER BY ordinal',(entry['competition_id'],)):
+                after=0;last={}
+                while fixture['current_job_id']:
+                    events,cursor=self.comp.safe_events(fixture['current_job_id'],after)
+                    for event in events:
+                        if event['type']=='state':last=event['data']
+                    if cursor==after:break
+                    after=cursor
+                result=json.loads(fixture['result']);counts=last.get('counts',{})
+                games.append(dict(fixture_id=fixture['id'],ordinal=fixture['ordinal'],red_team_id=fixture['red_team_id'],blue_team_id=fixture['blue_team_id'],
+                                  winner=result['winner'] or 'draw',reason=result['reason'],plies=last.get('state',{}).get('ply',0),
+                                  pieces={side:sum(counts.get(side,{}).values()) for side in ('red','blue')}))
+            state['results'][slot]=dict(pair_winner(rows,games,entry['competition_id']),games=games);self.save(item,'result_'+slot)
         return state['results'][slot]
 
     def advance(self, item):
@@ -137,13 +149,13 @@ class Finals:
         quarter={'TK1':[top('A',1),top('B',2)],'TK2':[top('C',1),top('D',2)],'TK3':[top('B',1),top('A',2)],'TK4':[top('D',1),top('C',2)]}
         for slot,teams in quarter.items():self.ensure_cup(item,slot,teams,'quarter')
         for slot,source in [('BK1',['TK1','TK2']),('BK2',['TK3','TK4'])]:
-            values=[self.result(item,key,online) for key in source]
+            values=[self.result(item,key) for key in source]
             if all(values):self.ensure_cup(item,slot,[v['winner'] for v in values],'semi')
-        semis=[self.result(item,key,online) for key in ('BK1','BK2')]
+        semis=[self.result(item,key) for key in ('BK1','BK2')]
         if all(semis):
             self.ensure_cup(item,'FINAL',[v['winner'] for v in semis],'medals')
             self.ensure_cup(item,'BRONZE',[v['loser'] for v in semis],'medals')
-            final,bronze=[self.result(item,key,online) for key in ('FINAL','BRONZE')]
+            final,bronze=[self.result(item,key) for key in ('FINAL','BRONZE')]
             if final and bronze:
                 state['podium']=[final['winner'],final['loser'],bronze['winner']]
                 item['status']='completed';state['completed_ms']=now_ms();self.save(item,'completed')
@@ -172,7 +184,9 @@ class Finals:
                 cid=slot['competition_id'];cup=self.comp.get(cid)
                 rows=self.comp.standings(cid,True)['items']
                 if key in SNAKE:rows=group_order(rows,online)
-                slots[key]=dict(slot,label=LABELS[key],status=cup['status'],rows=[{k:r[k] for k in ('team_id','name','points','head_to_head','played','wins','draws','losses','rank')} for r in rows],result=state['results'].get(key),counts=self.comp.view(cid,True)['fixture_counts'])
+                result=state['results'].get(key)
+                source={'BK1':['TK1','TK2'],'BK2':['TK3','TK4'],'FINAL':['BK1','BK2'],'BRONZE':['BK1','BK2']}.get(key,[])
+                slots[key]=dict(slot,label=LABELS[key],status=cup['status'],rows=[{k:r[k] for k in ('team_id','name','points','head_to_head','played','wins','draws','losses','rank')} for r in rows],result=result,counts=self.comp.view(cid,True)['fixture_counts'],games=result.get('games',[]) if result else [],source=source)
             common=item['config']['common']
             return dict(id=item['id'],name=item['name'],status=item['status'],created_ms=item['created_ms'],completed_ms=state.get('completed_ms'),teams=item['config']['teams'],
                         profile=common['profile'],grader_platform=common['grader_platform'],rules=self.comp.public_config(common),pause_between_rounds=item['config']['pause_between_rounds'],

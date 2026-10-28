@@ -101,6 +101,12 @@ class FinalsTests(APIHarness):
         self.assertEqual(view['status'],'completed');self.assertEqual(len(view['podium']),3)
         self.assertEqual(len(self.comp.rows('SELECT * FROM competitions')),12)
         self.assertEqual(self.comp.one('SELECT COUNT(*) n FROM competition_fixtures')['n'],64)
+        self.assertEqual(len(view['slots']['FINAL']['games']),2)
+        self.assertEqual(view['slots']['FINAL']['source'],['BK1','BK2'])
+        self.assertEqual(view['slots']['A']['games'],[])
+        saved=self.finals.get(self.ident)['state']['results']
+        with patch('arena_api.finals.pair_winner',side_effect=AssertionError('saved result must not be recalculated')):self.finals.tick()
+        self.assertEqual(saved,self.finals.get(self.ident)['state']['results'])
         self.assertNotIn('artifact',json.dumps(view));self.assertNotIn('source_path',json.dumps(view))
 
     def test_attention_waits_and_stop_preserves_children(self):
@@ -115,6 +121,20 @@ class FinalsTests(APIHarness):
         with self.store.db:self.store.db.execute("UPDATE competitions SET status='completed' WHERE id=?",(cid,))
         self.finals.tick();self.assertEqual(len(self.comp.rows('SELECT * FROM competitions')),4)
         self.assertEqual(self.finals.get(self.ident)['status'],'stopped')
+
+    def test_pair_snapshot_reads_last_safe_state_and_keeps_saved_result(self):
+        self.prepared();self.start()
+        for slot in STAGES['groups']:self.complete(slot)
+        self.finals.tick();self.complete('TK1');item=self.finals.get(self.ident)
+        cid=item['state']['slots']['TK1']['competition_id'];job=next(iter(self.bots.values()))['benchmark_id']
+        with self.store.db:self.store.db.execute('UPDATE competition_fixtures SET current_job_id=? WHERE competition_id=?',(job,cid))
+        events=[dict(type='state',data=dict(state=dict(ply=n),counts=dict(red=dict(rock=3,paper=2,scissors=1),blue=dict(rock=1,paper=1,scissors=0)))) for n in (2,44)]
+        def safe(ident,after):return (events,2) if after==0 else ([],2)
+        with patch.object(self.comp,'safe_events',side_effect=safe):result=self.finals.result(item,'TK1')
+        self.assertEqual([g['plies'] for g in result['games']],[44,44])
+        self.assertEqual(result['games'][0]['pieces'],dict(red=6,blue=2))
+        with patch.object(self.comp,'safe_events',side_effect=AssertionError('must use saved games')):
+            self.assertEqual(self.finals.result(self.finals.get(self.ident),'TK1'),result)
 
     def test_pause_between_rounds(self):
         self.prepared(True);self.start()
@@ -160,9 +180,28 @@ class RankingTests(APIHarness):
         self.assertEqual(group_order(rows,dict(a=2,b=1))[0]['team_id'],'a')
         rows[1]['wins']=2;self.assertEqual(group_order(rows,dict(a=2,b=1))[0]['team_id'],'b')
 
-    def test_pair_uses_every_tie_break_in_order(self):
-        rows=[dict(team_id='a',points=2),dict(team_id='b',points=0)];groups=dict(a=dict(rank=2,points=1),b=dict(rank=1,points=6));online=dict(a=1,b=2)
-        self.assertEqual(pair_winner(rows,groups,online),dict(winner='a',loser='b',reason='hơn điểm'))
-        rows[1]['points']=2;self.assertEqual(pair_winner(rows,groups,online)['reason'],'đứng cao hơn ở vòng bảng')
-        groups['a']['rank']=1;self.assertEqual(pair_winner(rows,groups,online)['reason'],'điểm vòng bảng')
-        groups['a']['points']=6;self.assertEqual(pair_winner(rows,groups,online),dict(winner='a',loser='b',reason='hạng online'))
+    def pair(self,points=(1,1),winners=('red','red'),plies=(44,64),pieces=((4,2),(3,3)),cid='pair-1'):
+        rows=[dict(team_id=t,points=p) for t,p in zip('ab',points)]
+        games=[dict(red_team_id=red,blue_team_id=blue,winner=w,plies=n,pieces=dict(red=r,blue=b))
+               for (red,blue),w,n,(r,b) in zip([('a','b'),('b','a')],winners,plies,pieces)]
+        return pair_winner(rows,games,cid)
+
+    def test_pair_points_first(self):
+        for points in [(2,0),(1.5,.5)]:
+            self.assertEqual(self.pair(points=points),dict(winner='a',loser='b',reason='hơn điểm'))
+
+    def test_pair_faster_win_and_startup_failure_zero_plies(self):
+        for plies in [(44,64),(0,64)]:
+            result=self.pair(plies=plies)
+            self.assertEqual(result,dict(winner='a',loser='b',reason='thắng nhanh hơn',detail=dict(winner_plies=plies[0],loser_plies=plies[1])))
+
+    def test_pair_equal_win_plies_then_piece_difference(self):
+        self.assertEqual(self.pair(plies=(44,44)),dict(winner='a',loser='b',reason='hơn hiệu số quân',detail=dict(winner_diff=2,loser_diff=-2)))
+
+    def test_pair_two_draws_use_pieces_not_plies(self):
+        self.assertEqual(self.pair(winners=('draw','draw')),dict(winner='a',loser='b',reason='hơn hiệu số quân',detail=dict(winner_diff=2,loser_diff=-2)))
+
+    def test_pair_draw_is_fixed_by_competition_id(self):
+        def draw(cid):return self.pair(winners=('draw','draw'),pieces=((2,2),(3,3)),cid=cid)
+        first=draw('pair-1');self.assertEqual(first,draw('pair-1'));self.assertEqual(first['reason'],'bốc thăm')
+        self.assertEqual({draw('pair-'+str(i))['winner'] for i in range(20)},{'a','b'})
