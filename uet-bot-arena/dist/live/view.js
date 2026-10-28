@@ -14,6 +14,7 @@ export const icon = name => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="
 export const logo=()=>'<span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>';
 export const button=(label,action,extra='',kind='secondary')=>`<button type="button" class="btn ${kind}" data-action="${action}" ${extra}>${esc(label)}</button>`;
 export const link=(route,label,kind='secondary',ico='')=>`<a href="#/${route}" class="btn ${kind}">${ico?icon(ico):''}${esc(label)}</a>`;
+export const backLink=(route,label)=>`<a class="text-link" href="#/${esc(route)}">← ${esc(label)}</a>`;
 export const field=(label,name,extra='',type='text',value='')=>`<label class="field"><span>${esc(label)}</span><input class="input" type="${type}" name="${name}" value="${esc(value)}" ${extra}></label>`;
 export const password=(label,name,autocomplete='current-password')=>l10n`<div class="field"><label for="${name}">${esc(label)}</label><div class="password-wrap"><input class="input" id="${name}" type="password" name="${name}" required maxlength="128" autocomplete="${autocomplete}"><button type="button" data-action="password" data-target="${name}" aria-label="Hiện mật khẩu">Hiện</button></div></div>`;
 export const head=(title,sub='',actions='')=>`<div class="page-heading"><div><h1>${esc(title.replace(/[.]$/,''))}</h1>${sub?`<p>${esc(sub)}</p>`:''}</div>${actions?`<div class="page-actions">${actions}</div>`:''}</div>`;

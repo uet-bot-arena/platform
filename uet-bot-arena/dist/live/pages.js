@@ -13,7 +13,7 @@ import {sampleAdmin} from './sample-bots.js';
 import {tournamentOptions} from './tournament-options.js';
 import {addonPage,addonDetailPage} from './addon-ui.js';
 import {timeField,timeLabel,timeQuery,competitionProfile} from './time-control.js';
-import {esc,icon,logo,button,link,field,password,head,empty,badge,date,short,metric,select,panel,note,table,errors,submit,authFrame,shell,runtimeLabel,etaRange} from './view.js';
+import {esc,icon,logo,button,link,field,password,head,empty,badge,date,short,metric,select,panel,note,table,errors,submit,authFrame,shell,runtimeLabel,etaRange,backLink} from './view.js';
 import {adminDashboard,adminTeams,adminOperations,competitionTools} from './admin-ui.js';
 import {rulesetField,botRulesetField} from './experimental-ui.js';
 import {standingsChart} from './standings.js';
@@ -80,7 +80,7 @@ function competitionSelect(s) {
 }
 function competition(s) {
   const parent=(s.finals||[]).find(f=>Object.values(f.slots||{}).some(x=>x.competition_id===s.competition?.id));
-  const back=parent?`<a class="text-link" href="#/finals/${esc(parent.id)}">← ${esc(parent.name)}</a>`:'';
+  const back=parent?backLink('finals/'+parent.id,parent.name):backLink('competitions',tr('Giải đấu'));
   return back+competitionBody(s.importedEvent?{...s,user:null,importedView:true}:s);
 }
 function competitionBody(s) {
@@ -120,7 +120,7 @@ function team(s) {
 function job(s) {
   const j=s.job; if(!j)return empty(tr('Đang tải job…'));
   const r=j.report;
-  return `${head((j.kind==='benchmark'?tr('Kiểm tra'):tr('Trận luyện tập'))+' · '+short(j.id),tr('Tiến độ và kết quả chạy bot.'),j.kind==='match'?link('arena/practice/'+j.id,tr('Mở bàn cờ'),'primary'):button(tr('Làm mới'),'refresh'))}<div id="job-status">${jobDetail(s)}</div>${r?panel(tr('Báo cáo đầy đủ'),l10n`<details><summary>Thời gian, cấu hình và thông tin bản build</summary><pre class="report-json">${esc(JSON.stringify(r,null,2))}</pre></details>`,button(tr('Tải JSON'),'download-report')):''}`;
+  return `${backLink(j.kind==='benchmark'?'submissions':'practice',j.kind==='benchmark'?tr('Nộp bot'):tr('Luyện tập'))}${head((j.kind==='benchmark'?tr('Kiểm tra'):tr('Trận luyện tập'))+' · '+short(j.id),tr('Tiến độ và kết quả chạy bot.'),j.kind==='match'?link('arena/practice/'+j.id,tr('Mở bàn cờ'),'primary'):button(tr('Làm mới'),'refresh'))}<div id="job-status">${jobDetail(s)}</div>${r?panel(tr('Báo cáo đầy đủ'),l10n`<details><summary>Thời gian, cấu hình và thông tin bản build</summary><pre class="report-json">${esc(JSON.stringify(r,null,2))}</pre></details>`,button(tr('Tải JSON'),'download-report')):''}`;
 }
 export function jobDetail(s) {
   const j=s.job,r=j?.report;if(!j)return '';

@@ -1,5 +1,5 @@
 import {tr} from './i18n.js';
-import {esc,head,panel,link,button,field,select,note,errors,submit,badge,empty,date} from './view.js';
+import {esc,head,panel,link,button,field,select,note,errors,submit,badge,empty,date,backLink} from './view.js';
 import {timeField,timeLabel} from './time-control.js';
 import {rulesetField} from './experimental-ui.js';
 import {importedBanner} from './imported-results.js';
@@ -10,7 +10,7 @@ const states={draft:'Bản nháp',groups:'Vòng bảng',knockout:'Loại trực 
 const names={A:'Bảng A',B:'Bảng B',C:'Bảng C',D:'Bảng D',TK1:'Tứ kết 1',TK2:'Tứ kết 2',TK3:'Tứ kết 3',TK4:'Tứ kết 4',BK1:'Bán kết 1',BK2:'Bán kết 2',FINAL:'Chung kết',BRONZE:'Tranh hạng ba'};
 export function finalCard(f,event,admin=false){
  const champion=f.teams.find(t=>t.team_id===f.podium?.[0]);
- return `<article class="real-card" data-key="final-${esc(f.id)}"><div class="section-head">${badge(f.status,tr(states[f.status]||f.status))}<span class="muted">${esc(timeLabel(f.profile).replace(tr(' cho cả ván'),''))}</span></div><h3>${esc(f.name)}</h3><p>${tr('Chung kết · 4 bảng + loại trực tiếp · 16 đội')}</p>${champion?`<p><strong>${tr('Vô địch: ')}${esc(champion.name)}</strong></p>`:''}${event?`<p class="muted">${tr('Nạp từ hub LAN lúc ')}${date(event.imported_ms)}</p>`:''}<div class="table-actions">${link('finals/'+f.id,tr('Xem nhánh đấu'),'primary small')}${link('finals/'+f.id+'?chieu=1',tr('Màn hình chiếu'),'small')}${event&&admin?button(tr('Ẩn'),'hide-imported',`data-id="${esc(event.id)}"`,'small danger-button'):''}</div></article>`;
+ return `<article class="real-card" data-key="final-${esc(f.id)}"><div class="section-head">${badge(f.status,tr(states[f.status]||f.status))}<span class="muted">${esc(timeLabel(f.profile).replace(tr(' cho cả ván'),''))}</span></div><h3>${esc(f.name)}</h3><p>${tr('Chung kết · 4 bảng + loại trực tiếp · 16 đội')}</p>${champion?`<p><strong>${tr('Vô địch: ')}${esc(champion.name)}</strong></p>`:''}${event?`<p class="muted">${tr('Nạp từ hub LAN lúc ')}${date(event.imported_ms)}</p>`:''}<div class="table-actions">${link('finals/'+f.id,tr('Xem nhánh đấu'),'primary small')}${event&&admin?button(tr('Ẩn'),'hide-imported',`data-id="${esc(event.id)}"`,'small danger-button'):''}</div></article>`;
 }
 export function finalsCards(s){
  const items=s.finals||[];
@@ -59,6 +59,6 @@ export function finalsPage(s){
  const groups=`<section class="finals-group-section"><h2>${tr('Vòng bảng')}</h2><div class="finals-groups">${['A','B','C','D'].map(group).join('')}</div></section>`;
  const bracket=`<section class="finals-bracket-section"><h2>${tr('Nhánh đấu')}</h2><div class="finals-bracket">${stages.map(([,name,keys],i)=>`<section class="finals-round"><h3>${esc(tr(name))}</h3><div class="round-slots">${keys.map(pair).join('')}${i===2?pair('BRONZE'):''}${i<2?'<i class="bracket-join join-first" aria-hidden="true"></i>'+(i===0?'<i class="bracket-join join-second" aria-hidden="true"></i>':''):''}</div></section>`).join('')}</div></section>`;
  const rules=`<details class="finals-rule-details"><summary>${tr('Thể lệ chung kết')}</summary><p>${tr('Chia 4 bảng theo con rắn từ hạng online. Điểm → điểm đối đầu → số ván thắng → hạng online. Hai đội đầu mỗi bảng vào tứ kết.')}</p><p>${tr('Mỗi cặp 2 ván đổi màu. Hòa điểm: mỗi đội thắng 1 ván thì xét số nước ván thắng ít hơn → hiệu số quân cộng 2 ván → bốc thăm cố định. Chỉ dùng 2 ván của cặp, không dùng vòng bảng hay hạng online.')}</p><p>${tr('Một bản bot cả ngày, ghim lúc bắt đầu bảng. Dừng tự động giữ nguyên các giải con để BTC làm tiếp bằng tay.')}</p></details>`;
- const content=(s.importedFinal&&!projector?importedBanner(s.importedFinal):'')+head(f.name,tr(states[f.status]||f.status)+' · '+tr('16 đội · 4 bảng → loại trực tiếp')+' · '+timeLabel(f.profile).replace(tr(' cho cả ván'),''),projector?'':actions+link('finals/'+f.id+'?chieu=1',tr('Màn hình chiếu')))+(f.error?note(f.error):'');
+ const content=(projector?`<a class="projection-exit" href="#/finals/${esc(f.id)}">${tr('× Thoát chiếu')}</a>`:(s.importedFinal?importedBanner(s.importedFinal):'')+backLink('competitions',tr('Giải đấu')))+head(f.name,tr(states[f.status]||f.status)+' · '+tr('16 đội · 4 bảng → loại trực tiếp')+' · '+timeLabel(f.profile).replace(tr(' cho cả ván'),''),projector?'':actions+(admin?link('finals/'+f.id+'?chieu=1',tr('Màn hình chiếu')):''))+(f.error?note(f.error):'');
  return `<div class="finals-view">${content}<div class="finals-layout">${projector?groups+`<div class="finals-main">${podium}${bracket}</div>`:podium+(f.status==='groups'?groups+bracket:bracket+groups)}</div>${projector?'':rules+'<dialog id="final-pair-dialog" class="final-pair-dialog"></dialog>'}</div>`;
 }

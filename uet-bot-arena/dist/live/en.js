@@ -1,5 +1,6 @@
 // English translations of static UI copy. User content is never looked up here.
 export default {
+  "× Thoát chiếu": "× Exit projector view",
   "nước": "plies",
   "Chờ đội thua ": "Waiting for the losers of ",
   "Xem replay": "View replay",

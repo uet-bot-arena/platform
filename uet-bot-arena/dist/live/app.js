@@ -48,7 +48,7 @@ function parseRoute(){const raw=location.hash.replace(/^#\/?/,'')||'home',[path,
 async function loadData(route,ids,q){
   api.admin=s.user?.role==='admin';
   let finals=[];
-  if(['home','competitions','finals'].includes(route))finals=(await api.snapshot('finals.json')).items;
+  if(['home','competitions','finals'].includes(route)||['arena','replay'].includes(route)&&ids[0]!=='practice')finals=(await api.snapshot('finals.json')).items;
   if(route==='finals'){
     const events=(await api.snapshot('imported.json')).items;
     const importedFinal=events.find(e=>(e.finals||[]).some(f=>f.id===ids[0]));
@@ -161,6 +161,8 @@ async function openRoute(){
       const name=sid=>s.submissions.find(x=>x.id===sid)?.version||short(sid);
       const options={title:practice?tr('Phòng luyện tập · ')+short(s.job.id):s.competition.title+tr(' · Trận ')+fixture.ordinal,red:practice?name(s.job.submission_ids[0]):teamName(fixture.red_team_id),blue:practice?name(s.job.submission_ids[1]):teamName(fixture.blue_team_id),back:practice?'practice':'competitions/'+s.competition.id,admin:!practice&&!s.importedEvent&&s.user?.role==='admin',officialLive:!practice&&!s.importedEvent&&s.route==='arena'};
       options.format=practice?'practice':s.competition.config.format;
+      const parent=!practice&&s.finals.find(f=>Object.values(f.slots||{}).some(slot=>slot.competition_id===s.competition.id));
+      if(parent)options.back='finals/'+parent.id;
       options.profile=practice?s.job.profile:competitionProfile(s.competition);
       options.basicRules=(practice?s.job.basic_rules:s.competition.config.basic_rules)?.definition;
       app.innerHTML=shell(s,boardPage(options));
@@ -573,6 +575,7 @@ document.addEventListener('click',async e=>{
   }catch(error){b.disabled=false;handleError(error);}
 });
 document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&s.route==='finals'&&s.query.get('chieu')==='1'&&s.ids[0]){go('finals/'+s.ids[0]);return;}
   if(e.key==='Escape'&&s.menuOpen&&!modalRoot.childElementCount){s.menuOpen=false;document.querySelector('.app-shell')?.classList.remove('menu-open');document.querySelector('.mobile-menu')?.setAttribute('aria-expanded','false');mobileSidebar();document.querySelector('.mobile-menu')?.focus();return;}
   if(!modalRoot.childElementCount)return;if(e.key==='Escape'){closeModal();return;}
   if(e.key==='Tab'){const focusable=[...modalRoot.querySelectorAll('button:not(:disabled),input:not(:disabled),a[href],select')],first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}

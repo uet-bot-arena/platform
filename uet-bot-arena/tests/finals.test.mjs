@@ -5,7 +5,30 @@ import {page,compCards} from '../dist/live/pages.js';
 import {publicRoute} from '../dist/live/access.js';
 import {exportForm} from '../dist/live/imported-results.js';
 import {setLanguage} from '../dist/live/i18n.js';
+import {backLink} from '../dist/live/view.js';
+import {boardPage} from '../dist/live/board.js';
 const final={id:'f',name:'Final <unsafe>',status:'groups',teams:[],slots:{},profile:{match_ms:300000},started_rounds:['groups'],podium:[],pause_between_rounds:true};
+test('projector buttons belong only to native organiser detail; projector always has an exit',()=>{
+ for(const user of [null,{role:'team'},{role:'admin'}]){
+  assert.doesNotMatch(finalCard(final,undefined,user?.role==='admin'),/chieu=1/);
+  assert.doesNotMatch(finalCard(final,{imported_ms:1,id:'e'},user?.role==='admin'),/chieu=1/);
+  const native=finalsPage({final,user,query:new URLSearchParams()});assert.equal(native.includes('chieu=1'),user?.role==='admin');
+  assert.doesNotMatch(finalsPage({final,user,importedFinal:{imported_ms:1,sha256:'a'.repeat(64)},query:new URLSearchParams()}),/chieu=1/);
+ }
+ const html=finalsPage({final,query:new URLSearchParams('chieu=1')});assert.match(html,/class="projection-exit" href="#\/finals\/f">× Thoát chiếu/);assert.doesNotMatch(html,/← Giải đấu/);
+});
+test('detail parents use fixed links for competitions, finals, checks and practice',()=>{
+ const state={route:'competitions',ids:['c'],competitions:[],finals:[],jobs:[],submissions:[],fixtures:[],user:null,query:new URLSearchParams(),competition:{id:'c',title:'Cup',status:'completed',entries:[],fixture_counts:{completed:0},config:{format:'double_round_robin',profile:{match_ms:300000}}}};
+ assert.match(page(state),/href="#\/competitions">← Giải đấu/);
+ assert.match(page({...state,finals:[{...final,slots:{A:{competition_id:'c'}}}]}),/href="#\/finals\/f">← Final &lt;unsafe&gt;/);
+ assert.match(finalsPage({final,query:new URLSearchParams()}),/href="#\/competitions">← Giải đấu/);
+ for(const [kind,route,label] of [['benchmark','submissions','Nộp bot'],['match','practice','Luyện tập']]){
+  const html=page({...state,route:'jobs',job:{id:'j',kind,status:'queued',submission_ids:['s'],profile:{match_ms:300000}}});assert.ok(html.includes(`href="#/${route}">← ${label}`));
+ }
+ assert.match(boardPage({title:'Replay',red:'A',blue:'B',back:'finals/f'}),/href="#\/finals\/f" class="btn secondary">Quay lại/);
+ assert.equal(backLink('competitions','<parent>'),'<a class="text-link" href="#/competitions">← &lt;parent&gt;</a>');
+ setLanguage('en');assert.match(finalsPage({final,query:new URLSearchParams('chieu=1')}),/× Exit projector view/);setLanguage('vi');
+});
 test('one card per final suppresses child cups for every role and keeps standalone imports',()=>{
  const f={...final,status:'completed',podium:['t'],teams:[{team_id:'t',name:'Winner'}],slots:{A:{competition_id:'child'}}};
  const cup={id:'regular',title:'Regular',status:'running',created_ms:1,config:{format:'double_round_robin',max_teams:4,profile:{match_ms:300000}}};
