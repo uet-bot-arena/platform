@@ -1,5 +1,6 @@
 """Build your bot and play the bundled OTTv2 sample locally; Python stdlib only."""
 import argparse
+from collections import deque
 from contextlib import ExitStack
 import json
 from pathlib import Path
@@ -19,6 +20,9 @@ from arena.protocol import Fault, response
 
 class LocalError(Exception):
     pass
+
+
+PROTOCOL_HELP = 'Giao thức của hệ thống này: nhận init → trả ready; nhận observation → trả action. Giữ nguyên main() của bot mẫu, chỉ sửa hàm chọn nước.'
 
 
 def build(source, label, compiler_cpp="g++", compiler_c="gcc"):
@@ -55,7 +59,8 @@ class Bot:
     def __init__(self, command, label):
         folder = ROOT / ".local-build"
         folder.mkdir(exist_ok=True)
-        self.stderr = open(folder / (label + ".stderr.log"), "wb")
+        self.stderr_path = folder / (label + ".stderr.log")
+        self.stderr = open(self.stderr_path, "wb")
         try:
             self.process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.stderr)
         except OSError:
@@ -75,6 +80,11 @@ class Bot:
             except queue.Full:
                 pass
 
+    def exited(self):
+        with self.stderr_path.open(encoding='utf-8',errors='replace') as log:
+            tail=''.join(deque(log,maxlen=20)).rstrip()
+        return LocalError('Bot thoát khi chưa trả lời (thường do lỗi trong code). 20 dòng cuối stderr:\n'+(tail or '(stderr trống)'))
+
     def write(self):
         while not self.stopping.is_set():
             try:
@@ -85,14 +95,14 @@ class Bot:
                 self.process.stdin.write(raw)
                 self.process.stdin.flush()
             except (OSError, ValueError):
-                self.publish(LocalError("Bot đã dừng; xem .local-build/*.stderr.log"))
+                self.publish(self.exited())
                 return
 
     def read(self):
         try:
             while not self.stopping.is_set():
                 line = self.process.stdout.readline(65537)
-                item = LocalError("Bot đóng stdout") if not line else LocalError("Một dòng stdout vượt 64 KiB") if len(line) > 65536 else line
+                item = self.exited() if not line else LocalError("Một dòng stdout vượt 64 KiB") if len(line) > 65536 else line
                 self.publish(item)
                 if not line or isinstance(item, LocalError):
                     return
@@ -106,13 +116,13 @@ class Bot:
         except queue.Empty:
             raise LocalError(self.label + ": quá thời gian trả lời") from None
         except (BrokenPipeError, OSError):
-            raise LocalError(self.label + ": bot đã dừng; xem .local-build/*.stderr.log") from None
+            raise LocalError(self.label + ': ' + str(self.exited())) from None
         if isinstance(raw, LocalError):
             raise LocalError(self.label + ": " + str(raw))
         try:
             return response(raw.decode("utf-8"), message, kind)
         except (Fault, UnicodeError) as exc:
-            raise LocalError(self.label + ": sai giao thức: " + str(exc)) from None
+            raise LocalError(self.label + ": sai giao thức: " + str(exc) + '\n' + PROTOCOL_HELP) from None
 
     def close(self):
         self.stopping.set()
@@ -158,6 +168,9 @@ def play(red, blue, match_ms=60000, max_plies=512, check=False):
 
 
 def main():
+    for stream in (sys.stdout,sys.stderr):
+        if hasattr(stream,'reconfigure'):
+            stream.reconfigure(encoding='utf-8')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bot", type=Path, default=ROOT / "bot")
     parser.add_argument("--opponent", type=Path, default=ROOT / "examples/bot.py")

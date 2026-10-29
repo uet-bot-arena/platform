@@ -2,7 +2,7 @@ import asyncio
 from copy import copy, deepcopy
 import io
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import time
 import zipfile
 from typing import Literal
@@ -233,31 +233,45 @@ async def practice_zip_submission(request: Request, idempotency_key: str = Heade
 
 
 def practice_zip(raw):
-    # Strip only the starter's bot/ prefix; archive.unpack keeps all source/security checks.
+    # Normalize practice uploads only; unpack still validates all selected source files.
     if len(raw) > 1024 * 1024:
         raise Fault('invalid_archive', 'ZIP thử nhanh tối đa 1 MiB')
     try:
         with zipfile.ZipFile(io.BytesIO(raw)) as archive:
             items = archive.infolist()
-            if not items or len(items) > 65 or sum(i.file_size for i in items) > profile().max_source_bytes:
+            if not items or sum(i.file_size for i in items) > profile().max_source_bytes:
                 raise Fault('invalid_archive', 'ZIP cần 1–64 file, tổng mã nguồn tối đa 20 MiB')
-            files = [i for i in items if not (i.filename == 'bot/' and i.is_dir())]
-            if not files or len(files) > 64:
-                raise Fault('invalid_archive', 'ZIP cần 1–64 file mã nguồn')
-            wrapped = all(i.filename.startswith('bot/') for i in files)
-            if not wrapped:
+            paths=[];seen=set()
+            for item in items:
+                name=item.filename.rstrip('/')
+                parts=name.split('/')
+                if (not name or PurePosixPath(name).is_absolute() or any(p in ('','.','..') for p in parts)
+                        or '\\' in name or ':' in name or any(ord(c)<32 or ord(c)==127 for c in name)):
+                    raise Fault('invalid_archive','Đường dẫn ZIP không an toàn. Bỏ đường dẫn tuyệt đối, dấu .., dấu hai chấm và dấu gạch chéo ngược.')
+                if item.filename in seen or item.flag_bits & 1:
+                    raise Fault('invalid_archive','ZIP có file trùng, liên kết, file đặc biệt hoặc mã hóa. Chỉ nén file nguồn thường, không đặt mật khẩu ZIP.')
+                seen.add(item.filename);paths.append((item,parts))
+            roots={parts[0] for _,parts in paths}
+            wrapped=len(roots)==1 and all(len(parts)>1 or item.is_dir() for item,parts in paths)
+            entries=[(item,'/'.join(parts[1:] if wrapped else parts)) for item,parts in paths]
+            entries=[(item,name) for item,name in entries if name]
+            if any(name=='bot' and item.is_dir() or name.startswith('bot/') for item,name in entries):
+                entries=[(item,name[4:]) for item,name in entries if name.startswith('bot/')]
+            elif len({name.split('/')[0] for _,name in entries if '/' in name})>1:
+                raise Fault('invalid_archive','ZIP có nhiều thư mục gốc. Chỉ bọc mã trong một thư mục hoặc đặt mã trong bot/.')
+            if not 1 <= len(entries) <= 64:
+                raise Fault('invalid_archive','ZIP cần 1–64 file mã nguồn trong thư mục bot/ hoặc ở gốc ZIP.')
+            if any(item.is_dir() or '/' in name for item,name in entries):
+                raise Fault('invalid_archive','ZIP phải phẳng, không có thư mục con. Đặt các file nguồn cùng cấp với file bot chính.')
+            if len(entries)==len(items) and all(item.filename==name for item,name in entries):
                 return raw
-            output = io.BytesIO()
-            with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as flat:
-                for item in files:
-                    if item.flag_bits & 1:
-                        raise Fault('invalid_archive', 'Duplicate, special or encrypted entry')
-                    entry = copy(item)
-                    entry.filename = item.filename[4:]
-                    flat.writestr(entry, archive.read(item))
+            output=io.BytesIO()
+            with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as flat:
+                for item,name in entries:
+                    entry=copy(item);entry.filename=name;flat.writestr(entry,archive.read(item))
             return output.getvalue()
     except (zipfile.BadZipFile, RuntimeError, NotImplementedError, OSError, UnicodeError) as exc:
-        raise Fault('invalid_archive', str(exc)) from exc
+        raise Fault('invalid_archive','Không đọc được ZIP. Hãy tạo lại bằng ZIP thường, không mã hóa.') from exc
 
 
 @router.post("/submissions", status_code=201, summary="Đội nạp ZIP khi hub LAN cho phép")

@@ -640,5 +640,5 @@ class GitHubAPI(APIHarness):
                 sha = self.push(n, files={"bot/bot.py": b"pass", "bot/" + name: b"pass"})
                 row = self.g.one("SELECT * FROM github_commits WHERE sha=?", (sha,))
                 self.assertEqual(row["state"], "fail")
-                self.assertIn("portable", row["error"])
+                self.assertIn("Windows/Linux", row["error"])
         self.assertFalse(self.store.list("job", self.team_id))

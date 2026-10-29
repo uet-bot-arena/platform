@@ -6,7 +6,7 @@ Register with your school email, verify the emailed code, set a password, and cr
 
 The captain creates a **private** repository from https://github.com/uet-bot-arena/ott-bot-starter using the exact ott2026-<team-code> name shown by the hub. Install the UET Bot Arena GitHub App for that repository only, invite your teammates as collaborators, and paste its link on the team page. Repository linking happens once.
 
-Keep bot source directly inside bot/. Use exactly one main file: bot.cpp, bot.c or bot.py. Helpers must use the same language and sit in the same directory. No binaries, symlinks, submodules, Git LFS or nested directories. The hub receives only bot/ from the main branch; students cannot upload ZIP files through the website.
+Keep bot source directly inside bot/. Use exactly one main file: bot.cpp, bot.c or bot.py. Helpers must use the same language and sit in the same directory. No binaries, symlinks, submodules, Git LFS or nested directories. The hub receives only bot/ from the main branch; official submissions come only from GitHub. Before using GitHub or joining a team, use Quick try on the Practice page: paste code or upload a ZIP containing bot/. An enclosing folder and the starter repository Download ZIP are accepted; when bot/ exists, only that directory is used. Practice uploads cannot enter competitions.
 
 Push to main to trigger checks. The Submit bot page shows the GitHub SHA, build log and Pass/Fail result. The starter repository includes a local runner; follow its README to test against the same easy sample bot before pushing. No extra pip packages are needed by the local runner.
 
@@ -28,15 +28,15 @@ The grader suspends the bot between turns, so it cannot think during the opponen
 
 ## 4. Time management and debugging
 
-Read timing.budget_ms in every observation. Leave margin for serialization, flushing and scheduling. Ladder and default official games allow 10 seconds per bot for the **whole game**, not ten seconds on every move. The clock runs only during that bot's turn and has no increment. Practice may offer other configured clocks.
+Read timing.budget_ms in every observation. Leave margin for serialization, flushing and scheduling. Ladder and default official games allow 10 seconds per bot for the **whole game**, not ten seconds on every move. The clock runs only during that bot's turn and has no increment. Practice and round-robin forms offer 10 seconds, 1 minute or 5 minutes per bot.
 
-Each check runs 72 independent samples with an independent 500 ms limit per sample. It is separate from the game clock. Review median, P95, maximum time, build details and diagnostics on the check page. A passing check does not guarantee enough time for a whole game; play practice games too.
+Each check runs 72 independent samples with an independent 500 ms limit per sample. The whole check run is limited to 90 seconds, excluding queue time. This budget is separate from the game clock. Review median, P95, maximum time, build details and diagnostics on the check page. A passing check does not guarantee enough time for a whole game; play practice games too.
 
 For a timeout, reduce search depth or use iterative deepening with a firm deadline. For protocol errors, remove stdout debug prints, preserve IDs and flush every reply. For illegal moves, use the current observation and legal-action generator. For startup/build errors, open the commit's build log and check file names, language and imports.
 
 ## 5. Ladder, deadline and results
 
-Ladder starts at even Vietnam hours. A round uses each team's latest **passing** commit available at its start. Pushes during play are checked immediately and used from the next round. A commit still checking or failing does not replace a previously passing version.
+Each competition publishes its ladder interval and first-round time in Vietnam time; later rounds follow that saved anchor. Existing fixed-hour calendars keep their original schedule. A round uses each team's latest **passing** commit available at its start. Pushes during play are checked immediately and used from the next round. A commit still checking or failing does not replace a previously passing version.
 
 At the submission deadline, the hub uses GitHub push history, falling back up to five pushes for a passing version. Self-reported commit dates are not authoritative. Pushes after the deadline cannot change the locked bot. Your team page shows the SHA used now and the prospective SHA for the next round.
 
@@ -49,3 +49,13 @@ Follow your games live or open replays. Practice and ladder retain each team's l
 Up to 30 new source versions per hour; four running and four queued private jobs per team. A new version may replace a queued check for the same purpose; running checks continue. The hub caches three source versions, two compiled binaries and twenty detailed check reports per team according to their roles.
 
 Do not share passwords, email verification codes, GitHub tokens or grader tokens. To report a problem, send organizers the team code, SHA, job/game link, time and reproduction steps. Bot logs and source are private to your team and organizers. English/Vietnamese switching translates the interface; names, announcements and raw technical diagnostics retain their original text.
+
+## 7. Bots written for another system
+Every system has its own protocol. Keep the starter `main()` and move your strategy into `choose()`/`choose_move()`. The entry file is `bot.py`, `bot.c` or `bot.cpp`; Java/JavaScript are not supported.
+
+| Common field in another system | This system's protocol |
+|---|---|
+| `legalActions` / `legal_actions` / `moves` | `payload.legal_moves` |
+| `sequence` / `turn` | Copy `turn_id` and `state_version` unchanged |
+| `YOUR_TURN` | `observation` |
+| No init handshake | Receive `init`, then return `ready` |

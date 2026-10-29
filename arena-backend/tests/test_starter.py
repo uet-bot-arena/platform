@@ -59,3 +59,16 @@ class Starter(unittest.TestCase):
             result=self.run_local("--bot",path,"--check")
         self.assertEqual(result.returncode,1)
         self.assertIn("64 KiB",result.stderr)
+
+    def test_crash_shows_only_last_twenty_stderr_lines_in_utf8(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'bot.py';path.write_text("import sys\nfor i in range(30): print(f'MARK{i:02}',file=sys.stderr)\nsys.stderr.flush()\nraise KeyError('YOUR_TURN')\n")
+            result=subprocess.run([sys.executable,str(STARTER/'run_local.py'),'--bot',str(path),'--check'],cwd=tempfile.gettempdir(),env={**os.environ,'PYTHONIOENCODING':'ascii'},capture_output=True,timeout=15)
+        error=result.stderr.decode('utf-8');self.assertEqual(result.returncode,1)
+        self.assertIn('Bot thoát khi chưa trả lời',error);self.assertIn('KeyError',error);self.assertIn('MARK29',error);self.assertNotIn('MARK00',error);self.assertNotIn('\ufffd',error)
+
+    def test_wrong_json_response_explains_our_handshake_and_template(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'bot.py';path.write_text("import sys,json\nfor line in sys.stdin: print(json.dumps({'move':1}),flush=True)\n")
+            result=self.run_local('--bot',path,'--check')
+        self.assertEqual(result.returncode,1);self.assertIn('nhận init → trả ready',result.stderr);self.assertIn('Giữ nguyên main()',result.stderr)

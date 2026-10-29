@@ -19,16 +19,18 @@ Mọi ngôn ngữ dùng **cùng giao thức và cùng quỹ giờ**. Server khô
 
 Đọc bàn cờ và luật từ input, đừng viết cứng: giải có thể dùng bàn 7–15 hàng/cột, căn cứ ở chỗ khác, thắng khi diệt sạch 1 hoặc 2 loại quân, bật/tắt thắng bằng chiếm căn cứ. Số hàng là độ dài mảng `payload.state.board`, số cột là độ dài một hàng; căn cứ nằm ở `payload.bases`; luật đầy đủ nằm ở `payload.basic_rules.definition` khi giải dùng luật tùy chỉnh. Tọa độ có thể có hai chữ số hàng như `j10`, `o15`. `legal_moves` luôn được server tính đúng luật, nên trả lại một phần tử của danh sách này là cách an toàn nhất.
 
-Để dự giải, vào trang giải → **Đến benchmark**: hệ thống tự dùng đúng luật và quỹ giờ của giải. Trang **Luyện tập** cho đấu với phiên bản khác của đội hoặc với bot mẫu của BTC (tự chọn cầm Đỏ hay Xanh); kết quả luyện tập không tính hạng.
+Để dự giải, vào trang giải → **Đến kiểm tra**: hệ thống ghim đúng luật, nền tảng và binary của giải; mỗi mẫu kiểm vẫn có giới hạn riêng 0,5 giây. Trang **Luyện tập** cho đấu với phiên bản khác của đội hoặc với bot mẫu của BTC (tự chọn cầm Đỏ hay Xanh); kết quả luyện tập không tính hạng.
 
 ## 1. Bắt đầu và nộp source
+
+Chưa có GitHub hoặc chưa có đội: dùng **Thử nhanh** ở trang **Luyện tập**, dán code hoặc nạp ZIP thư mục `bot/`. ZIP bọc một thư mục và ZIP Download ZIP của repo mẫu cũng được nhận; chỉ mã trong `bot/` được lấy khi thư mục đó có mặt. Bản thử không được dùng để đăng ký giải.
 
 1. Đội trưởng lấy tên repo đúng mã đội trên trang đội, tạo repo private từ template của BTC.
 2. Mời ba thành viên, cài App UET Bot Arena với Only select repositories và chọn đúng repo.
 3. Đội trưởng gắn link repo một lần trên Arena. Xem mục Hướng dẫn nộp bài để đi từng bước.
 4. Sửa hàm chọn nước trong bot/. Giữ nguyên phần đọc message và xuất phản hồi cho lần thử đầu tiên.
 5. Chạy `python run_local.py --check`, commit và push main. SHA được hub giữ bất biến, không cần đặt version v1.0.0.
-6. Hub tự kiểm 72 mẫu; theo dõi trạng thái và log trên Arena. Khi có giải mở, lượt kiểm dùng nền tảng và quỹ giờ của giải.
+6. Hub tự kiểm 72 mẫu; theo dõi trạng thái và log trên Arena. Khi có giải mở, lượt kiểm ghim luật và nền tảng của giải; 72 mẫu vẫn dùng 0,5 giây riêng cho mỗi mẫu.
 
 ```text
 repo-cua-doi/
@@ -72,7 +74,7 @@ Worker có thể thêm các field input như payload.match hoặc payload.adjudi
 Ngay sau khi khởi động, bot nhận init. Ví dụ dưới đây minh họa các field chính; profile thật còn chứa giới hạn tài nguyên.
 
 ```json
-{"protocol_version":2,"type":"init","match_id":"example-match","payload":{"side":"red","engine":"ottv2-v1","profile":{"match_ms":60000,"turn_ms":60000,"grace_ms":3000},"match":{"kind":"benchmark","adjudication":{"id":"ottv2-match-v2"}}},"timing":{"clock_id":"example-worker","started_mono_ns":"1000000000","deadline_mono_ns":"3000000000","budget_ms":2000}}
+{"protocol_version":2,"type":"init","match_id":"example-match","payload":{"side":"red","engine":"ottv2-v1","profile":{"match_ms":10000,"turn_ms":10000,"grace_ms":3000},"match":{"kind":"match","adjudication":{"id":"ottv2-match-v2"}}},"timing":{"clock_id":"example-worker","started_mono_ns":"1000000000","deadline_mono_ns":"3000000000","budget_ms":2000}}
 ```
 
 Lưu match_id rồi trả đúng ba field sau, trong **2 giây**:
@@ -120,7 +122,7 @@ Schema action có **đúng sáu field** trên. payload nước đi chỉ có fro
 
 Server kiểm tra lại schema, match/turn/version và luật. Nước đi sai không được bỏ qua để xin gửi lại: benchmark dừng ở lỗi; trong trận, bot có thể thua kỹ thuật. Cách bắt đầu an toàn là chấm điểm các nước trong legal_moves, luôn giữ một nước dự phòng hợp lệ.
 
-Benchmark gồm **24 thế cờ × 3 lần**, không phải một ván cờ nối tiếp. Cả 72 mẫu dùng chung quỹ; init/ready và build tính riêng. Hết quỹ trước khi hoàn tất 72 mẫu thì benchmark không đạt. Hai observation liên tiếp có thể là thế cờ hoàn toàn khác; state_version có thể lặp hoặc giảm. Luôn đọc board mới, dùng turn_id từ message mới, không suy ra lượt từ ply hoặc bàn đã lưu ở lượt trước. Cache phải có key theo đầy đủ trạng thái và bên tới lượt.
+Benchmark gồm **24 thế cờ × 3 lần**, không phải một ván cờ nối tiếp. Mỗi mẫu có tối đa 0,5 giây riêng, không dùng chung quỹ của ván; cả lượt chạy kiểm tối đa 90 giây. Không hoàn tất đủ 72 mẫu thì kiểm tra không đạt. Hai observation liên tiếp có thể là thế cờ hoàn toàn khác; state_version có thể lặp hoặc giảm. Luôn đọc board mới, dùng turn_id từ message mới, không suy ra lượt từ ply hoặc bàn đã lưu ở lượt trước. Cache phải có key theo đầy đủ trạng thái và bên tới lượt.
 
 ## 5. Mẫu bot C++ hoàn chỉnh
 
@@ -216,8 +218,8 @@ output.jsonl phải có hai dòng: ready, rồi action. match_id phải khớp e
 
 | Giới hạn | Giá trị hiện tại |
 |---|---|
-| Quỹ thời gian cả trận / mỗi đội | Bullet 60 giây · Đấu thường 300 giây (mặc định); không increment |
-| Benchmark | 72 mẫu dùng chung một quỹ 60 hoặc 300 giây |
+| Quỹ thời gian cả trận / mỗi đội | Ladder + xếp hạng chính thức: 10 giây mỗi bot cả ván; luyện tập/vòng tròn chọn 10 giây, 1 phút hoặc 5 phút; không increment |
+| Benchmark | 72 mẫu, mỗi mẫu tối đa 0,5 giây riêng; cả lượt chạy tối đa 90 giây (không tính xếp hàng) |
 | init → ready | 2 giây |
 | Build | 30 giây, RAM container build 1.024 MiB |
 | Bot | RAM container 256 MiB, 1 CPU, 1 process/thread |
@@ -244,7 +246,7 @@ Hub nhận SHA mới chưa bảo đảm code build được hoặc bot đạt ch
 - **CPU / peak memory:** đo toàn container, bao gồm trusted supervisor; không phải CPU/RSS riêng của bot. Build/startup là phép đo riêng, không cộng vào median lượt.
 - **Build cache:** chạy lại cùng artifact có thể dùng binary đã build, nên wall time build trong manifest không phải thời gian biên dịch lại của job mới.
 
-Sau khi đạt, vào Giải đấu, chọn đúng version và benchmark có cùng quỹ thời gian/profile/runtime của giải. Server kiểm source, binary, image, SDK, compiler và provenance; BTC chốt xong thì binary giữ nguyên xuyên giải. Trận luyện tập giúp kiểm chiến thuật hai màu; benchmark public không chứng minh bot xử lý đúng hoặc thắng ở mọi thế cờ.
+Sau khi đạt, vào Giải đấu, chọn đúng version và lượt kiểm có luật, nền tảng/runtime và binary phù hợp với giải; giới hạn 0,5 giây mỗi mẫu độc lập với quỹ giờ ván đấu. Server kiểm source, binary, image, SDK, compiler và provenance; BTC chốt xong thì binary giữ nguyên xuyên giải. Trận luyện tập giúp kiểm chiến thuật hai màu; benchmark public không chứng minh bot xử lý đúng hoặc thắng ở mọi thế cờ.
 
 ## 8. Tra lỗi và cách sửa
 
@@ -271,7 +273,7 @@ Giữ **mã job**, **mã lỗi** và chi tiết trong báo cáo khi nhờ BTC h�
 | worker_unavailable / worker_error | Sandbox, supervisor hoặc transport gặp sự cố | Gửi mã job cho BTC; không tự coi đây là thua do nghĩ quá giờ |
 | artifact_missing / artifact_corrupt / provenance_mismatch | Artifact chốt bị mất, hỏng hoặc không khớp | BTC kiểm tra/khôi phục artifact đã xác minh; đội không tự thay binary sau chốt |
 | server_restart / server_shutdown | Controller dừng khi job chưa xong | Kiểm trạng thái; chạy lại benchmark khi server sẵn sàng, trận giải để BTC xử lý attempt |
-| qualification_required | Benchmark không đạt hoặc không đúng cấu hình giải | Chạy đủ 72 mẫu với đúng version và ngân sách của giải, rồi chọn lại entry |
+| qualification_required | Benchmark không đạt hoặc không đúng cấu hình giải | Chạy đủ 72 mẫu với đúng version, luật và nền tảng của giải, rồi chọn lại entry |
 
 Trong trận v2, lỗi bot ở startup có thể bị xử thua kỹ thuật; cả hai lỗi startup thì mỗi đội một trận thua, 0đ. Lỗi bot trong lượt thường xử thua lượt trận đó, không cho sửa action tại chỗ. Lỗi hạ tầng không tự trao chiến thắng cho đối thủ; BTC xem diagnostic/retry. Xem Luật OTTv2 và quy tắc vận hành của giải đang chọn để biết policy đã ghim.
 
@@ -283,6 +285,16 @@ Trong trận v2, lỗi bot ở startup có thể bị xử thua kỹ thuật; c�
 4. Copy đúng match_id/turn_id/state_version, giữ nguyên kiểu dữ liệu.
 5. Dùng board mới và legal_moves mới mỗi observation, kể cả benchmark đổi thế không tuần tự.
 6. Có fallback hợp lệ, deadline nội bộ và giới hạn RAM/search.
-7. Benchmark passed: true, 72 mẫu, đúng quỹ thời gian của giải; xem P95/max và báo cáo một phần nếu lỗi.
+7. Benchmark passed: true, 72 mẫu, đúng luật/nền tảng của giải, 0,5 giây riêng mỗi mẫu; xem P95/max và báo cáo một phần nếu lỗi.
 8. Đã thử luyện tập với cả Đỏ và Xanh; đọc đúng tọa độ và nhận diện căn cứ.
 9. Xem SHA Đạt trên banner trước hạn; hub chốt bằng giờ push GitHub và lùi tối đa năm lần push khi cần. Giữ lịch sử Git để tái lập bản cũ.
+
+## 10. Bot viết cho hệ thống khác
+Mỗi hệ thống có giao thức riêng: giữ `main()` của bot mẫu, chép logic chọn nước vào `choose()`/`choose_move()`. File chính là `bot.py`, `bot.c` hoặc `bot.cpp`; chưa nhận Java/JavaScript.
+
+| Trường hay gặp ở hệ thống khác | Giao thức của hệ thống này |
+|---|---|
+| `legalActions` / `legal_actions` / `moves` | `payload.legal_moves` |
+| `sequence` / `turn` | Copy nguyên `turn_id` và `state_version` |
+| `YOUR_TURN` | `observation` |
+| Không có init | Nhận `init` rồi phải trả `ready` |

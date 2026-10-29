@@ -132,6 +132,7 @@ Sau hạn, hub tự chạy xếp hạng chính thức: hơn 64 đội thì có v
 | Tình huống | Cách xử lý |
 |---|---|
 | ZIP sai cấu trúc ở Thử nhanh | Đọc đúng lỗi dưới biểu mẫu; chỉ giữ một file chính và file phụ cùng ngôn ngữ trong `bot/`, không có thư mục con hoặc file ngoài `bot/`; ZIP tối đa 1 MiB. |
+| Bot từ hệ thống khác báo KeyError hoặc sai giao thức | Giữ main() của bot mẫu, chuyển thuật toán sang choose()/choose_move(); xem [Bot viết cho hệ thống khác](../uet-bot-arena/dist/live/bot-guide.md#10-bot-viết-cho-hệ-thống-khác). |
 | Bot in dòng không đúng JSON/giao thức | Đọc log của bản Lỗi; giữ phần đọc/ghi JSON của mẫu, chỉ in debug ra stderr và flush câu trả lời. |
 | Repo còn cả `bot.py` và `bot.cpp` | Chỉ giữ một file chính đúng ngôn ngữ; `run_local.py --check` sẽ báo thư mục phải có đúng một file chính. |
 
