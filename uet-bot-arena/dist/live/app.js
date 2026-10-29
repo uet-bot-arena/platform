@@ -192,7 +192,7 @@ async function openRoute(){
         competitionFeed.start();
       }
       mountBoard(fixture);
-    }else{render();watchElo(id);if(['team','submissions'].includes(s.route))watchGitHub(id);if(s.route==='jobs')watchJob(id);if(['register','recover','verify-email'].includes(s.route))watchEmail(id);}
+    }else{render();watchElo(id);if(['team','submissions','practice'].includes(s.route))watchGitHub(id);if(s.route==='jobs')watchJob(id);if(['register','recover','verify-email'].includes(s.route))watchEmail(id);}
   }catch(e){if(id!==generation)return;if(e.status===401){expired();return;}Object.assign(s,{loading:false,error:e.message,offline:!e.status});render();}
 }
 let eloPoll;
@@ -221,6 +221,12 @@ function watchElo(id){
 }
 function watchGitHub(id){
   githubPoll?.close();
+  if(s.user&&s.route==='practice'&&id===generation){
+    githubPoll=visiblePoll(async()=>{
+      const next=await api.request('/ui/page?view=practice',{poll:true});
+      if(id===generation){Object.assign(s,next);patchPage();}
+    },()=>s.jobs.some(j=>j.kind==='benchmark'&&!terminal(j.status))?3000:30000,{onError:handleError});return;
+  }
   if(!s.user?.team_id||!['team','submissions'].includes(s.route)||id!==generation)return;
   githubPoll=visiblePoll(async()=>{
     const next=await privatePage(api,s.route,true);

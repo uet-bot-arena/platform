@@ -120,7 +120,7 @@ Push mã trong thư mục **bot/** lên nhánh **main**, sau đó mở **Nộp b
 
 ### Bước 15. Thử nhanh không cần GitHub
 
-Mở Nộp bot, xuống khung Thử nhanh không cần GitHub. Chưa có đội cũng dùng được. Chọn ngôn ngữ rồi dán mã, chọn file mã hoặc ZIP tối đa 1 MiB chứa `bot/` với một file chính và các file phụ cùng ngôn ngữ; có thể bấm Điền bot mẫu C++. Bấm Nạp và kiểm tra, mở log của bản thu-xxxxxxx để xem 72 mẫu. Khi Đạt, sang Luyện tập để đấu bot mẫu hoặc phiên bản khác của đội. Bản thử nhanh không được dùng để đăng ký giải.
+Mở Luyện tập, dùng khung Thử nhanh không cần GitHub ngay đầu trang. Chưa có đội cũng dùng được; khung này vẫn có ở Nộp bot và ở Kiểm tra bot của BTC. Chọn ngôn ngữ rồi dán mã, chọn file mã hoặc ZIP tối đa 1 MiB chứa `bot/` với một file chính và các file phụ cùng ngôn ngữ; có thể bấm Điền bot mẫu C++. Bấm Nạp và kiểm tra, mở log của bản thu-xxxxxxx để xem 72 mẫu. Bản vừa nạp hiện ngay bên dưới với trạng thái Đang kiểm / Đạt / Lỗi và link log; trang tự cập nhật. Khi Đạt, bản Đạt mới nhất cùng bot mẫu BTC được tự chọn ở phần tạo trận ngay bên dưới. Bản thử nhanh không được dùng để đăng ký giải.
 
 ![Thử nhanh bằng mã nguồn, file mã hoặc ZIP](img/h19-thu-nhanh.png)
 
@@ -136,7 +136,7 @@ Mở **Cá nhân & đội** hoặc **Tổng quan** để xem khung **Giải củ
 
 ### Bước 17. Luyện tập với bot mẫu
 
-Khi đã có bài hợp lệ, mở **Luyện tập**, chọn bài của đội và **Bot mẫu BTC**, giữ quỹ giờ phù hợp rồi bấm **Tạo trận luyện tập**. Website mở ván để xem trực tiếp hoặc replay; ván này không đổi Elo.
+Mở **Luyện tập**: nếu chưa có bot, dán code hoặc chọn file .py/.c/.cpp/.zip ở khung Thử nhanh đầu trang rồi chờ Đạt. Bản Đạt mới nhất và **Bot mẫu BTC** tự được chọn ở phần tạo trận; vẫn có thể đổi bản hoặc đối thủ. Kiểm quỹ giờ, xác nhận điều kiện hết giờ rồi bấm **Tạo trận luyện tập**. Website mở ván để xem trực tiếp hoặc replay; ván này không đổi Elo.
 
 ![Luyện tập với bot mẫu](img/h21-luyen-tap.png)
 

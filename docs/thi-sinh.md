@@ -97,9 +97,9 @@ Lệnh đầu kiểm build, bắt tay và hai lượt đi; lệnh sau chơi mộ
 
 ## 5. Thử nhanh trên web
 
-Không cần có đội để thử nhanh hoặc luyện tập; muốn vào giải phải có đội đủ 4 người. Vào Nộp bot → Thử nhanh không cần GitHub, chọn Python 3 rồi dán mã hoặc chọn file `.py`; C/C++ dùng `.c`/`.cpp`. Bot nhiều file dùng `.zip` tối đa 1 MiB: nén thư mục `bot/` như repo mẫu, giữ một file chính `bot.py`, `bot.c` hoặc `bot.cpp` và file phụ cùng ngôn ngữ nằm phẳng trong đó; chọn đúng Ngôn ngữ trước khi nạp ZIP. Bấm Nạp và kiểm tra, chờ Đạt/Lỗi rồi mở Log kiểm tra của đúng bản để đọc chẩn đoán; xem [bước 15 có ảnh](huong-dan-demo.md#bước-15-thử-nhanh-không-cần-github).
+Không cần có đội để thử nhanh hoặc luyện tập; muốn vào giải phải có đội đủ 4 người. Vào Luyện tập → Thử nhanh không cần GitHub (vẫn có ở Nộp bot), chọn Python 3 rồi dán mã hoặc chọn file `.py`; C/C++ dùng `.c`/`.cpp`. Bot nhiều file dùng `.zip` tối đa 1 MiB: nén thư mục `bot/` như repo mẫu, giữ một file chính `bot.py`, `bot.c` hoặc `bot.cpp` và file phụ cùng ngôn ngữ nằm phẳng trong đó; chọn đúng Ngôn ngữ trước khi nạp ZIP. Bấm Nạp và kiểm tra, chờ Đạt/Lỗi rồi mở Log kiểm tra của đúng bản để đọc chẩn đoán; xem [bước 15 có ảnh](huong-dan-demo.md#bước-15-thử-nhanh-không-cần-github).
 
-Khi có bản Đạt, vào Luyện tập, chọn bản vừa nạp và bot mẫu làm đối thủ, xác nhận quyền tuyên bố hết giờ rồi tạo trận. Mở replay từ kết quả để xem từng nước; xem [bước 17](huong-dan-demo.md#bước-17-luyện-tập-với-bot-mẫu). Thử nhanh nhận tối đa 10 bản/giờ, file mã tối đa 200.000 byte hoặc ZIP tối đa 1 MiB; bản này chỉ để kiểm và luyện tập, không vào giải.
+Sau khi nạp, bản mới hiện ngay dưới khung Thử nhanh cùng trạng thái Đang kiểm / Đạt / Lỗi và link Log kiểm tra. Trang tự cập nhật, không cần tải lại. Khi Đạt, ô Bot của đội tự chọn bản Đạt mới nhất và đối thủ là bot mẫu BTC; kiểm lại quỹ giờ, xác nhận quyền tuyên bố hết giờ rồi tạo trận. Mở replay từ kết quả để xem từng nước; xem [bước 17](huong-dan-demo.md#bước-17-luyện-tập-với-bot-mẫu). Thử nhanh nhận tối đa 10 bản/giờ, file mã tối đa 200.000 byte hoặc ZIP tối đa 1 MiB; bản này chỉ để kiểm và luyện tập, không vào giải.
 
 Khi vào đội, Thử nhanh và Luyện tập chuyển sang dữ liệu của đội; bản cá nhân cũ không chuyển sang đội và không còn hiện ở đây.
 

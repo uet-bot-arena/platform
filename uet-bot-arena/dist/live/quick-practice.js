@@ -4,11 +4,18 @@ import {boardMarkup} from './board.js';
 import {resultLabel} from './result.js';
 
 export const submissionLabel=x=>(x.channel==='practice'?tr('Thử nhanh')+' · ':'')+x.version;
+export function practiceDefaults(s){
+  const passed=(s.submissions||[]).filter(x=>(s.jobs||[]).some(j=>j.kind==='benchmark'&&j.submission_ids.includes(x.id)&&j.status==='completed'&&(j.benchmark_summary||j.report)?.passed===true)).sort((a,b)=>(b.created_unix_ms||0)-(a.created_unix_ms||0));
+  const red=passed[0]?.id||s.submissions?.[0]?.id,sample=s.sampleBots?.find(b=>b.protocol_version===2);
+  return {red,blue:sample?'sample:'+sample.id:red};
+}
 export function quickPractice(s){
   if(!s.platform?.practice_upload||s.platform.team_zip_upload)return '';
   const rows=(s.submissions||[]).filter(x=>x.channel==='practice').map(x=>{
     const job=(s.jobs||[]).find(j=>j.kind==='benchmark'&&j.submission_ids.includes(x.id));
-    return `<li><code>${esc(x.version)}</code> ${job?link('jobs/'+job.id,tr('Log kiểm tra')):''}</li>`;
+    const done=job?.status==='completed',failed=job&&(['failed','aborted'].includes(job.status)||done&&!(job.benchmark_summary||job.report)?.passed);
+    const state=done&&!failed?tr('Đạt'):failed?tr('Lỗi'):tr('Đang kiểm');
+    return `<li data-key="practice-source-${esc(x.id)}"><code>${esc(x.version)}</code> <span class="practice-check-state">${state}</span> ${job?link('jobs/'+job.id,tr('Log kiểm tra')):''}</li>`;
   }).join('');
   return panel(tr('Thử nhanh không cần GitHub'),`<form id="quick-practice-form" class="real-form"><label class="field"><span>${tr('Ngôn ngữ')}</span>${select('runtime',[['cpp17','C++17'],['c11','C11'],['python3','Python 3']])}</label><label class="field"><span>${tr('Mã nguồn')}</span><textarea name="code" rows="16" class="practice-code" required spellcheck="false"></textarea></label><label class="field"><span>${tr('Chọn file')}</span><input type="file" id="practice-file" accept=".cpp,.c,.py,.zip"></label><button type="button" class="btn secondary" data-action="practice-example">${tr('Điền bot mẫu C++')}</button>${note(tr('Bản thử nhanh chỉ để kiểm 72 mẫu và luyện tập (đấu bot mẫu hoặc bản khác của đội). Giải đấu chỉ nhận commit GitHub.'))}${note(tr('Tối đa 10 bản thử nhanh mỗi giờ; file mã tối đa 200.000 byte hoặc ZIP tối đa 1 MiB.'))}${note(s.user?.role==='admin'?tr("Bot thử của BTC chỉ thuộc tài khoản hiện tại, không được dùng để đăng ký giải."):tr('Khi vào đội, Thử nhanh và Luyện tập dùng dữ liệu của đội; các bản cá nhân cũ không chuyển sang đội và không còn hiện ở đây.'))}${errors()}${submit(tr('Nạp và kiểm tra'))}</form>${rows?'<ul>'+rows+'</ul>':''}`);
 }

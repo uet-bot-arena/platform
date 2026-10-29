@@ -31,7 +31,7 @@ test('competition exposes Elo settings, separates capacity and selection, and pu
  const html=tournamentOptions();assert.ok(html.indexOf('name="finalists"')<html.indexOf('<summary>Nâng cao</summary>'));assert.ok(html.indexOf('name="ladder-hours"')<html.indexOf('<summary>Nâng cao</summary>'));
  assert.match(rankingPreview(fields),/4 đội đầu vào chung kết/);assert.match(rankingPreview(fields),/chỉ nhận đúng 16 đội/);assert.equal(readTournamentOptions(fields).official.finalists,4);
  fields.set('finalists','16');assert.doesNotMatch(rankingPreview(fields),/chỉ nhận đúng 16 đội/);
- const elements={format:{value:'elo'},max_teams:{value:''}},nodes=new Map(),form={id:'competition-form',dataset:{},elements,querySelector:q=>{if(!nodes.has(q))nodes.set(q,{querySelectorAll:()=>[]});return nodes.get(q);}};
+ const elements={format:{value:'elo'},max_teams:{value:''},rounds:{}},nodes=new Map(),form={id:'competition-form',dataset:{},elements,querySelector:q=>{if(!nodes.has(q))nodes.set(q,{querySelectorAll:()=>[]});return nodes.get(q);}};
  const Original=globalThis.FormData;globalThis.FormData=class{get(){return null;}};
  try{updateTournamentForm(form);assert.equal(elements.max_teams.value,'1000');assert.equal(nodes.get('[data-elo-options]').hidden,false);elements.format.value='double_round_robin';updateTournamentForm(form);assert.equal(elements.max_teams.value,'16');assert.equal(nodes.get('[data-elo-options]').hidden,true);form.dataset.capacityEdited='true';elements.max_teams.value='24';elements.format.value='elo';updateTournamentForm(form);assert.equal(elements.max_teams.value,'24');}finally{globalThis.FormData=Original;}
 });

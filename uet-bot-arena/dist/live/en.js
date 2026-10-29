@@ -1,5 +1,7 @@
 // English translations of static UI copy. User content is never looked up here.
 export default {
+  "Đang kiểm": "Checking",
+  "Dán code hoặc chọn file .py/.c/.cpp/.zip, chờ kiểm Đạt rồi đấu với bot mẫu hoặc bản khác của bạn.": "Paste code or select a .py/.c/.cpp/.zip file, wait for a pass, then play against the starter bot or another version of your bot.",
   "Bot thử của BTC chỉ thuộc tài khoản hiện tại, không được dùng để đăng ký giải.": "Organizer practice bots belong only to the current account and cannot enter competitions.",
   "BTC tạo trận luyện tập riêng": "Organizer created a private practice match",
   "BTC kiểm tra bot riêng": "Organizer checked a private bot",
