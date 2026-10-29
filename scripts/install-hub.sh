@@ -337,4 +337,4 @@ for port,path,status in targets:
 PY
 )
 if "$arena_lan"; then echo "LAN installed: $arena_origin (team ZIP enabled; no Cloudflare tunnel)."; exit; fi
-echo 'Installed. Existing config/secrets were preserved. Bootstrap an admin (TAI-LIEU.docx); SMTP and named tunnel need configuration.'
+echo 'Installed. Existing config/secrets were preserved. Bootstrap an admin (docs/thiet-ke.md); SMTP and named tunnel need configuration.'

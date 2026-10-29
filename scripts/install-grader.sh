@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run from a verified checkout; TAI-LIEU.docx describes the SHA-256 check.
+# Run from a verified checkout; docs/thiet-ke.md describes the SHA-256 check.
 set -euo pipefail
 hub='' profile=default slots=1 rootfs='' expected='' uninstall=false
 while (( $# )); do
@@ -55,9 +55,9 @@ if [[ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null 
 fi
 # --check only talks to the hub, so prove the sandbox and the cgroup limits work before installing.
 bwrap --unshare-all --ro-bind / / --dev /dev --proc /proc true \
-  || { echo 'bubblewrap cannot create a sandbox here (user namespaces blocked); see TAI-LIEU.docx.' >&2; exit 1; }
+  || { echo 'bubblewrap cannot create a sandbox here (user namespaces blocked); see docs/thiet-ke.md.' >&2; exit 1; }
 systemd-run --user --scope --quiet -p MemoryMax=64M -p MemorySwapMax=0 -p CPUQuota=100% -p TasksMax=16 true \
-  || { echo 'systemd user manager or cgroup v2 delegation is missing; see TAI-LIEU.docx.' >&2; exit 1; }
+  || { echo 'systemd user manager or cgroup v2 delegation is missing; see docs/thiet-ke.md.' >&2; exit 1; }
 # Escape paths for systemd's unit syntax (not shell syntax).
 unit_quote() { local s="$1"; s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//%/%%}"; s="${s//\$/\$\$}"; printf '"%s"' "$s"; }
 mkdir -p "$install/app" "$(dirname -- "$unit_file")"

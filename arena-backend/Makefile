@@ -34,7 +34,7 @@ schema:
 time-bank-test:
 	cd "$(CURDIR)" && $(PYTHON) tests/time_bank_integration.py
 
-# Shared destructive-bot suite (TAI-LIEU.docx). BACKEND=bwrap|windows; on Windows run
+# Shared destructive-bot suite (docs/thiet-ke.md). BACKEND=bwrap|windows; on Windows run
 # "python tests/sandbox_suite/suite.py --backend windows" from PowerShell.
 BACKEND ?= bwrap
 sandbox-test:

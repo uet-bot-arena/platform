@@ -1395,7 +1395,7 @@ export default {
   "Ubuntu/Linux hoặc WSL2 (Terminal)": "Ubuntu/Linux or WSL2 (Terminal)",
   "Cần systemd, cgroup v2 và Python 3.11+ (Ubuntu 24.04 có sẵn); WSL2 phải bật systemd. Lệnh tự tải bộ biên dịch cho sandbox": "Needs systemd, cgroup v2 and Python 3.11+ (built into Ubuntu 24.04); WSL2 must have systemd enabled. The commands download the sandbox toolchain",
   "và có thể hỏi mật khẩu sudo một lần để cài bubblewrap và cho phép sandbox.": "and may ask for the sudo password once to install bubblewrap and allow the sandbox.",
-  "Hub này chưa phát rootfs cho máy chấm Linux; cài Linux theo TAI-LIEU.docx trong repo.": "This hub publishes no rootfs for Linux graders; install them as described in TAI-LIEU.docx in the repository.",
+  "Hub này chưa phát rootfs cho máy chấm Linux; cài Linux theo docs/thiet-ke.md trong repo.": "This hub publishes no rootfs for Linux graders; install them as described in docs/thiet-ke.md in the repository.",
   "Tin nhắn gửi người cài Windows (gồm link, lệnh và mã)": "Message for a Windows installer (link, commands and token)",
   "Tin nhắn gửi người cài Linux": "Message for a Linux installer",
   "Sao chép tin nhắn Windows": "Copy Windows message",

@@ -16,7 +16,7 @@ UET Bot Arena tổ chức giải bot cờ Oẳn Tù Tì (OTTv2) cho sinh viên. 
 - **Chung kết LAN:** Chạy `install-hub.sh --lan`, các đội tự nạp ZIP; 16 đội chia 4 bảng rồi tự đấu loại trực tiếp, có màn hình chiếu cho BTC. Kết quả và replay được xuất từ hub LAN rồi nạp một chiều lên web thật.
 - **Vận hành:** Cloudflare Tunnel + nginx, SQLite WAL, publisher tạo snapshot, mailer SMTP và backup hằng ngày kéo ra ngoài VPS. Giao diện có tiếng Việt/Anh và chế độ sáng/tối.
 
-Chỉ tài khoản BTC `organizer` được tạo, thu hồi hoặc xóa máy chấm và lấy gói cài; các tài khoản BTC khác xem được trang Máy chấm nhưng không đổi được.
+Chỉ tài khoản BTC được phân quyền quản lý máy chấm được tạo, thu hồi hoặc xóa máy chấm và lấy gói cài; các tài khoản BTC khác xem được trang Máy chấm nhưng không đổi được.
 
 ## Công nghệ
 
@@ -36,14 +36,27 @@ UI:
 cd uet-bot-arena && npm run check && node --test tests/*.test.mjs
 ```
 
-Cài hub/máy chấm xem Phần B mục 10–11 trong `TAI-LIEU.docx`.
+Cài hub/máy chấm xem [cài đặt và vận hành](docs/thiet-ke.md#10-cài-đặt-và-vận-hành) và [mạng LAN ngày chung kết](docs/thiet-ke.md#11-mạng-lan-ngày-chung-kết).
 
-Giải đấu, thiết kế và cách sử dụng: [TAI-LIEU.docx](TAI-LIEU.docx).
+## Tài liệu
+
+- [Thí sinh bắt đầu từ đâu](docs/thi-sinh.md): chuẩn bị tài khoản, viết bot, thử và nộp vào giải.
+- [Giải đấu](docs/giai-dau.md): luật, tài khoản, nộp bài, thể lệ và chung kết.
+- [Thiết kế kỹ thuật](docs/thiet-ke.md): kiến trúc, sandbox, chịu lỗi, số đo và vận hành.
+- [Hướng dẫn demo](docs/huong-dan-demo.md): các bước sử dụng có ảnh theo từng vai trò và ngày chung kết.
+
+## Dùng thử
+
+- Khách: xem giải công khai, lịch, bảng điểm và replay mà không cần tài khoản.
+- Đội thử: dùng Thử nhanh → Luyện tập, hoặc nộp qua GitHub vào Giải mở thử nghiệm theo hướng dẫn thí sinh.
+- BTC thử: tạo giải vòng tròn với đội DEMO theo [hướng dẫn demo](docs/huong-dan-demo.md).
+- Tài khoản thử do nhóm gửi kèm link.
 
 | Thư mục | Nội dung |
 |---|---|
 | `arena-backend/` | Luật, máy chấm, API, cơ sở dữ liệu và kiểm thử |
 | `uet-bot-arena/` | Giao diện web |
+| `docs/` | Tài liệu giải đấu, thiết kế và hướng dẫn |
 | `luat/` | Văn bản luật mà web phục vụ |
 | `starter/` | Repo mẫu cho thí sinh |
 | `scripts/`, `config/` | Cài đặt, sao lưu và cấu hình mẫu |

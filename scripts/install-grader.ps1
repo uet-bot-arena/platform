@@ -1,4 +1,4 @@
-# Run from a verified checkout; TAI-LIEU.docx describes the SHA-256 check.
+# Run from a verified checkout; docs/thiet-ke.md describes the SHA-256 check.
 [CmdletBinding()]
 param(
     [string]$HubUrl,
