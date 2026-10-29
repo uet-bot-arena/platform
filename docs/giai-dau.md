@@ -94,9 +94,9 @@ Giải chính thức chỉ nhận commit GitHub. Để thử nhanh, sinh viên d
 
 Ladder là giai đoạn thi đấu trước hạn nộp để đội quan sát sức mạnh của bot. Ladder kéo dài từ lúc ban tổ chức bấm Mở giải tới hạn nộp. Ban tổ chức đặt hạn khi tạo giải và sửa được tới trước khi qua hạn. Sau hạn, hệ thống tự chạy xếp hạng chính thức như [mục 9 phần B](thiet-ke.md#9-sức-tải-và-thời-gian-đã-đo).
 
-Ban tổ chức chọn khoảng giờ khi tạo giải, từ 1 đến 24 giờ, mặc định hai giờ và cố định suốt giải. Mốc tính từ 0:00 giờ Việt Nam mỗi ngày. Với khoảng hai giờ, các đợt mở lúc 00:00, 02:00, …, 22:00: 12 đợt/ngày, mỗi đội 24 ván ladder/ngày; ladder 14 ngày có 168 đợt. Với khoảng ba giờ, các mốc là 00:00, 03:00, …, 21:00: tám đợt và 16 ván/ngày.
+Ban tổ chức nhập giờ và phút cho khoảng mở đợt, tổng từ 5 phút tới 7 ngày, mặc định hai giờ. Ô Đợt đầu lúc chọn theo giờ Việt Nam; nếu để trống, khi bấm Mở giải hub lấy phút kế tiếp làm mốc đầu. Các mốc sau cách mốc đầu đúng một, hai, ba… lần khoảng đã chọn. Ví dụ khoảng 1 giờ 45 phút từ 12:00 cho các mốc 12:00, 13:45, 15:30, 17:15, 19:00…; qua nửa đêm vẫn giữ khoảng, và khởi động lại hub không đổi lịch.
 
-Số giờ không chia hết 24 vẫn dùng được. Ví dụ năm giờ cho các mốc 00:00, 05:00, 10:00, 15:00, 20:00; đợt cuối ngày chỉ cách mốc kế tiếp bốn giờ vì lịch tính lại từ 0:00. Nếu đợt trước chưa xong, hệ thống bỏ mốc kế tiếp và chờ mốc cố định sau đó.
+BTC có thể sửa khoảng và giờ đợt đầu khi giải còn nhận bài và chưa qua hạn. Lịch mới áp dụng từ mốc kế tiếp sau khi lưu; đợt đang chạy giữ nguyên. Nếu đợt trước chưa xong thì bỏ mốc kế tiếp, không chạy bù các mốc đã lỡ; ladder dừng tại hạn nộp. Giải tạo trước lần cập nhật này giữ các mốc giờ cũ, trừ khi BTC chủ động đổi lịch.
 
 Đúng lúc một đợt bắt đầu, hub lấy bản **Đạt mới nhất** của từng đội tính tới mốc đó. Bản đang kiểm hoặc bản Lỗi không thay bản Đạt trước; chưa có bản Đạt thì đội chưa vào đợt. Nếu push trong lúc đợt đang chạy, đội vẫn được kiểm và luyện tập ngay, nhưng bản mới chỉ tham gia ladder từ đợt sau. Mỗi ván ghi lại mã nguồn đã dùng để có thể đối chiếu.
 

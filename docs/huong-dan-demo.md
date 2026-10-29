@@ -162,7 +162,9 @@ Tại **Tổng quan**, chọn **Giải** để xem số đội đang đấu, đ�
 
 ### Bước 20. Chuẩn bị giải mới
 
-Vào **Giải đấu**, chọn Elo và điền tên, số đội, Ngày/Giờ hạn nộp theo giờ Việt Nam cùng nền tảng chấm. Ô Giờ dùng 24 giờ, bước 30 phút; dòng Hạn đọc lại ngày giờ và ước tính số ngày/đợt ladder, kể cả khi máy BTC dùng múi giờ khác. Ô thời gian chung được ẩn vì ladder và chính thức dùng 10 giây mỗi bot; kiểm toàn bộ cấu hình trước khi tạo, ảnh chưa gửi biểu mẫu. Hạn nộp quyết định ladder kéo dài bao lâu; mở mục Luật ladder và xếp hạng chính thức để đặt khoảng giờ (mặc định hai giờ), dòng bên dưới cho biết giờ mở từng đợt.
+Vào **Giải đấu**, chọn Elo và điền tên, số đội, hạn nộp cùng nền tảng chấm. Các ô thời điểm dùng Ngày, Giờ 00–23 và Phút 00–59 theo giờ Việt Nam, kể cả khi máy BTC dùng múi giờ khác. Mở mục Luật ladder và xếp hạng chính thức, nhập Mở đợt mỗi theo giờ + phút (tổng 5 phút tới 7 ngày), rồi chọn Đợt đầu lúc; để trống thì lấy phút kế tiếp khi bấm Mở giải. Dòng đọc lại cho biết năm mốc đầu và tổng số đợt trước hạn. Ảnh là biểu mẫu giải local với khoảng 5 phút, chưa gửi. Ladder và chính thức dùng 10 giây mỗi bot; kiểm toàn bộ cấu hình trước khi tạo.
+
+Khi giải còn nhận bài và chưa hết hạn, BTC bấm Sửa để đổi khoảng hoặc giờ đợt đầu. Lịch mới chỉ áp dụng từ mốc kế tiếp sau khi lưu, giữ nguyên đợt đang chạy; các thay đổi được ghi nhật ký.
 
 ![Chuẩn bị giải mới](img/h04-tao-giai.png)
 

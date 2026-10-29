@@ -115,7 +115,7 @@ Sửa source trong `bot/`, commit rồi push lên `main`; chỉ một file chín
 
 Với giải Elo có nhãn Đang nhận bài, đội đủ 4 người, có repo GitHub và bản Đạt đúng cấu hình giải sẽ được tự lấy vào ladder, không bấm đăng ký bot bằng tay. “Đủ điều kiện, chờ đợt sau” nghĩa là đội đã đủ điều kiện nhưng chưa xuất hiện trong đợt đang chạy; bản GitHub được hub kiểm lại theo cấu hình của mỗi giải khi cần.
 
-Đợt mở theo khoảng giờ BTC đặt, tính từ 00:00 giờ Việt Nam, mặc định 2 giờ. Mỗi đợt lấy bản Đạt mới nhất tính đến mốc mở; push lúc đang đấu được kiểm/luyện tập ngay và vào ladder từ đợt sau, còn đợt trước chưa xong thì bỏ mốc kế tiếp. Xem SHA, đối thủ và kết quả trong Giải của đội ở Tổng quan hoặc Cá nhân và đội; [bước 16 có ảnh](huong-dan-demo.md#bước-16-xem-giải-của-đội).
+Đợt mở theo khoảng giờ và phút BTC đặt, từ 5 phút tới 7 ngày, mặc định 2 giờ; các mốc tính từ giờ đợt đầu đã lưu. Xem giờ Việt Nam của đợt kế tiếp trong khung Tham gia trên trang giải. Giải cũ giữ lịch đã đặt; BTC có thể đổi lịch khi giải còn nhận bài và chưa hết hạn. Mỗi đợt lấy bản Đạt mới nhất tính đến mốc mở; push lúc đang đấu được kiểm/luyện tập ngay và vào ladder từ đợt sau, còn đợt trước chưa xong thì bỏ mốc kế tiếp. Xem SHA, đối thủ và kết quả trong Giải của đội ở Tổng quan hoặc Cá nhân và đội; [bước 16 có ảnh](huong-dan-demo.md#bước-16-xem-giải-của-đội).
 
 Giải vòng tròn/Swiss nội bộ có cách vào khác: khi giải Mở đăng ký, đội trưởng mở chi tiết giải, chọn bản kiểm tra Đạt trong Chọn bot dự giải, xác nhận quyền tuyên bố hết giờ và bấm Đăng ký bot dự giải. Bản Đạt phải khớp luật, quỹ giờ và nền tảng máy chấm của giải; nếu thiếu, đi Đến kiểm tra với đúng cấu hình giải. BTC cũng có thể thêm đội có bản Đạt trước khi chốt; xem [thể lệ](giai-dau.md#4-thể-lệ-và-lịch-đấu).
 
