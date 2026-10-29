@@ -10,7 +10,9 @@ Bạn cần email trường `@vnu.edu.vn` và một tài khoản GitHub. Nếu m
 
 Chọn Đăng ký, nhập email trường, lấy mã 6 số rồi đặt mật khẩu; kiểm Spam nếu chưa thấy thư. Mã hết hạn 10 phút và không phải mật khẩu đăng nhập; xem [bước 4–7 có ảnh](huong-dan-demo.md#bước-4-đăng-ký-bằng-email-trường).
 
-Sau khi đăng nhập, vào Cá nhân và đội để tạo đội hoặc nhập mã mời 8 ký tự do đội trưởng gửi riêng. Đội dự giải có đủ 4 người; mỗi người chỉ thuộc một đội, và người thứ tư vào thì mã không nhận thêm thành viên. Trang Ghép đội giúp tìm người hoặc tìm đội đang tuyển; xem [tạo đội và mời thành viên](huong-dan-demo.md#bước-8-tạo-đội).
+Chưa có đội vẫn Thử nhanh, kiểm 72 mẫu, luyện tập với bot mẫu và xem replay được; chỉ không vào giải. Tổng quan có khung Các bước vào giải; hồ sơ và mã mời nằm ở Cá nhân & đội.
+
+Sau khi đăng nhập, vào Cá nhân & đội để tạo đội hoặc nhập mã mời 8 ký tự do đội trưởng gửi riêng. Đội dự giải có đủ 4 người; mỗi người chỉ thuộc một đội, và người thứ tư vào thì mã không nhận thêm thành viên. Trang Ghép đội giúp tìm người hoặc tìm đội đang tuyển; xem [tạo đội và mời thành viên](huong-dan-demo.md#bước-8-tạo-đội).
 
 ## 3. Bot đọc và trả lời thế nào
 
@@ -95,9 +97,11 @@ Lệnh đầu kiểm build, bắt tay và hai lượt đi; lệnh sau chơi mộ
 
 ## 5. Thử nhanh trên web
 
-Vào Nộp bot → Thử nhanh không cần GitHub, chọn Python 3 rồi dán mã hoặc chọn file `.py`; C/C++ dùng `.c`/`.cpp`. Bấm Nạp và kiểm tra, chờ Đạt/Lỗi rồi mở Log kiểm tra của đúng bản để đọc chẩn đoán; xem [bước 15 có ảnh](huong-dan-demo.md#bước-15-thử-nhanh-không-cần-github).
+Không cần có đội để thử nhanh hoặc luyện tập; muốn vào giải phải có đội đủ 4 người. Vào Nộp bot → Thử nhanh không cần GitHub, chọn Python 3 rồi dán mã hoặc chọn file `.py`; C/C++ dùng `.c`/`.cpp`. Bot nhiều file dùng `.zip` tối đa 1 MiB: nén thư mục `bot/` như repo mẫu, giữ một file chính `bot.py`, `bot.c` hoặc `bot.cpp` và file phụ cùng ngôn ngữ nằm phẳng trong đó; chọn đúng Ngôn ngữ trước khi nạp ZIP. Bấm Nạp và kiểm tra, chờ Đạt/Lỗi rồi mở Log kiểm tra của đúng bản để đọc chẩn đoán; xem [bước 15 có ảnh](huong-dan-demo.md#bước-15-thử-nhanh-không-cần-github).
 
-Khi có bản Đạt, vào Luyện tập, chọn bản của đội và bot mẫu làm đối thủ, xác nhận quyền tuyên bố hết giờ rồi tạo trận. Mở replay từ kết quả để xem từng nước; xem [bước 17](huong-dan-demo.md#bước-17-luyện-tập-với-bot-mẫu). Thử nhanh nhận tối đa 10 bản/giờ, một file tối đa 200.000 byte; bản này chỉ để kiểm và luyện tập, không vào giải.
+Khi có bản Đạt, vào Luyện tập, chọn bản vừa nạp và bot mẫu làm đối thủ, xác nhận quyền tuyên bố hết giờ rồi tạo trận. Mở replay từ kết quả để xem từng nước; xem [bước 17](huong-dan-demo.md#bước-17-luyện-tập-với-bot-mẫu). Thử nhanh nhận tối đa 10 bản/giờ, file mã tối đa 200.000 byte hoặc ZIP tối đa 1 MiB; bản này chỉ để kiểm và luyện tập, không vào giải.
+
+Khi vào đội, Thử nhanh và Luyện tập chuyển sang dữ liệu của đội; bản cá nhân cũ không chuyển sang đội và không còn hiện ở đây.
 
 ## 6. Nộp chính thức qua GitHub
 
@@ -109,7 +113,7 @@ Sửa source trong `bot/`, commit rồi push lên `main`; chỉ một file chín
 
 ## 7. Bot vào giải thế nào
 
-Với giải Elo đang mở, đội đủ 4 người, có repo GitHub và bản Đạt đúng cấu hình giải sẽ được tự lấy vào ladder, không bấm đăng ký bot bằng tay. “Đủ điều kiện, chờ đợt sau” nghĩa là đội đã đủ điều kiện nhưng chưa xuất hiện trong đợt đang chạy; bản GitHub được hub kiểm lại theo cấu hình của mỗi giải khi cần.
+Với giải Elo có nhãn Đang nhận bài, đội đủ 4 người, có repo GitHub và bản Đạt đúng cấu hình giải sẽ được tự lấy vào ladder, không bấm đăng ký bot bằng tay. “Đủ điều kiện, chờ đợt sau” nghĩa là đội đã đủ điều kiện nhưng chưa xuất hiện trong đợt đang chạy; bản GitHub được hub kiểm lại theo cấu hình của mỗi giải khi cần.
 
 Đợt mở theo khoảng giờ BTC đặt, tính từ 00:00 giờ Việt Nam, mặc định 2 giờ. Mỗi đợt lấy bản Đạt mới nhất tính đến mốc mở; push lúc đang đấu được kiểm/luyện tập ngay và vào ladder từ đợt sau, còn đợt trước chưa xong thì bỏ mốc kế tiếp. Xem SHA, đối thủ và kết quả trong Giải của đội ở Tổng quan hoặc Cá nhân và đội; [bước 16 có ảnh](huong-dan-demo.md#bước-16-xem-giải-của-đội).
 
@@ -127,7 +131,7 @@ Sau hạn, hub tự chạy xếp hạng chính thức: hơn 64 đội thì có v
 
 | Tình huống | Cách xử lý |
 |---|---|
-| Chọn ZIP ở Thử nhanh | Chọn một file `.py`, `.c` hoặc `.cpp`; ZIP chỉ dùng ở chế độ LAN được BTC mở. |
+| ZIP sai cấu trúc ở Thử nhanh | Đọc đúng lỗi dưới biểu mẫu; chỉ giữ một file chính và file phụ cùng ngôn ngữ trong `bot/`, không có thư mục con hoặc file ngoài `bot/`; ZIP tối đa 1 MiB. |
 | Bot in dòng không đúng JSON/giao thức | Đọc log của bản Lỗi; giữ phần đọc/ghi JSON của mẫu, chỉ in debug ra stderr và flush câu trả lời. |
 | Repo còn cả `bot.py` và `bot.cpp` | Chỉ giữ một file chính đúng ngôn ngữ; `run_local.py --check` sẽ báo thư mục phải có đúng một file chính. |
 

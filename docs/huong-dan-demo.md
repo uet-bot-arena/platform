@@ -120,11 +120,11 @@ Push mã trong thư mục **bot/** lên nhánh **main**, sau đó mở **Nộp b
 
 ### Bước 15. Thử nhanh không cần GitHub
 
-Mở Nộp bot, xuống khung Thử nhanh không cần GitHub. Chọn ngôn ngữ rồi dán mã hoặc chọn file; có thể bấm Điền bot mẫu C++. Bấm Nạp và kiểm tra, mở log của bản thu-xxxxxxx để xem 72 mẫu. Khi Đạt, sang Luyện tập để đấu bot mẫu hoặc phiên bản khác của đội. Bản thử nhanh không được dùng để đăng ký giải.
+Mở Nộp bot, xuống khung Thử nhanh không cần GitHub. Chưa có đội cũng dùng được. Chọn ngôn ngữ rồi dán mã, chọn file mã hoặc ZIP tối đa 1 MiB chứa `bot/` với một file chính và các file phụ cùng ngôn ngữ; có thể bấm Điền bot mẫu C++. Bấm Nạp và kiểm tra, mở log của bản thu-xxxxxxx để xem 72 mẫu. Khi Đạt, sang Luyện tập để đấu bot mẫu hoặc phiên bản khác của đội. Bản thử nhanh không được dùng để đăng ký giải.
 
-![Thử nhanh bằng mã nguồn hoặc một file](img/h19-thu-nhanh.png)
+![Thử nhanh bằng mã nguồn, file mã hoặc ZIP](img/h19-thu-nhanh.png)
 
-*Hình 15. Thử nhanh bằng mã nguồn hoặc một file*
+*Hình 15. Thử nhanh bằng mã nguồn, file mã hoặc ZIP*
 
 ### Bước 16. Xem giải của đội
 
@@ -162,7 +162,7 @@ Tại **Tổng quan**, chọn **Giải** để xem số đội đang đấu, đ�
 
 ### Bước 20. Chuẩn bị giải mới
 
-Vào **Giải đấu**, chọn Elo và điền tên, số đội, hạn nộp theo giờ Việt Nam cùng nền tảng chấm. Ô thời gian chung được ẩn vì ladder và chính thức dùng 10 giây mỗi bot; kiểm toàn bộ cấu hình trước khi tạo, ảnh chưa gửi biểu mẫu. Hạn nộp quyết định ladder kéo dài bao lâu; mở mục Luật ladder và xếp hạng chính thức để đặt khoảng giờ (mặc định hai giờ), dòng bên dưới cho biết giờ mở từng đợt.
+Vào **Giải đấu**, chọn Elo và điền tên, số đội, Ngày/Giờ hạn nộp theo giờ Việt Nam cùng nền tảng chấm. Ô Giờ dùng 24 giờ, bước 30 phút; dòng Hạn đọc lại ngày giờ và ước tính số ngày/đợt ladder, kể cả khi máy BTC dùng múi giờ khác. Ô thời gian chung được ẩn vì ladder và chính thức dùng 10 giây mỗi bot; kiểm toàn bộ cấu hình trước khi tạo, ảnh chưa gửi biểu mẫu. Hạn nộp quyết định ladder kéo dài bao lâu; mở mục Luật ladder và xếp hạng chính thức để đặt khoảng giờ (mặc định hai giờ), dòng bên dưới cho biết giờ mở từng đợt.
 
 ![Chuẩn bị giải mới](img/h04-tao-giai.png)
 
