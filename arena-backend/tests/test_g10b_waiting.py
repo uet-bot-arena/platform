@@ -4,6 +4,7 @@ import threading
 import time
 from unittest.mock import patch
 from test_web_api import APIHarness
+from arena import engine
 
 
 class WaitingGraders(APIHarness):
@@ -11,7 +12,7 @@ class WaitingGraders(APIHarness):
         service=self.app.state.service
         issued=service.create_grader(name,'system')
         who=service.authenticate(issued['token'])
-        service.hello(who,dict(platform='windows',backend='windows',runtime_id='sha256:'+'1'*64,slots=1,version='test'))
+        service.hello(who,dict(platform='windows',backend='windows',runtime_id='sha256:'+'1'*64,slots=1,version='test',engine_sha256=engine.ENGINE_SHA256))
         return issued, {'Authorization':'Bearer '+issued['token']}
 
     def test_32_idle_graders_20_seconds_bound_attempts_and_liveness_writes(self):

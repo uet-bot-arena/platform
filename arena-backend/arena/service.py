@@ -84,7 +84,7 @@ class Service:
               CREATE TABLE IF NOT EXISTS graders(id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
                 created_ms INTEGER NOT NULL, created_by TEXT NOT NULL, revoked_ms INTEGER, platform TEXT, backend TEXT,
                 runtime_id TEXT, slots INTEGER, version TEXT, hello_ms INTEGER, last_seen_ms INTEGER,
-                jobs_done INTEGER NOT NULL DEFAULT 0);
+                jobs_done INTEGER NOT NULL DEFAULT 0, engine_sha256 TEXT);
               CREATE TABLE IF NOT EXISTS grader_leases(id TEXT PRIMARY KEY, job_id TEXT NOT NULL, grader_id TEXT NOT NULL,
                 fencing INTEGER NOT NULL UNIQUE, created_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL,
                 status TEXT NOT NULL CHECK(status IN ('active','completed','expired','released','revoked','rejected')),
@@ -347,7 +347,8 @@ class Service:
         with self.store.lock:
             running = self.store.db.execute("SELECT COUNT(*) FROM grader_leases WHERE grader_id=? AND status='active'", (row["id"],)).fetchone()[0]
         return {k: row[k] for k in ("id", "name", "created_ms", "revoked_ms", "platform", "backend", "runtime_id", "slots",
-                                    "version", "hello_ms", "last_seen_ms", "jobs_done")} | {"online": online, "running": running}
+                                    "version", "hello_ms", "last_seen_ms", "jobs_done", "engine_sha256")} | {"online": online, "running": running,
+                                    "needs_update": bool(row['platform']) and row['engine_sha256'] != engine.ENGINE_SHA256}
 
     def graders(self, online_only=False):
         with self.store.lock:
@@ -355,7 +356,7 @@ class Service:
             keys = [c[0] for c in cursor.description]
             rows = [dict(zip(keys, r)) for r in cursor.fetchall()]
         views = [self.grader_view(r) for r in rows]
-        return [v for v in views if v["online"]] if online_only else views
+        return [v for v in views if v["online"] and not v['needs_update']] if online_only else views
 
     def runtime_for(self, platform):
         """runtime_id of the newest grader seen for a platform (pinned when a competition is created)."""
@@ -386,11 +387,14 @@ class Service:
         if platform not in PLATFORMS or not isinstance(runtime_id, str) or not RUNTIME_ID.match(runtime_id):
             raise Fault("invalid_request", "platform must be linux|windows and runtime_id sha256:<64 hex>")
         slots, backend, version = info.get("slots"), info.get("backend"), info.get("version")
+        engine_sha256 = info.get('engine_sha256')
+        if engine_sha256 is not None and (not isinstance(engine_sha256,str) or not SHA256.fullmatch(engine_sha256)):
+            raise Fault('invalid_request', 'engine_sha256 must be 64 lowercase hex characters')
         if type(slots) is not int or not 1 <= slots <= 64 or backend not in ("bwrap", "windows") or not isinstance(version, str) or len(version) > 40:
             raise Fault("invalid_request", "slots 1..64, backend bwrap|windows, version <= 40 chars")
         with self.store.lock, self.store.db:
-            self.store.db.execute("UPDATE graders SET platform=?,backend=?,runtime_id=?,slots=?,version=?,hello_ms=?,last_seen_ms=? WHERE id=?",
-                                  (platform, backend, runtime_id, slots, version, now_ms(), now_ms(), grader["id"]))
+            self.store.db.execute("UPDATE graders SET platform=?,backend=?,runtime_id=?,slots=?,version=?,hello_ms=?,last_seen_ms=?,engine_sha256=? WHERE id=?",
+                                  (platform, backend, runtime_id, slots, version, now_ms(), now_ms(), engine_sha256, grader["id"]))
             # A restarted grader cannot still be running its old leases.
             leases = self.store.db.execute("SELECT id FROM grader_leases WHERE grader_id=? AND status='active'", (grader["id"],)).fetchall()
         for (lease_id,) in leases:
@@ -405,10 +409,12 @@ class Service:
 
     def try_lease(self, grader, schedule=True):
         """Claim the best eligible queued job for this grader, or None."""
-        if schedule and self.before_next:
-            self.before_next()
         if not grader.get("platform"):
             raise Fault("invalid_request", "Call /grader/hello first")
+        if grader.get('engine_sha256') != engine.ENGINE_SHA256:
+            return None
+        if schedule and self.before_next:
+            self.before_next()
         with self.store.lock, self.store.db:
             ident = self.pending.claim(grader["platform"], grader["runtime_id"])
             if ident is None:

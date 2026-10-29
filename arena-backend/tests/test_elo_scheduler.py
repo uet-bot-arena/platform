@@ -8,6 +8,18 @@ import test_competitions as competition_helpers
 
 
 class EloScheduling(EloFixture):
+    def test_admin_can_retry_attention_ladder_while_registration_remains_open(self):
+        self.configure()
+        rid=self.book.start(self.ident,'ladder',1,1000,self.entries)
+        game=self.book.games(rid)[0]
+        with self.store.transaction():
+            self.store.db.execute("UPDATE elo_games SET status='attention' WHERE id=?",(game['id'],))
+            self.store.db.execute("UPDATE elo_rounds SET status='attention' WHERE id=?",(rid,))
+        self.post(self.client,f"/admin/competitions/{self.ident}/fixtures/{game['id']}/retry")
+        self.assertEqual(self.comp.get(self.ident)['status'],'open')
+        self.assertEqual(self.book.get(rid)['status'],'running')
+        self.assertEqual(self.comp.fixture(self.ident,game['id'])['status'],'pending')
+
     def test_ladder_accepts_odd_intervals_and_resets_at_vietnam_midnight(self):
         from datetime import datetime,timedelta
         from arena.ladder_clock import VN

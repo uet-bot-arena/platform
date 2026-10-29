@@ -40,6 +40,7 @@ Mật khẩu dùng Argon2 từ bản thư viện chuẩn đã ghim. Số worker 
 
 ## 4. Máy chấm và chia việc
 
+Máy chấm khác engine của hub không được giao việc; trang Máy chấm báo “Cần cập nhật gói”.
 
 Máy chấm lấy một lease có thời hạn, gửi heartbeat trong lúc làm và gửi kết quả gắn với lease đó. Lease mặc định 30 giây; heartbeat hợp lệ gia hạn quyền xử lý. Nếu máy mất mạng hoặc tắt, hub đợi hết hạn rồi giao lại việc. Kết quả của lease cũ bị từ chối bằng cơ chế fencing, nên một ván được tính điểm một lần.
 

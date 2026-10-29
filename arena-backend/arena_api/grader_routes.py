@@ -71,6 +71,7 @@ class Hello(Model):
     slots: int = Field(ge=1, le=64)
     backend: Literal["bwrap", "windows"]
     version: str = Field(min_length=1, max_length=40)
+    engine_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class LeaseRequest(Model):

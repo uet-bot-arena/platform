@@ -376,7 +376,7 @@ class Competitions:
     def retry(self, actor, ident, fixture_id, key):
         if self.get(ident)['config']['format']=='elo':
             def action():
-                self.require_status(self.get(ident),'running','paused','locked')
+                self.require_status(self.get(ident),'open','running','paused','locked')
                 row=self.fixture(ident,fixture_id)
                 if row['status']!='attention':raise Fault('competition_conflict','Chỉ chạy lại ván cần BTC xử lý')
                 self.db.execute("UPDATE elo_games SET status='pending',auto_retries=0 WHERE id=?",(fixture_id,))

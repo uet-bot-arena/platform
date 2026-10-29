@@ -28,13 +28,13 @@ import urllib.error
 import urllib.request
 import uuid
 
-from arena import experimental, sandbox
+from arena import engine, experimental, sandbox
 from arena.archive import unpack
 from arena.config import runtime_flags
 from arena.protocol import Fault
 from arena.runner import TERMINAL, Runner
 
-VERSION = "0.8.0-m1"
+VERSION = "0.9.0"
 log = logging.getLogger("arena.grader")
 
 
@@ -352,7 +352,7 @@ class Grader:
     def hello(self):
         self.settings = self.client.call("POST", "/api/v1/grader/hello", {
             "platform": self.identity["platform"], "runtime_id": self.identity["runtime_id"], "slots": self.slots,
-            "backend": self.identity["backend"], "version": VERSION})
+            "backend": self.identity["backend"], "version": VERSION, "engine_sha256": engine.ENGINE_SHA256})
         return self.settings
 
     def start(self):

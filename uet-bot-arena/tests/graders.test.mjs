@@ -1,10 +1,19 @@
 import assert from 'node:assert/strict';
+import {setLanguage,tr} from '../dist/live/i18n.js';
 import {test} from 'node:test';
 import {gradersPage,graderRows,graderTokenModal,graderMessage,installCommand,linuxInstallCommand,linuxRootfs,validPackage,controlsMessage} from '../dist/live/graders-ui.js';
 const signed=file=>`/api/v1/grader/download/1794000000000/${'a'.repeat(64)}/${file}`;
 const pkg={file:'uet-arena-grader-0123456789ab.zip',sha256:'0123456789ab'+'c'.repeat(52),bytes:254540,grader_version:'0.8.0-m1',url:signed('uet-arena-grader-0123456789ab.zip')};
 const linuxPkg={...pkg,linux_rootfs:{file:'rootfs-'+ 'd'.repeat(64)+'.tar.zst',sha256:'d'.repeat(64),bytes:1000000,url:signed('rootfs-'+ 'd'.repeat(64)+'.tar.zst')}};
 const g=extra=>({id:'g1',name:'PC 301',platform:'windows',backend:'windows',slots:2,running:1,jobs_done:5,runtime_id:'sha256:'+'a'.repeat(64),version:'0.8.0-m1',last_seen_ms:1,online:true,revoked_ms:null,...extra});
+test('incompatible graders need an update in both languages and add no ready slots',()=>{
+ try{for(const [language,label] of [['vi','Cần cập nhật gói'],['en','Package update required']]){
+  setLanguage(language);
+  const html=gradersPage({graders:{items:[g({needs_update:true}),g({id:'current',slots:3,needs_update:false})],queue:{}}});
+  assert.ok(html.includes(label));
+  assert.ok(html.includes(`<div class="stat-label">${tr('Slot chấm')}</div><div class="stat-value">3</div>`));
+ }}finally{setLanguage('vi');}
+});
 test('grader table keeps status, slots and revoke/delete without tokens',()=>{
  const html=gradersPage({graders:{items:[g(),g({id:'g2',platform:'linux',backend:'bwrap',online:false}),g({id:'g3',revoked_ms:5,online:false}),g({id:'g4',platform:null,online:false})],queue:{official:2,practice:7}}});
  for(const word of ['Online','Offline','Đã thu hồi','Chưa kết nối','Windows · AppContainer','Linux · bubblewrap'])assert.ok(html.includes(word));

@@ -7,6 +7,7 @@ const backendLabels={windows:'AppContainer',bwrap:'bubblewrap'};
 export function graderStatus(g){
   if(g.revoked_ms)return badge('failed',tr('Đã thu hồi'));
   if(!g.platform)return badge('pending',tr('Chưa kết nối'));
+  if(g.needs_update)return badge('attention',tr('Cần cập nhật gói'));
   return g.online?badge('running','Online'):badge('paused','Offline');
 }
 
@@ -16,7 +17,7 @@ export function graderRows(items,canManage=true){
 
 export function gradersPage(s){
   const canManage=s.canManageGraders!==false;
-  const items=s.graders?.items||[],online=items.filter(g=>g.online),queue=s.graders?.queue||{};
+  const items=s.graders?.items||[],online=items.filter(g=>g.online&&!g.needs_update),queue=s.graders?.queue||{};
   const slots=online.reduce((n,g)=>n+(g.slots||0),0);
   const stat=(label,value)=>`<div class="stat"><div class="stat-label">${esc(label)}</div><div class="stat-value">${esc(value)}</div></div>`;
   const summary=`<div class="admin-kpis">${stat(tr('Máy online'),online.length)}${stat(tr('Slot chấm'),slots)}${stat(tr('Trận chính thức chờ'),queue.official??0)}${stat(tr('Luyện tập, kiểm tra chờ'),queue.practice??0)}</div>`;

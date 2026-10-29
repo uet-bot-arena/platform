@@ -145,7 +145,7 @@ class GraderAPI(APIHarness):
         client = self.other_client()
         client.headers["Authorization"] = "Bearer " + item["token"]
         hello = client.post("/api/v1/grader/hello", json={"platform": platform, "runtime_id": runtime, "slots": slots,
-                                                         "backend": "bwrap" if platform == "linux" else "windows", "version": "test"})
+                                                         "backend": "bwrap" if platform == "linux" else "windows", "version": "test", "engine_sha256": engine.ENGINE_SHA256})
         self.assertEqual(hello.status_code, 200, hello.text)
         return client, item
 

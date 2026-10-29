@@ -188,7 +188,7 @@ class QueueSlots(unittest.TestCase):
             eta=self.service.job_eta(jobs[-1]);self.assertEqual((eta['lower_seconds'],eta['upper_seconds']),(7,13))
         # Four active leases plus four waiting jobs require two team-cap waves.
         grader=self.service.create_grader('ETA test','test');principal=self.service.authenticate(grader['token'])
-        self.service.hello(principal,dict(**runtime,backend='windows',slots=20,version='test'))
+        self.service.hello(principal,dict(**runtime,backend='windows',slots=20,version='test',engine_sha256=engine.ENGINE_SHA256))
         for fencing,job in enumerate(jobs[:4],1):
             self.store.db.execute("INSERT INTO grader_leases(id,job_id,grader_id,fencing,created_ms,expires_ms,status) VALUES(?,?,?,?,?,?,'active')",(job['id'],job['id'],grader['id'],fencing,now,now+30000))
         self.store.db.commit()
