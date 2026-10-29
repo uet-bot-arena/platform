@@ -100,7 +100,7 @@ Số giờ không chia hết 24 vẫn dùng được. Ví dụ năm giờ cho c�
 
 Đúng lúc một đợt bắt đầu, hub lấy bản **Đạt mới nhất** của từng đội tính tới mốc đó. Bản đang kiểm hoặc bản Lỗi không thay bản Đạt trước; chưa có bản Đạt thì đội chưa vào đợt. Nếu push trong lúc đợt đang chạy, đội vẫn được kiểm và luyện tập ngay, nhưng bản mới chỉ tham gia ladder từ đợt sau. Mỗi ván ghi lại mã nguồn đã dùng để có thể đối chiếu.
 
-Mỗi cặp đá hai ván đổi màu. Hệ thống ghép các đội trong khoảng mười hạng, tránh ba đối thủ gần nhất; đội lẻ nghỉ luân phiên. Elo bắt đầu từ 1.500 và chỉ cập nhật khi cả đợt hoàn tất, theo thứ tự cặp và ván cố định. Thứ tự máy chấm trả kết quả không được quyết định Elo cuối đợt.
+Mỗi cặp đá hai ván đổi màu. Hệ thống ghép các đội trong khoảng mười hạng, ưu tiên tránh ba đối thủ gần nhất; nếu không ghép đủ thì lần lượt chỉ tránh hai, một rồi không tránh đối thủ cũ, lấy mức đầu tiên đủ cặp. Đội lẻ nghỉ luân phiên. Elo bắt đầu từ 1.500 và chỉ cập nhật khi cả đợt hoàn tất, theo thứ tự cặp và ván cố định. Thứ tự máy chấm trả kết quả không được quyết định Elo cuối đợt.
 
 K của ladder là 32 trong 20 ván đầu và mười ván sau khi đổi bot, còn lại là 16. Đổi bot không xóa Elo. Chẳng hạn hai đội cùng 1.500 Elo, cùng K bằng 32, sau một ván có thắng thua sẽ thành 1.516 và 1.484. Ván luyện tập không ảnh hưởng bảng này.
 

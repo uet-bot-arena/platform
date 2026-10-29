@@ -272,6 +272,22 @@ class EloScheduler:
                 latest_sha=newest['sha'] if newest else None,check_state=newest['state'] if newest else None))
         return dict(items=result)
 
+    def retry_pairing(self,actor,ident,key):
+        def action():
+            item=self.comp.get(ident)
+            self.comp.require_status(item,'open')
+            config=item['config']
+            if config['format']!='elo' or not config.get('elo_error'):
+                raise Fault('competition_conflict','Giải Elo không có lỗi ghép ladder để chạy lại')
+            config.pop('elo_error')
+            due=boundary(time.time_ns()//1_000_000,config['ladder']['round_hours'])
+            # Consume missed boundaries; the retry waits for the next scheduled hour.
+            self.db.execute('INSERT INTO elo_calendar VALUES(?,?) ON CONFLICT(competition_id) DO UPDATE SET last_due_ms=MAX(last_due_ms,excluded.last_due_ms)',(ident,due))
+            self.db.execute('UPDATE competitions SET config=?,revision=revision+1 WHERE id=?',(json.dumps(config),ident))
+            self.comp.accounts.audit(actor,'elo.retry_pairing',ident)
+            return self.comp.get(ident)
+        return self.comp.command(actor,'elo_retry_pairing:'+ident,key,{},action)
+
     def exclusions(self,ident):
         return {r['team_id'] for r in self.comp.rows('SELECT e.team_id,e.excluded FROM elo_exclusions e WHERE competition_id=? AND e.id=(SELECT MAX(x.id) FROM elo_exclusions x WHERE x.competition_id=e.competition_id AND x.team_id=e.team_id)',(ident,)) if r['excluded']}
 

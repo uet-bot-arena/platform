@@ -1,6 +1,6 @@
 import {eloJoinPanel,competitionBadge} from './competition-ui.js';
 import {tr,html as l10n} from './i18n.js';
-import {esc,head,panel,table,note,link,date,badge,empty,etaRange} from './view.js';
+import {esc,head,panel,table,note,link,date,badge,empty,etaRange,button} from './view.js';
 
 const phases={ladder:'Ladder',general:tr('Vòng chung'),round_robin:tr('Vòng tròn')};
 const timeRange=etaRange;
@@ -28,7 +28,7 @@ export function eloStandings(s){
 }
 export function eloCompetition(s,actions){
   const c=s.competition,r=c.config.official;
-  return l10n`<div class="elo-competition">${head(c.title,tr('Ladder Elo → vòng chung → vòng tròn tính điểm'),actions)}${competitionBadge(c)}${eloJoinPanel(s)}<p>${tr('Chính thức')}: ${(r.match_ms??10000)/1000} ${tr('giây mỗi bot')}</p>${note(l10n`Hơn ${r.group_size} đội: ${r.general_rounds} đợt vòng chung, rồi ${r.group_size} đội đầu vòng tròn hai màu; chọn ${r.finalists}. Từ ${r.group_size} đội trở xuống đá vòng tròn luôn.`)}${c.config.elo_error?note(c.config.elo_error):''}${panel(tr('Xếp hạng'),eloStandings(s),link('standings?competition='+c.id,tr('Mở bảng điểm'),'small'))}${note(tr('Nộp qua GitHub; hub tự kiểm tra và chốt SHA tại hạn. Push mới trong lúc đấu vào ladder từ đợt sau.'))}${link('team',tr('SHA và các ván của đội'),'small')}${link('schedule?competition='+c.id,tr('Lịch đấu / replay'),'small')}<a class="btn small" href="/api/v1/competitions/${esc(c.id)}/elo/export?stage=official">Kết quả để tính lại</a></div>`;
+  return l10n`<div class="elo-competition">${head(c.title,tr('Ladder Elo → vòng chung → vòng tròn tính điểm'),actions)}${competitionBadge(c)}${eloJoinPanel(s)}<p>${tr('Chính thức')}: ${(r.match_ms??10000)/1000} ${tr('giây mỗi bot')}</p>${note(l10n`Hơn ${r.group_size} đội: ${r.general_rounds} đợt vòng chung, rồi ${r.group_size} đội đầu vòng tròn hai màu; chọn ${r.finalists}. Từ ${r.group_size} đội trở xuống đá vòng tròn luôn.`)}${c.config.elo_error?note(c.config.elo_error)+(s.user?.role==='admin'&&c.status==='open'&&!c.archived_ms?button(tr('Ghép lại đợt ladder'),'competition-action','data-command="retry-pairing"','primary'):''):''}${panel(tr('Xếp hạng'),eloStandings(s),link('standings?competition='+c.id,tr('Mở bảng điểm'),'small'))}${note(tr('Nộp qua GitHub; hub tự kiểm tra và chốt SHA tại hạn. Push mới trong lúc đấu vào ladder từ đợt sau.'))}${link('team',tr('SHA và các ván của đội'),'small')}${link('schedule?competition='+c.id,tr('Lịch đấu / replay'),'small')}<a class="btn small" href="/api/v1/competitions/${esc(c.id)}/elo/export?stage=official">Kết quả để tính lại</a></div>`;
 }
 export function eloTeam(s){
   const graph=history=>{if(history.length<2)return '';const values=history.map(h=>h.rating),low=Math.min(...values),span=Math.max(1,Math.max(...values)-low);return l10n`<figure><figcaption>Elo qua các đợt ladder</figcaption><svg viewBox="0 0 400 100" role="img" aria-label="Biểu đồ Elo theo đợt"><polyline fill="none" stroke="currentColor" stroke-width="2" points="${history.map((h,i)=>`${i*400/(history.length-1)},${95-(h.rating-low)/span*90}`).join(' ')}"/></svg></figure>`;};

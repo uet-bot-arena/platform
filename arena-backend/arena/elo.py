@@ -81,6 +81,18 @@ def _augment(graph, matching, active):
 
 
 def pair(ratings, meetings=None, recent=None, byes=None, neighbor_ranks=10, official=False, no_repeat=False):
+    if official:
+        return _pair(ratings, meetings, recent, byes, neighbor_ranks, official, no_repeat)
+    for depth in (3, 2, 1, 0):
+        history = {team:list(opponents)[-depth:] if depth else [] for team,opponents in (recent or {}).items()}
+        try:
+            return _pair(ratings, meetings, history, byes, neighbor_ranks, official, no_repeat)
+        except Fault:
+            if depth == 0:
+                raise
+
+
+def _pair(ratings, meetings=None, recent=None, byes=None, neighbor_ranks=10, official=False, no_repeat=False):
     """Pair within ±N ranks; avoid recent ladder opponents, minimize official meetings.
 
     The graph has at most N*teams edges. Equal-cost choices follow stable node/edge order.

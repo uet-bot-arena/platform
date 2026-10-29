@@ -263,3 +263,8 @@ def elo_exclude(ident: str,team: str,body: EloExclusion,request: Request,idempot
 def elo_exclusions(ident: str,request: Request,auth=Depends(admin_principal)):
     comp=request.app.state.competitions;comp.get(ident)
     return dict(items=comp.rows('SELECT * FROM elo_exclusions WHERE competition_id=? ORDER BY id',(ident,)))
+
+
+@router.post('/admin/competitions/{ident}/retry-pairing',summary='BTC gỡ lỗi ghép ladder; chờ mốc đợt tiếp theo, không chạy bù')
+def retry_pairing(ident: str,request: Request,idempotency_key: str=Header(),auth=Depends(admin_principal)):
+    return request.app.state.competitions.elo.retry_pairing(auth['user']['id'],ident,idempotency_key)

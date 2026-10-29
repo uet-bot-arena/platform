@@ -1588,4 +1588,7 @@ export default {
   "Hiện ở trang Ghép đội: tên, lớp, ngôn ngữ, giới thiệu, liên hệ; email giữ riêng.": "Visible on Find teammates: name, class, language, introduction and contact; email stays private.",
   "Hãy điền liên hệ Facebook / Discord trong hồ sơ để người tìm đội liên hệ đội trưởng.": "Add your Facebook / Discord contact to your profile so students can contact the captain.",
   "Chưa để liên hệ": "No contact provided",
+  "Ghép lại đợt ladder": "Retry ladder pairing",
+  "Yêu cầu ghép lại đợt ladder": "Request ladder pairing retry",
+  "Gỡ lỗi ghép đợt ladder": "Clear ladder pairing error",
 };

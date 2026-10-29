@@ -20,6 +20,42 @@ class EloScheduling(EloFixture):
         self.assertEqual(self.book.get(rid)['status'],'running')
         self.assertEqual(self.comp.fixture(self.ident,game['id'])['status'],'pending')
 
+    def test_pairing_retry_is_admin_csrf_idempotent_and_waits_for_next_boundary(self):
+        item=self.configure();scheduler=self.comp.elo
+        due=boundary(1_792_728_000_000);now=due+1_800_000
+        cfg=dict(item['config'],elo_error='No matching')
+        with self.store.transaction():
+            self.store.db.execute('UPDATE competitions SET config=? WHERE id=?',(json.dumps(cfg),self.ident))
+            self.store.db.execute('INSERT INTO elo_calendar VALUES(?,?)',(self.ident,due-7_200_000))
+        path=f'/api/v1/admin/competitions/{self.ident}/retry-pairing'
+        team=self.other_client();auth=team.post('/api/v1/auth/login',json=dict(username='elo-0',password='test-only-new-team-password')).json();team.headers['X-CSRF-Token']=auth['csrf_token']
+        headers={'Idempotency-Key':'pairing-retry-test'}
+        self.assertEqual(team.post(path,json={},headers=headers).status_code,403)
+        self.assertEqual(self.client.post(path,json={},headers=dict(headers,**{'X-CSRF-Token':'wrong'})).status_code,403)
+        with patch('arena_api.elo_scheduler.time.time_ns',return_value=now*1_000_000):
+            response=self.client.post(path,json={},headers=headers)
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertNotIn('elo_error',response.json()['config'])
+        self.assertEqual(self.comp.one('SELECT last_due_ms FROM elo_calendar')['last_due_ms'],due)
+        self.assertEqual(self.comp.one("SELECT COUNT(*) AS n FROM audit WHERE action='elo.retry_pairing' AND target=?",(self.ident,))['n'],1)
+        self.assertEqual(self.client.post(path,json={},headers=headers).json(),response.json())
+        with patch.object(scheduler.book,'latest_passes',return_value=self.entries) as latest:
+            scheduler.advance(self.comp.get(self.ident),now)
+            latest.assert_not_called();self.assertEqual(self.comp.rows('SELECT id FROM elo_rounds'),[])
+            scheduler.advance(self.comp.get(self.ident),due+7_200_000)
+            self.assertEqual(len(self.comp.rows('SELECT id FROM elo_rounds')),1)
+        self.assertEqual(self.client.post(path,json={},headers={'Idempotency-Key':'pairing-no-error'}).status_code,409)
+
+    def test_official_k_accepts_ui_json_without_relaxing_validation(self):
+        body=dict(title='Elo JSON form',format='elo',max_teams=16,match_ms=10000,submission_deadline=9_000_000_000_000,
+            ladder={'round_hours':1},official={'general_rounds':20,'group_size':64,'finalists':16,'k':[[20,32],[None,16]]})
+        item=self.post(self.client,'/admin/competitions',body,expected=201)
+        default=self.post(self.client,'/admin/competitions',dict(body,official={}),expected=201)
+        self.assertEqual(item['config']['official'],default['config']['official'])
+        for k in ([[20],[None,16]],[[20,32,1],[None,16]],[[20,32]],[[20,32],[60,16]],[[20,'32'],[None,16]],[[20,True],[None,16]],[[20,0],[None,16]],'bad',[[None,32],[None,16]]):
+            response=self.client.post('/api/v1/admin/competitions',json=dict(body,official={'k':k}),headers={'Idempotency-Key':'bad-k-json-test'})
+            self.assertEqual(response.status_code,422,(k,response.text))
+
     def test_ladder_accepts_odd_intervals_and_resets_at_vietnam_midnight(self):
         from datetime import datetime,timedelta
         from arena.ladder_clock import VN

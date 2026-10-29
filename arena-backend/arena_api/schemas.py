@@ -191,13 +191,13 @@ class OfficialOptions(Model):
     general_rounds: int = Field(default=20,ge=1,le=64)
     group_size: int = Field(default=64,ge=2,le=128)
     finalists: int = Field(default=16,ge=1,le=128)
-    k: list[tuple[int | None,int]] = [(20,32),(None,16)]
+    k: list[list[int | None]] = [[20,32],[None,16]]
 
     @model_validator(mode='after')
     def validate_rules(self):
         if self.finalists>self.group_size:
             raise ValueError('Finalists cannot exceed round-robin group')
-        if (len(self.k)!=2 or type(self.k[0][0]) is not int or self.k[0][0]<1 or self.k[1][0] is not None
+        if (len(self.k)!=2 or any(len(row)!=2 for row in self.k) or type(self.k[0][0]) is not int or self.k[0][0]<1 or self.k[1][0] is not None
                 or any(type(v) is not int or not 1<=v<=64 for _,v in self.k)):
             raise ValueError('K needs one positive game threshold and a final unbounded tier')
         return self

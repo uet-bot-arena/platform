@@ -39,6 +39,8 @@ export const actionLabels={
  "elo.round_completed": "Hoàn tất đợt Elo",
  "elo.completed": "Hoàn tất xếp hạng Elo",
  "elo.result": "Ghi kết quả Elo",
+ "elo.retry_pairing": "Yêu cầu ghép lại đợt ladder",
+ "competition.elo_retry_pairing": "Gỡ lỗi ghép đợt ladder",
  "elo.retry": "Xếp chạy lại ván Elo",
  "elo.attention": "Đánh dấu lỗi giải Elo",
  "finals.create": "Tạo chung kết",

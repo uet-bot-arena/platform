@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {eloStandings,eloProgress,eloTeam} from '../dist/live/elo.js';
+import {eloCompetition,eloStandings,eloProgress,eloTeam} from '../dist/live/elo.js';
 import {readTournamentOptions,tournamentOptions,ladderHours,ladderCalendar,ladderDuration} from '../dist/live/tournament-options.js';
 import {setLanguage} from '../dist/live/i18n.js';
 import {page} from '../dist/live/pages.js';
@@ -79,4 +79,17 @@ test('only BTC can exclude/restore and public table preserves a removed team wit
  assert.match(publicHtml,/BTC loại khỏi xếp hạng/);assert.doesNotMatch(publicHtml,/data-action="elo-exclude"/);
  assert.match(eloStandings({user:{role:'admin'},standings:data}),/data-action="elo-exclude"/);
  assert.match(eloStandings({user:{role:'admin'},standings:data}),/Khôi phục/);
+});
+
+test('only BTC sees retry pairing on an open Elo competition with a pairing error',()=>{
+ const competition={id:'cup',title:'Cup',status:'open',config:{format:'elo',ladder:{round_hours:1},official:{match_ms:10000,group_size:64,general_rounds:20,finalists:16},elo_error:'<bad pairing>'}};
+ for(const [lang,label] of [['vi','Ghép lại đợt ladder'],['en','Retry ladder pairing']]){
+  setLanguage(lang);
+  const base={competition,standings:{items:[]}};
+  const html=eloCompetition({...base,user:{role:'admin'}},'');assert.ok(html.includes(label));assert.match(html,/data-command="retry-pairing"/);assert.doesNotMatch(html,/<bad pairing>/);
+  assert.doesNotMatch(eloCompetition({...base,user:{role:'student'}},''),/data-command="retry-pairing"/);
+  assert.doesNotMatch(eloCompetition({...base,user:{role:'admin'},competition:{...competition,status:'running'}},''),/data-command="retry-pairing"/);
+  assert.doesNotMatch(eloCompetition({...base,user:{role:'admin'},competition:{...competition,config:{...competition.config,elo_error:null}}},''),/data-command="retry-pairing"/);
+ }
+ setLanguage('vi');
 });

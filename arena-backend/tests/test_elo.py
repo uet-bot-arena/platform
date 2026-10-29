@@ -181,6 +181,36 @@ class Elo(unittest.TestCase):
         self.assertTrue(all(abs(positions[a]-positions[b])<=10 for a,b in again))
         self.assertEqual(pair(dict(reversed(list(ratings.items()))),recent=recent)[0],again)
 
+    def test_real_five_team_history_can_pair_round_four(self):
+        from collections import deque
+        ratings={'THU-M2 A':1526.40,'DEMO ELO 2':1501.36,'DEMO ELO 4':1499.75,'DEMO ELO 1':1497.43,'DEMO ELO 3':1475.05}
+        recent={t:deque(maxlen=3) for t in ratings};byes={}
+        rounds=[([('THU-M2 A','DEMO ELO 3')],'DEMO ELO 4'),
+                ([('DEMO ELO 4','THU-M2 A'),('DEMO ELO 1','DEMO ELO 3')],'DEMO ELO 2'),
+                ([('DEMO ELO 2','DEMO ELO 1'),('DEMO ELO 4','DEMO ELO 3')],'THU-M2 A')]
+        for number,(pairs,bye) in enumerate(rounds,1):
+            for a,b in pairs:recent[a].append(b);recent[b].append(a)
+            byes[bye]=(1,number)
+        pairs,bye=pair(ratings,recent=recent,byes=byes)
+        self.assertEqual(len(pairs),2)
+        self.assertEqual({t for p in pairs for t in p}|{bye},set(ratings))
+
+    def test_ladder_relaxes_only_as_far_as_needed(self):
+        recent={'a':['b','c','d'],'b':['a','d','c'],'c':['d','a','b'],'d':['c','b','a']}
+        self.assertEqual(pair(dict.fromkeys('abcd',1500),recent=recent)[0],[('a','b'),('c','d')])
+
+    def test_small_fields_finish_twenty_rounds_and_twenty_teams_keep_three_opponents(self):
+        from collections import deque
+        for size in (3,4,5,6,20):
+            ratings={f'{i:02d}':1500-i for i in range(size)};recent={t:deque(maxlen=3) for t in ratings};byes={}
+            for number in range(20):
+                pairs,bye=pair(ratings,recent=recent,byes=byes)
+                self.assertEqual(len(pairs),size//2,(size,number))
+                self.assertEqual(len({t for p in pairs for t in p}),size-size%2)
+                if size==20:self.assertTrue(all(b not in recent[a] and a not in recent[b] for a,b in pairs))
+                if bye:byes[bye]=(byes.get(bye,(0,-1))[0]+1,number)
+                for a,b in pairs:recent[a].append(b);recent[b].append(a)
+
     def test_official_avoids_repeats_then_uses_fewest_meetings(self):
         ratings = {str(i):1500 for i in range(4)}
         meetings = {}
@@ -200,8 +230,9 @@ class Elo(unittest.TestCase):
             self.assertEqual(len(pairs),2)
             seen.append(bye);byes[bye]=(1,n)
         self.assertEqual(len(set(seen)),5)
+        self.assertEqual(pair({'a':1500,'b':1500},recent={'a':{'b'}})[0],[('a','b')])
         with self.assertRaises(Fault):
-            pair({'a':1500,'b':1500},recent={'a':{'b'}})
+            pair({'a':1500,'b':1500},meetings={('a','b'):1},official=True,no_repeat=True)
 
 
 if __name__ == '__main__':
