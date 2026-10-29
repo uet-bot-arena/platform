@@ -1,7 +1,6 @@
 from typing import Literal
 from fastapi import APIRouter, Depends, Query, Request
-from arena_api.dependencies import admin_principal, can_manage_graders, COOKIE
-from arena.protocol import Fault
+from arena_api.dependencies import admin_principal, can_manage_graders
 from arena_api.competition_views import competition_filter
 from arena_api.schemas import AccountLock, Credentials, ResetPassword, IssuedCredential, RegistrationReceipt, UserView
 from arena_api.schemas import AdminTeamCreate, AdminTeamEdit, Revision
@@ -63,16 +62,11 @@ def resolve_recovery(ident: str, request: Request, auth=Depends(admin_principal)
     return request.app.state.accounts.resolve_recovery(ident, auth['user']['id'])
 
 
-def audit_principal(request: Request):
-    if not request.cookies.get(COOKIE):raise Fault('forbidden','Administrator required')
-    return admin_principal(request)
-
-
 @router.get("/audit", summary="Nhật ký hệ thống; IP đầy đủ chỉ dành cho tài khoản quản lý")
 def audit(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0, le=2147483647),
           role: Literal['admin','team','system'] | None = None,
           group: Literal['auth','competition','grader','account','results','bot'] | None = None,
-          q: str = '', auth=Depends(audit_principal)):
+          q: str = '', auth=Depends(admin_principal)):
     return {"items": request.app.state.accounts.audit_log(limit, offset, role, group, q, can_manage_graders(request,auth)), "limit": limit, "offset": offset}
 
 

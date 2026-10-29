@@ -86,7 +86,6 @@ class RoleMatrix(APIHarness):
                             # Grader endpoints accept only a grader token, never a session cookie.
                             # Signed downloads authenticate in the real handler, covered by test_grader_downloads.
                             if route.path=='/api/v1/grader/download/{exp}/{sig}/{file}':expected=200
-                            elif route.path=='/api/v1/admin/audit' and role in ('guest','grader'):expected=403
                             elif (route.path=='/api/v1/admin/grader-package' or route.path.startswith(('/api/v1/admin/results-','/api/v1/admin/finals'))) and role in ('guest','locked','archived','grader'):expected=403
                             elif route.path.startswith('/api/v1/grader/'):expected=200 if role=='grader' else 401
                             elif route.path in public or method=='GET' and route.path in SPECTATOR_PATHS:expected=200

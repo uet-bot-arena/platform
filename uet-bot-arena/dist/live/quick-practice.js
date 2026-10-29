@@ -1,5 +1,5 @@
 import {tr} from './i18n.js';
-import {esc,panel,note,select,submit,errors,link} from './view.js';
+import {esc,panel,note,select,submit,errors,link,date} from './view.js';
 import {boardMarkup} from './board.js';
 import {resultLabel} from './result.js';
 
@@ -29,9 +29,10 @@ export async function recentMatch(api,competitions){
   const state=replay.items.map(e=>e.data?.state).filter(Boolean).at(-1);
   return state?{competition:c,fixture:f,state}:null;
 }
-export function recentMatchPanel(value){
+export function recentMatchPanel(value,competitions=[]){
   if(!value)return '';
   const {competition:c,fixture:f,state}=value;
   const name=side=>c.entries.find(e=>e.team_id===f[side+'_team_id'])?.name||f[side+'_team_id'];
-  return panel(tr('Một trận vừa đấu'),`<div class="recent-match"><div class="recent-board">${boardMarkup(state,c.config.basic_rules?.definition)}</div><div><p><span class="side-dot red"></span>${esc(name('red'))} · ${tr('Đỏ')}<br><span class="side-dot blue"></span>${esc(name('blue'))} · ${tr('Xanh')}</p><p><strong>${esc(resultLabel(f.result,name))}</strong></p>${link(`replay/${c.id}/${f.id}`,tr('Xem lại cả trận'),'primary')}</div></div>`);
+  const total=competitions.filter(c=>!c.archived_ms).reduce((n,c)=>n+(c.fixture_counts?.completed||0),0);
+  return panel(tr('Một trận vừa đấu'),`<p class="muted">${esc(c.title)} · ${tr('Trận ')}${esc(f.ordinal)} · ${tr('xong lúc ')}${esc(date(f.completed_ms))} · ${esc(state.ply)} ${tr('nước')}</p><div class="recent-match"><div class="recent-board">${boardMarkup(state,c.config.basic_rules?.definition)}</div><div><p><span class="side-dot red"></span>${esc(name('red'))} · ${tr('Đỏ')}<br><span class="side-dot blue"></span>${esc(name('blue'))} · ${tr('Xanh')}</p><p><strong>${esc(resultLabel(f.result,name))}</strong></p>${link(`replay/${c.id}/${f.id}`,tr('Xem lại cả trận'),'primary')}<p class="muted">${tr('Các giải trên web đã đấu ')}${esc(total)}${tr(' ván')} · <a class="text-link" href="#/schedule">${tr('Xem lịch thi đấu ›')}</a></p></div></div>`);
 }

@@ -37,7 +37,7 @@ class AuditTests(APIHarness):
         self.assertEqual(self.rows(q='%'),[])
         all_rows=self.rows();self.assertEqual(self.rows(limit=1,offset=1)[0]['id'],all_rows[1]['id'])
         self.assertEqual(team.get('/api/v1/admin/audit').status_code,403)
-        self.assertEqual(self.other_client().get('/api/v1/admin/audit').status_code,403)
+        self.assertEqual(self.other_client().get('/api/v1/admin/audit').status_code,401)
 
     def test_only_manager_sees_full_ipv4_ipv6_and_legacy_rows_are_null(self):
         a=self.app.state.accounts;a.bootstrap_admin('other-btc','test-only-other-password')
