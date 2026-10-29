@@ -149,11 +149,11 @@ ETA là khoảng ước tính dựa trên thời gian ván đã quan sát, khôn
 
 Tài khoản ban tổ chức được cấp riêng. Người có quyền này quản lý đội, hồ sơ, giải và máy chấm; tài khoản sinh viên không tự nâng quyền bằng dữ liệu gửi từ trình duyệt. Các thao tác quan trọng của BTC, đội và hệ thống được ghi vào Nhật ký hệ thống (tài khoản, vai trò, IP, thời gian); chỉ BTC xem được, tài khoản quản lý thấy đủ IP, BTC khác thấy IP rút gọn. Khi hai tab cùng sửa một bản, revision giúp máy chủ từ chối ghi đè dữ liệu vừa thay đổi ở nơi khác.
 
-Khi tạo giải, ban tổ chức chọn thể thức, số đội tối đa, nền tảng chấm và hạn nộp. Elo online cần hạn nộp và các tham số ladder, nhóm đầu, số suất chung kết. Vòng tròn nội bộ hỗ trợ tối đa 32 đội; Swiss và trường số đội của Elo cho phép tối đa 4.096. Các giới hạn biểu mẫu không phải lời khẳng định máy chủ đã đo được từng quy mô đó.
+Khi tạo giải, ban tổ chức chọn thể thức, **Số đội được đăng ký tối đa**, nền tảng chấm và hạn nộp. Sức chứa đăng ký khác với **Số đội vào chung kết**: Elo mặc định nhận tối đa 1.000 đội và công bố 16 đội đầu; vòng tròn hoặc Swiss mặc định nhận tối đa 16 đội, xếp theo điểm và không tự chọn đội chung kết. Khi đổi thể thức, biểu mẫu đổi sức chứa mặc định nếu BTC chưa tự nhập số. Lịch ladder, giờ đợt đầu và số đội vào chung kết nằm ngay trên form; các tham số vòng chung, vòng tròn và K ở mục Nâng cao. Sau hạn, Elo tự xếp hạng và công bố danh sách, không tự tạo chung kết LAN. BTC tạo chung kết ở tab Chung kết, cần đúng 16 đội; số suất khác chỉ dùng để công bố danh sách. Elo online cần hạn nộp và các tham số ladder, nhóm đầu, số suất chung kết. Vòng tròn nội bộ hỗ trợ tối đa 32 đội; Swiss và trường số đội của Elo cho phép tối đa 4.096. Các giới hạn biểu mẫu không phải lời khẳng định máy chủ đã đo được từng quy mô đó.
 
-![Phần chính của biểu mẫu tạo giải với các giá trị mặc định](img/h04-tao-giai.png)
+![Biểu mẫu Elo tách sức chứa đăng ký và số đội vào chung kết](img/h04-tao-giai.png)
 
-*Hình 4. Phần chính của biểu mẫu tạo giải với các giá trị mặc định*
+*Hình 4. Biểu mẫu Elo tách sức chứa đăng ký và số đội vào chung kết*
 
 Với Elo, ban tổ chức mở giải trước hạn để hub nhận bài và chạy ladder; sau hạn hệ thống tự khóa và xếp hạng theo điều kiện đã nêu. Với vòng tròn hoặc Swiss nội bộ, đội đăng ký bài đã kiểm đúng cấu hình, ban tổ chức chốt lịch rồi bấm bắt đầu. Hai thể thức dùng thang điểm khác nhau: vòng tròn chính thức của Elo dùng một, nửa, không điểm; giải nội bộ cũ dùng ba, một, không điểm. Giải vòng tròn nội bộ xếp theo điểm, điểm đối đầu chỉ tính trong nhóm bằng điểm, rồi tổng số ván thắng; vẫn bằng thì đồng hạng. Hệ số đối đầu được tính một lần trong nhóm bằng điểm ban đầu, không chia nhóm để tính lại. Swiss giữ cách xét Buchholz; vòng tròn chính thức của Elo giữ hệ số Elo cuối cùng đã nêu ở mục 4.3.
 

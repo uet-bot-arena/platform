@@ -166,6 +166,8 @@ Vào **Giải đấu**, chọn Elo và điền tên, số đội, hạn nộp c�
 
 Khi giải còn nhận bài và chưa hết hạn, BTC bấm Sửa để đổi khoảng hoặc giờ đợt đầu. Lịch mới chỉ áp dụng từ mốc kế tiếp sau khi lưu, giữ nguyên đợt đang chạy; các thay đổi được ghi nhật ký.
 
+Số đội được đăng ký tối đa là sức chứa giải (Elo mặc định 1.000), khác Số đội vào chung kết (mặc định 16). Các ô lịch ladder và số đội được chọn hiện ngay; mở Nâng cao để sửa vòng chung, nhóm vòng tròn hoặc K. Đọc lại dòng quy trình dưới form. Hub chỉ công bố danh sách; chung kết LAN tạo riêng ở tab Chung kết và cần đúng 16 đội. Vòng tròn/Swiss chỉ xếp hạng theo điểm, không tự chọn đội chung kết.
+
 ![Chuẩn bị giải mới](img/h04-tao-giai.png)
 
 *Hình 20. Chuẩn bị giải mới*
@@ -273,3 +275,25 @@ Trên web thật, BTC mở Giải đấu → Nạp kết quả từ hub LAN, ch�
 
 *Hình 32. BTC thử tạo giải vòng tròn bốn đội trên hub local*
 <!-- /M3-11 new step -->
+
+## 6. BTC tìm người, quản lý đội và tự thử bot
+
+### Bước 33. Tìm người và lập đội cho người lẻ
+
+Mở **Người dùng & lập đội**, gõ tên, email, MSSV hoặc tên đội. Chọn **Chưa có đội** để tìm người lẻ; bảng hiện tối đa 50 người, gõ thêm nếu còn nhiều kết quả. Tại dòng người đó, bấm **Lập đội mới**, nhập tên rồi xác nhận: người được chọn làm đội trưởng và nhận mã mời như đội tự lập. Hoặc bấm **Thêm vào đội**, tìm tên đội hay tên/email thành viên; danh sách chỉ hiện tối đa tám đội còn chỗ, chọn đội rồi bấm **Thêm**. Người đã có đội có nút **Làm đội trưởng** hoặc **Xóa khỏi đội**; kiểm tên người và tên đội trong hộp xác nhận trước khi tiếp tục. Thao tác được ghi nhật ký.
+
+**Đội & tài khoản** hiển thị cả đội sinh viên dùng tài khoản riêng và đội dùng tài khoản chung. Tìm theo MSSV/email thành viên, tên đội hoặc tài khoản chung. Với đội sinh viên, bấm **Xem** để đối chiếu đủ thành viên, email và đội trưởng; **Chỉnh thành viên** mở trang Người dùng với tên đội điền sẵn. Bộ lọc Giải và Hiển thị áp cho cả hai loại. Lưu trữ đội giữ lịch sử và khóa tài khoản; khôi phục vẫn giữ khóa, BTC mở khóa từng người sau khi kiểm tra.
+
+![BTC tìm người chưa có đội trên hub local](img/h35-tim-nguoi.png)
+
+*Hình 33. Tìm người rồi thao tác ngay tại dòng của họ; dữ liệu minh họa trên hub local*
+
+### Bước 34. BTC tự thử bot mà không lập đội
+
+Mở **Kiểm tra bot**, dùng khung **Thử nhanh không cần GitHub**: điền bot mẫu C++, dán mã hoặc chọn file mã/ZIP rồi **Nạp và kiểm tra**. Chờ kết quả 72 mẫu, hoặc chọn bản của mình ở **Chạy kiểm tra** để kiểm lại. Sang **Luyện tập**, chọn bản đó và bot mẫu BTC, chọn quỹ giờ, đồng ý điều kiện hết giờ rồi tạo trận. Mở log hoặc replay để xem kết quả.
+
+Bot thử và job thuộc riêng tài khoản BTC đang đăng nhập; BTC khác và thí sinh không xem qua API cá nhân. Giới hạn thử nhanh và chính sách giữ replay giống người chưa có đội. BTC vẫn không nộp GitHub hoặc đăng ký đội vào giải bằng bản thử này; mọi lượt kiểm/luyện tập được ghi đúng tên BTC trong nhật ký.
+
+![BTC tự kiểm bot riêng, không cần đội](img/h36-btc-thu-bot.png)
+
+*Hình 34. Khung Thử nhanh của BTC trên hub local*
