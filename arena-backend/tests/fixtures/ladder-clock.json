@@ -1,0 +1,104 @@
+[
+  {
+    "name": "105-minute absolute interval",
+    "ladder": {
+      "round_minutes": 105,
+      "first_round_ms": 1793854800000
+    },
+    "start_ms": 1793851200000,
+    "deadline_ms": 1793883600000,
+    "expected": {
+      "times": [
+        1793854800000,
+        1793861100000,
+        1793867400000,
+        1793873700000,
+        1793880000000
+      ],
+      "rounds": 5
+    }
+  },
+  {
+    "name": "135-minute interval at 08:10 Vietnam",
+    "ladder": {
+      "round_minutes": 135,
+      "first_round_ms": 1793841000000
+    },
+    "start_ms": 1793836800000,
+    "deadline_ms": 1793873460000,
+    "expected": {
+      "times": [
+        1793841000000,
+        1793849100000,
+        1793857200000,
+        1793865300000,
+        1793873400000
+      ],
+      "rounds": 5
+    }
+  },
+  {
+    "name": "legacy five-hour reset at midnight",
+    "ladder": {
+      "round_hours": 5
+    },
+    "start_ms": 1793883660000,
+    "deadline_ms": 1793937600000,
+    "expected": {
+      "times": [
+        1793898000000,
+        1793916000000,
+        1793934000000
+      ],
+      "rounds": 3
+    }
+  },
+  {
+    "name": "five-minute interval across midnight",
+    "ladder": {
+      "round_minutes": 5,
+      "first_round_ms": 1793897880000
+    },
+    "start_ms": 1793897820000,
+    "deadline_ms": 1793898840000,
+    "expected": {
+      "times": [
+        1793897880000,
+        1793898180000,
+        1793898480000,
+        1793898780000
+      ],
+      "rounds": 4
+    }
+  },
+  {
+    "name": "weekly absolute interval",
+    "ladder": {
+      "round_minutes": 10080,
+      "first_round_ms": 1793841000000
+    },
+    "start_ms": 1793725200000,
+    "deadline_ms": 1795107600000,
+    "expected": {
+      "times": [
+        1793841000000,
+        1794445800000,
+        1795050600000
+      ],
+      "rounds": 3
+    }
+  },
+  {
+    "name": "deadline excludes its boundary",
+    "ladder": {
+      "round_minutes": 5,
+      "first_round_ms": 1793841000000
+    },
+    "start_ms": 1793841000000,
+    "deadline_ms": 1793841000000,
+    "expected": {
+      "times": [],
+      "rounds": 0
+    }
+  }
+]

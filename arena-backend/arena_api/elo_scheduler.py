@@ -6,7 +6,7 @@ from datetime import datetime,timedelta
 
 from arena.config import match_profile
 from arena.elo import INITIAL, official_phase, top_group, round_robin_rank, select
-from arena.ladder_clock import boundary,VN
+from arena.ladder_clock import round_boundary,VN
 from arena.protocol import Fault
 from arena.service import TERMINAL
 from arena_api.elo_rounds import RoundBook
@@ -58,7 +58,8 @@ class EloScheduler:
                 self.comp.lock('system',ident,'elo-auto-lock:'+ident)
                 self.comp.transition('system',ident,'running','elo-auto-start:'+ident)
                 return
-            due=boundary(now,config['ladder']['round_hours'])
+            if now < (config['ladder'].get('first_round_ms') or 0):return
+            due=round_boundary(now,config['ladder'])
             with self.store.transaction():
                 old=self.comp.one('SELECT last_due_ms FROM elo_calendar WHERE competition_id=?',(ident,))
                 self.db.execute('INSERT OR IGNORE INTO elo_calendar VALUES(?,?)',(ident,due))
@@ -166,7 +167,7 @@ class EloScheduler:
                 result['general_total_rounds']=general_total
                 result['announcement_eta']=self.comp.service.timing.estimate('match',cfg['profile']['id'],cfg['grader_platform'],cfg['runtime_id'],total-finished,slots,started=started,now_ms=self.comp.service.lease_now_ms())
         if item['status']=='open' and result['server_ms']<item['submission_deadline']:
-            result['next_round_ms']=boundary(result['server_ms'],config['ladder']['round_hours'],next=True)
+            result['next_round_ms']=round_boundary(result['server_ms'],config['ladder'],next=True)
             if result['next_round_ms']>=item['submission_deadline']:result['next_round_ms']=None
         return result
 
@@ -280,7 +281,7 @@ class EloScheduler:
             if config['format']!='elo' or not config.get('elo_error'):
                 raise Fault('competition_conflict','Giải Elo không có lỗi ghép ladder để chạy lại')
             config.pop('elo_error')
-            due=boundary(time.time_ns()//1_000_000,config['ladder']['round_hours'])
+            due=round_boundary(time.time_ns()//1_000_000,config['ladder'])
             # Consume missed boundaries; the retry waits for the next scheduled hour.
             self.db.execute('INSERT INTO elo_calendar VALUES(?,?) ON CONFLICT(competition_id) DO UPDATE SET last_due_ms=MAX(last_due_ms,excluded.last_due_ms)',(ident,due))
             self.db.execute('UPDATE competitions SET config=?,revision=revision+1 WHERE id=?',(json.dumps(config),ident))

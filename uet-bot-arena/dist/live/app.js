@@ -8,7 +8,7 @@ import {visiblePoll,githubPollMs} from './polling.js';
 import {tr,html as l10n,language,setLanguage} from './i18n.js';
 import {startAnnouncements} from './announcements.js';
 import {vnDeadlineField,readVnDeadline} from './vn-deadline.js';
-import {readTournamentOptions,updateLadderPreview} from './tournament-options.js';
+import {readTournamentOptions,updateLadderPreview,ladderFields,ladderEdit} from './tournament-options.js';
 import {timeField,timeBody,competitionProfile} from './time-control.js';
 import {ArenaAPI,saveBlob,uuid,copyText} from './client.js';
 import {page,jobDetail} from './pages.js';
@@ -346,7 +346,7 @@ document.addEventListener('submit',e=>{
     }else if(form.id==='elo-exclude-form'){
       await api.post('/admin/competitions/'+form.dataset.competition+'/teams/'+form.dataset.team+'/exclude',{excluded:form.dataset.excluded==='true',reason:v('reason')},keyFor(form));closeModal();toast(tr('Đã cập nhật xếp hạng và ghi lý do.'));openRoute();
     }else if(form.id==='competition-edit-form'){
-      await api.post('/admin/competitions/'+form.dataset.id+'/edit',{title:v('title'),...timeBody(data),max_teams:Number(v('max_teams')),...(data.has('submission_deadline-date')?{submission_deadline:readVnDeadline(data,'submission_deadline')}:{}),expected_revision:Number(form.dataset.revision)},keyFor(form));closeModal();toast(tr('Đã sửa giải.'));openRoute();
+      await api.post('/admin/competitions/'+form.dataset.id+'/edit',{title:v('title'),...timeBody(data),max_teams:Number(v('max_teams')),...(data.has('submission_deadline-date')?{submission_deadline:readVnDeadline(data,'submission_deadline'),...ladderEdit(data,JSON.parse(form.dataset.ladder))}:{}),expected_revision:Number(form.dataset.revision)},keyFor(form));closeModal();toast(tr('Đã sửa giải.'));openRoute();
     }else if(form.id==='admin-team-form'){
       const members=Array.from({length:4},(_,i)=>({name:v('name-'+i),student_id:v('student-'+i)})).filter((m,i)=>i<3||m.name||m.student_id);
       const profile={team:v('team'),email:v('email'),phone:v('phone'),members,confirmed:true};
@@ -369,7 +369,7 @@ document.addEventListener('submit',e=>{
 function refreshAdminBody(){const el=document.getElementById('admin-table');if(el)el.innerHTML=adminTeamsBody(s);}
 function refreshOperationsBody(){const el=document.getElementById('operations-table');if(el)el.innerHTML=operationsBody(s);}
 document.addEventListener('input',e=>{
-  if(e.target.name==='ladder-hours'||e.target.closest('[data-vn-deadline]'))updateLadderPreview(e.target.form);
+  if(['ladder-hours','ladder-minutes','format'].includes(e.target.name)||e.target.closest('[data-vn-deadline]'))updateLadderPreview(e.target.form);
   if(e.target.name==='admin-search'){s.adminSearch=e.target.value;s.adminPage=1;refreshAdminBody();}
   if(e.target.name==='people-search'){s.peopleSearch=e.target.value;const pos=e.target.selectionStart;render();const input=document.querySelector('[name=people-search]');input.focus();input.setSelectionRange(pos,pos);}
   if(e.target.name==='ops-search'){s.opsSearch=e.target.value;s.opsPage=1;refreshOperationsBody();}
@@ -522,7 +522,7 @@ document.addEventListener('click',async e=>{
     }
     if(['competition-edit','competition-archive','competition-restore'].includes(action)){
       const c=s.competitions.find(x=>x.id===b.dataset.id)||s.competition;
-      if(action==='competition-edit'){modal(tr('Sửa giải · ')+c.title,`<form class="real-form" id="competition-edit-form" data-id="${c.id}" data-revision="${c.revision}">${field(tr('Tên giải'),'title','required minlength="3" maxlength="100"','text',c.title)}${timeField(c.config.profile)}${c.config.format==='elo'?vnDeadlineField('submission_deadline',c.submission_deadline)+`<input type="hidden" name="ladder-hours" value="${c.config.ladder.round_hours}">`+note(tr('Hạn nộp sửa được tới trước khi qua hạn.')):''}${field(tr('Số đội tối đa'),'max_teams','required min="2" max="4096"','number',c.config.max_teams)}${note(tr('Chỉ đổi thời gian ở bản nháp chưa có đội. Khi mở đăng ký, có thể sửa tên và giới hạn đội trước khi chốt lịch.'))}${errors()}${submit(tr('Lưu cấu hình'))}</form>`);updateLadderPreview(document.getElementById('competition-edit-form'));}
+      if(action==='competition-edit'){modal(tr('Sửa giải · ')+c.title,`<form class="real-form" id="competition-edit-form" data-id="${c.id}" data-revision="${c.revision}" data-ladder="${esc(JSON.stringify(c.config.ladder||{}))}">${field(tr('Tên giải'),'title','required minlength="3" maxlength="100"','text',c.title)}${timeField(c.config.profile)}${c.config.format==='elo'?vnDeadlineField('submission_deadline',c.submission_deadline)+ladderFields(c.config.ladder)+note(tr('Hạn nộp sửa được tới trước khi qua hạn.'))+note(tr('Có thể đổi khoảng và giờ đợt đầu khi giải còn nhận bài; đợt đang chạy giữ nguyên.')):''}${field(tr('Số đội tối đa'),'max_teams','required min="2" max="4096"','number',c.config.max_teams)}${note(tr('Chỉ đổi thời gian ở bản nháp chưa có đội. Khi mở đăng ký, có thể sửa tên và giới hạn đội trước khi chốt lịch.'))}${errors()}${submit(tr('Lưu cấu hình'))}</form>`);updateLadderPreview(document.getElementById('competition-edit-form'));}
       else{const restore=action==='competition-restore';confirmAction((restore?tr('Khôi phục'):tr('Xóa'))+tr(' giải ')+c.title+'?',restore?tr('Giải trở lại danh sách, giữ nguyên trạng thái trước khi xóa.'):tr('Chỉ xóa bản nháp / giải mở chưa có đội chọn bot, hoặc giải đã hoàn tất. Toàn bộ lịch sử và kết quả được giữ.'),async()=>{await api.post('/admin/competitions/'+c.id+'/'+(restore?'restore':'archive'),{expected_revision:c.revision},keyFor(b));});}return;
     }
     if(action==='review-registration'){

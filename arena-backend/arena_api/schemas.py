@@ -183,7 +183,18 @@ class AdminTeamEdit(Registration):
 
 
 class LadderOptions(Model):
-    round_hours: int = Field(default=2,ge=1,le=24)
+    round_minutes: int | None = Field(default=None,ge=5,le=10080)
+    first_round_ms: int | None = Field(default=None,ge=0)
+    round_hours: int | None = Field(default=None,ge=1,le=24)
+
+    @model_validator(mode='after')
+    def interval(self):
+        if self.round_hours is not None:
+            if self.round_minutes is not None or self.first_round_ms is not None:
+                raise ValueError('Use round_minutes with first_round_ms; round_hours is the legacy calendar')
+        elif self.round_minutes is None:
+            self.round_minutes = 120
+        return self
 
 
 class OfficialOptions(Model):

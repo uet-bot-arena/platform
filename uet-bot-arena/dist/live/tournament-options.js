@@ -1,35 +1,38 @@
-import {tr,html as l10n,locale} from './i18n.js';
-import {vnDeadlineField,readVnDeadline,vnDeadlineText,updateVnDeadlinePreviews} from './vn-deadline.js';
+import {ladderMinutes,ladderPreview} from './ladder-clock.js';
+import {tr,html as l10n} from './i18n.js';
+import {vnDeadlineField,readVnDeadline,updateVnDeadlinePreviews} from './vn-deadline.js';
 import {field,select,note} from './view.js';
 
-const DAY=86400000,VN_OFFSET=7*3600000;
-export function ladderHours(value){const n=Number(value);return Number.isInteger(n)&&n>=1&&n<=24?Array.from({length:Math.ceil(24/n)},(_,i)=>i*n):[];}
-export function ladderCalendar(value){
-  const hours=ladderHours(value);if(!hours.length)return tr('Chọn khoảng giờ từ 1 đến 24.');
-  const times=hours.map(n=>String(n).padStart(2,'0')+':00').join(', ');
-  let text=l10n`Đợt mở lúc ${times} mỗi ngày (giờ Việt Nam)`;
-  if(24%Number(value))text+=l10n`; đợt cuối ngày ngắn hơn (${hours.at(-1)}:00 → 0:00 chỉ ${24-hours.at(-1)} giờ)`;
-  return text;
+export function readLadderOptions(data){
+  const hours=Number(data.get('ladder-hours')??2),minutes=Number(data.get('ladder-minutes')??0),total=hours*60+minutes;
+  if(!Number.isInteger(hours)||hours<0||hours>168||!Number.isInteger(minutes)||minutes<0||minutes>59||total<5||total>10080)throw new Error(tr('Khoảng mở đợt phải từ 5 phút tới 7 ngày; giờ 0–168, phút 0–59.'));
+  const first=readVnDeadline(data,'first_round_ms');
+  return {round_minutes:total,...(first!=null?{first_round_ms:first}:{})};
 }
-export function ladderDuration(value,deadline,start=Date.now()){
-  const hours=ladderHours(value);if(!hours.length||!Number.isFinite(deadline)||deadline<start)return null;
-  const before=at=>{const local=at+VN_OFFSET,day=Math.floor(local/DAY),offset=local-day*DAY;return day*hours.length+hours.filter(h=>h*3600000<offset).length;};
-  return {days:(deadline-start)/DAY,rounds:before(deadline)-before(start)};
+export function ladderEdit(data,original){
+  const ladder=readLadderOptions(data);
+  return ladderMinutes(ladder)===ladderMinutes(original)&&(ladder.first_round_ms??null)===(original.first_round_ms??null)?{}:{ladder};
+}
+export function ladderFields(ladder={round_minutes:120}){
+  const total=ladderMinutes(ladder);
+  return `<div class="field"><span>${tr('Mở đợt mỗi')}</span><div class="form-grid">${field(tr('giờ'),'ladder-hours','min="0" max="168" step="1"','number',Math.floor(total/60))}${field(tr('phút'),'ladder-minutes','min="0" max="59" step="1"','number',total%60)}</div><p class="form-error" data-ladder-error role="alert"></p></div>`+vnDeadlineField('first_round_ms',ladder.first_round_ms)+`<p class="muted" data-ladder-calendar></p>`;
 }
 export function updateLadderPreview(form){
   if(!form)return;
   updateVnDeadlinePreviews(form);
-  const hours=form.elements['ladder-hours']?.value||'2',calendar=form.querySelector('[data-ladder-calendar]'),duration=form.querySelector('[data-ladder-duration]');
-  if(calendar)calendar.textContent=ladderCalendar(hours);
-  if(duration){
-    let deadline;try{deadline=readVnDeadline(form,'submission_deadline');}catch{return;}
-    const value=ladderDuration(hours,deadline??NaN);
-    duration.textContent=vnDeadlineText(deadline)+' · '+(value?l10n`Ladder chạy từ lúc Mở giải tới hạn nộp: khoảng ${value.days.toLocaleString(locale(),{maximumFractionDigits:1})} ngày, ${value.rounds} đợt`:tr('Chọn hạn nộp để ước tính số ngày và số đợt ladder.'))+' '+tr('Hạn nộp sửa được tới trước khi qua hạn.');
-  }
+  const inputs=[form.elements['ladder-hours'],form.elements['ladder-minutes']].filter(Boolean),calendar=form.querySelector('[data-ladder-calendar]'),error=form.querySelector('[data-ladder-error]');
+  if(!calendar)return;
+  if(form.elements.format&&form.elements.format.value!=='elo'){if(error){error.textContent='';error.classList.remove('visible');}inputs.forEach(i=>i.setCustomValidity(''));calendar.textContent='';return;}
+  try{
+    const data=new FormData(form),value=readLadderOptions(data),original=form.dataset.ladder?JSON.parse(form.dataset.ladder):null;
+    const ladder=original&&!Object.hasOwn(ladderEdit(data,original),'ladder')?original:value;
+    inputs.forEach(i=>i.setCustomValidity(''));if(error){error.textContent='';error.classList.remove('visible');}
+    calendar.textContent=ladderPreview(ladder,readVnDeadline(data,'submission_deadline')??NaN);
+  }catch(e){inputs.forEach(i=>i.setCustomValidity(e.message));if(error){error.textContent=e.message;error.classList.add('visible');}calendar.textContent='';}
 }
 
 export function tournamentOptions(){
-  return l10n`${vnDeadlineField('submission_deadline')}<label class="field"><span>Máy chấm cho trận tính điểm</span>${select('grader_platform',[['windows','Windows (AppContainer)'],['linux','Linux (bubblewrap)']])}</label><label class="field"><span>Thể thức</span>${select('format',[['elo',tr('Ladder Elo → vòng chung → vòng tròn tính điểm')],['double_round_robin',tr('Vòng tròn 2 lượt (tối đa 32 đội)')],['swiss',tr('Swiss (nhiều đội) · mỗi cặp 2 ván đổi màu')]])}</label><details><summary>Luật ladder và xếp hạng chính thức</summary><div class="form-grid"><label class="field"><span>Khoảng giờ ladder (giờ Việt Nam)</span><input class="input" name="ladder-hours" type="number" min="1" max="24" step="1" value="2"><small data-ladder-calendar>${ladderCalendar(2)}</small></label>${field(tr('Số đợt vòng chung'),'general-rounds','min="1" max="64"','number','20')}${field(tr('Số đội vòng tròn'),'group-size','min="2" max="128"','number','64')}${field(tr('Số đội vào chung kết'),'finalists','min="1" max="128"','number','16')}${field(tr('Số ván chính thức đầu dùng K lớn'),'k-games','min="1"','number','20')}${field(tr('K ban đầu'),'first-k','min="1" max="64"','number','32')}${field(tr('K sau đó'),'later-k','min="1" max="64"','number','16')}</div>${note(tr('Vòng tròn: thắng 1, hòa ½, thua 0; không cập nhật Elo. Số đội không quá kích thước nhóm đầu thì bỏ vòng chung.'))}</details>${field(tr('Số vòng Swiss (để trống: hệ thống tự tính theo số đội)'),'rounds','min="1" max="64"','number')}<label class="check-field"><input type="checkbox" name="custom-basic">Tùy chỉnh luật bàn cờ (kích thước, căn cứ, điều kiện thắng)</label><div class="form-grid">${field(tr('Số hàng (7–15)'),'board-rows','min="7" max="15" required','number','9')}${field(tr('Số cột (7–15)'),'board-cols','min="7" max="15" required','number','9')}${field(tr('Căn cứ Đỏ'),'base-red','pattern="[a-o]([1-9]|1[0-5])" required','text','a1')}${field(tr('Căn cứ Xanh (để trống: góc đối diện)'),'base-blue','','text','')}<label class="field"><span>Thắng khi diệt sạch</span>${select('eliminate-types',[['1',tr('1 loại quân')],['2',tr('2 loại quân')]])}</label></div><label class="check-field"><input name="base-capture" type="checkbox" checked>Thắng khi chiếm căn cứ đối phương</label><label class="field"><span>Xếp quân thủ công (không bắt buộc; để trống = xếp tự động đối xứng như OTTv2)</span><textarea class="input" name="placement" rows="3" placeholder='[{"square":"a2","side":"red","kind":"rock"}]'></textarea></label>${note(tr('Luật, thể thức và số vòng được giữ cố định sau khi tạo giải. Quỹ giờ của bot không đổi theo kích thước bàn; chỉ giới hạn số nước tăng theo số ô. Hệ thống từ chối luật cho phép một bên thắng ngay ở nước đầu. Swiss: mỗi vòng ghép các đội cùng điểm và tránh gặp lại đối thủ cũ; nếu số đội lẻ, một đội được nghỉ và nhận 6 điểm (như thắng cả vòng), mỗi đội nghỉ tối đa 1 lần; bằng điểm thì xét Buchholz (tổng điểm các đối thủ đã gặp).'))}`;
+  return l10n`${vnDeadlineField('submission_deadline')}<label class="field"><span>Máy chấm cho trận tính điểm</span>${select('grader_platform',[['windows','Windows (AppContainer)'],['linux','Linux (bubblewrap)']])}</label><label class="field"><span>Thể thức</span>${select('format',[['elo',tr('Ladder Elo → vòng chung → vòng tròn tính điểm')],['double_round_robin',tr('Vòng tròn 2 lượt (tối đa 32 đội)')],['swiss',tr('Swiss (nhiều đội) · mỗi cặp 2 ván đổi màu')]])}</label><details><summary>Luật ladder và xếp hạng chính thức</summary><div class="form-grid">${ladderFields()}${field(tr('Số đợt vòng chung'),'general-rounds','min="1" max="64"','number','20')}${field(tr('Số đội vòng tròn'),'group-size','min="2" max="128"','number','64')}${field(tr('Số đội vào chung kết'),'finalists','min="1" max="128"','number','16')}${field(tr('Số ván chính thức đầu dùng K lớn'),'k-games','min="1"','number','20')}${field(tr('K ban đầu'),'first-k','min="1" max="64"','number','32')}${field(tr('K sau đó'),'later-k','min="1" max="64"','number','16')}</div>${note(tr('Vòng tròn: thắng 1, hòa ½, thua 0; không cập nhật Elo. Số đội không quá kích thước nhóm đầu thì bỏ vòng chung.'))}</details>${field(tr('Số vòng Swiss (để trống: hệ thống tự tính theo số đội)'),'rounds','min="1" max="64"','number')}<label class="check-field"><input type="checkbox" name="custom-basic">Tùy chỉnh luật bàn cờ (kích thước, căn cứ, điều kiện thắng)</label><div class="form-grid">${field(tr('Số hàng (7–15)'),'board-rows','min="7" max="15" required','number','9')}${field(tr('Số cột (7–15)'),'board-cols','min="7" max="15" required','number','9')}${field(tr('Căn cứ Đỏ'),'base-red','pattern="[a-o]([1-9]|1[0-5])" required','text','a1')}${field(tr('Căn cứ Xanh (để trống: góc đối diện)'),'base-blue','','text','')}<label class="field"><span>Thắng khi diệt sạch</span>${select('eliminate-types',[['1',tr('1 loại quân')],['2',tr('2 loại quân')]])}</label></div><label class="check-field"><input name="base-capture" type="checkbox" checked>Thắng khi chiếm căn cứ đối phương</label><label class="field"><span>Xếp quân thủ công (không bắt buộc; để trống = xếp tự động đối xứng như OTTv2)</span><textarea class="input" name="placement" rows="3" placeholder='[{"square":"a2","side":"red","kind":"rock"}]'></textarea></label>${note(tr('Luật, thể thức và số vòng được giữ cố định sau khi tạo giải. Quỹ giờ của bot không đổi theo kích thước bàn; chỉ giới hạn số nước tăng theo số ô. Hệ thống từ chối luật cho phép một bên thắng ngay ở nước đầu. Swiss: mỗi vòng ghép các đội cùng điểm và tránh gặp lại đối thủ cũ; nếu số đội lẻ, một đội được nghỉ và nhận 6 điểm (như thắng cả vòng), mỗi đội nghỉ tối đa 1 lần; bằng điểm thì xét Buchholz (tổng điểm các đối thủ đã gặp).'))}`;
 }
 
 export function readTournamentOptions(data){
@@ -39,7 +42,7 @@ export function readTournamentOptions(data){
   if(format==='elo'){
     if(!result.submission_deadline)throw new Error(tr('Giải Elo cần hạn nộp'));
     const n=(key,fallback)=>Number(data.get(key)||fallback);
-    result.ladder={round_hours:n('ladder-hours',2)};
+    result.ladder=readLadderOptions(data);
     result.official={general_rounds:n('general-rounds',20),group_size:n('group-size',64),finalists:n('finalists',16),k:[[n('k-games',20),n('first-k',32)],[null,n('later-k',16)]]};
   }
   if(data.get('rounds'))result.rounds=Number(data.get('rounds'));

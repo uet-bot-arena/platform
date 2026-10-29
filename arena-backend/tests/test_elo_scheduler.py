@@ -247,7 +247,7 @@ class EloScheduling(EloFixture):
         body=dict(title='API Elo defaults',format='elo',max_teams=1000,match_ms=60000,submission_deadline=9_000_000_000_000)
         item=self.post(self.client,'/admin/competitions',body,expected=201)
         self.assertEqual(item['config']['official'],dict(match_ms=10000,general_rounds=20,group_size=64,finalists=16,k=[[20,32],[None,16]]))
-        self.assertEqual(item['config']['ladder'],dict(round_hours=2))
+        self.assertEqual(item['config']['ladder'],dict(round_minutes=120))
         self.assertEqual(item['config']['scoring'],dict(win=1,draw=.5,loss=0))
         edited=self.post(self.client,'/admin/competitions/'+item['id']+'/edit',dict(title='Elo renamed',max_teams=1000,match_ms=60000,expected_revision=item['revision']))
         self.assertEqual(edited['config']['format'],'elo')

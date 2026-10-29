@@ -1,3 +1,4 @@
+import {ladderInterval} from './ladder-clock.js';
 import {tr} from './i18n.js';
 import {esc,select,panel,table,link,note,date,badge,empty} from './view.js';
 
@@ -48,5 +49,5 @@ export function entryChecklist(s){
 export function eloJoinPanel(s){
  const c=s.competition,own=s.teamCompetitions?.items?.find(x=>x.id===c.id),n=c.participation_counts||{};
  const reasons=own?.reasons||[],route=!s.user?.team_id||reasons.includes('team_size')?'team':'submissions';
- return panel(tr('Tham gia'),`<p>${tr('Hạn nộp (giờ Việt Nam)')}: ${date(c.submission_deadline)}</p><p>${tr('Ladder mỗi ')}${c.config.ladder.round_hours}${tr(' giờ')} · ${tr('Đợt kế tiếp')}: ${date(c.elo?.next_round_ms)}</p><p>${tr('Đang đấu')}: ${n.active??0} · ${tr('Đủ điều kiện')}: ${n.eligible??0} · ${tr('Chưa đủ điều kiện')}: ${n.ineligible??0}</p>`+(s.user?.role==='admin'?'':!s.user?link('login',tr('Đăng nhập để tham gia'),'primary'):`<p>${s.user.team_id?esc(participationLabel(own)):tr('Chưa có đội')}</p>${!own||own.state==='ineligible'?link(route,route==='team'?tr('Cá nhân & đội'):tr('Nộp bot'),'primary'):''}`));
+ return panel(tr('Tham gia'),`<p>${tr('Hạn nộp (giờ Việt Nam)')}: ${date(c.submission_deadline)}</p><p>${tr('Ladder mỗi ')}${esc(ladderInterval(c.config.ladder))} · ${tr('Đợt kế tiếp')}: ${date(c.elo?.next_round_ms)}</p><p>${tr('Đang đấu')}: ${n.active??0} · ${tr('Đủ điều kiện')}: ${n.eligible??0} · ${tr('Chưa đủ điều kiện')}: ${n.ineligible??0}</p>`+(s.user?.role==='admin'?'':!s.user?link('login',tr('Đăng nhập để tham gia'),'primary'):`<p>${s.user.team_id?esc(participationLabel(own)):tr('Chưa có đội')}</p>${!own||own.state==='ineligible'?link(route,route==='team'?tr('Cá nhân & đội'):tr('Nộp bot'),'primary'):''}`));
 }

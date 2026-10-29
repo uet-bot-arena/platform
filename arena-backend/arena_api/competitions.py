@@ -123,7 +123,7 @@ class Competitions:
         if config["format"] == "swiss":
             config["ranking"] = "points_buchholz"
         if config['format']=='elo':
-            config.update(ladder=body.get('ladder',dict(round_hours=2)),official=dict({'match_ms':10000},**body.get('official',dict(general_rounds=20,group_size=64,finalists=16,k=[[20,32],[None,16]]))),ranking='round_robin_points',scoring=dict(win=1,draw=.5,loss=0))
+            config.update(ladder=body.get('ladder',dict(round_minutes=120)),official=dict({'match_ms':10000},**body.get('official',dict(general_rounds=20,group_size=64,finalists=16,k=[[20,32],[None,16]]))),ranking='round_robin_points',scoring=dict(win=1,draw=.5,loss=0))
         return config
 
     def create(self, actor, body, key, *, pinned_config=None):
@@ -158,7 +158,7 @@ class Competitions:
                 raise Fault("admin_conflict", "Basic rules are immutable; create another competition")
             if body.get("format", config["format"]) != config["format"] or body.get("rounds") not in (None, config.get("rounds")):
                 raise Fault("admin_conflict", "Format and rounds are immutable; create another competition")
-            if config['format']=='elo' and any(body.get(k,config[k])!=config[k] for k in ('ladder','official')):
+            if config['format']=='elo' and body.get('official',config['official'])!=config['official']:
                 raise Fault('admin_conflict','Luật Elo giữ cố định từ khi tạo giải')
             if requested != config['profile']:
                 if item['status'] != 'draft' or entries:
@@ -170,6 +170,18 @@ class Competitions:
             deadline = body.get("submission_deadline", item.get("submission_deadline"))
             if item.get("submission_deadline") is not None and now_ms() >= item["submission_deadline"] and deadline != item["submission_deadline"]:
                 raise Fault("admin_conflict", "Hạn đã qua; tạo giải khác để giữ nguồn chốt bất biến")
+            if config['format']=='elo' and body.get('ladder',config['ladder'])!=config['ladder']:
+                if item.get('submission_deadline') is not None and now_ms()>=item['submission_deadline']:
+                    raise Fault('admin_conflict','Đã qua hạn nộp; không đổi lịch ladder')
+                from arena.ladder_clock import next_minute,round_boundary
+                ladder=dict(body['ladder'])
+                if item['status']=='open' and 'round_minutes' in ladder:
+                    if ladder.get('first_round_ms') is None:ladder['first_round_ms']=next_minute(now_ms())
+                config['ladder']=ladder
+                if item['status']=='open':
+                    due=round_boundary(now_ms(),ladder)
+                    self.db.execute('INSERT INTO elo_calendar VALUES(?,?) ON CONFLICT(competition_id) DO UPDATE SET last_due_ms=excluded.last_due_ms',(ident,due))
+                self.accounts.audit(actor,'elo.schedule_changed',ident)
             self.db.execute('UPDATE competitions SET title=?,config=?,submission_deadline=?,revision=revision+1 WHERE id=?', (body['title'],json.dumps(config),deadline,ident))
             return self.get(ident)
         return self.command(actor, 'edit:'+ident, key, body, action)
@@ -201,8 +213,12 @@ class Competitions:
                     self.db.execute("UPDATE competitions SET config=? WHERE id=?", (json.dumps(item["config"]), ident))
             self.db.execute("UPDATE competitions SET status=?,revision=revision+1 WHERE id=?", (target, ident))
             if target=='open' and item['config']['format']=='elo':
-                from arena.ladder_clock import boundary
-                self.db.execute('INSERT OR IGNORE INTO elo_calendar VALUES(?,?)',(ident,boundary(now_ms(),item['config']['ladder']['round_hours'])))
+                from arena.ladder_clock import next_minute,round_boundary
+                ladder=item['config']['ladder']
+                if 'round_minutes' in ladder and ladder.get('first_round_ms') is None:
+                    ladder['first_round_ms']=next_minute(now_ms())
+                    self.db.execute('UPDATE competitions SET config=? WHERE id=?',(json.dumps(item['config']),ident))
+                self.db.execute('INSERT OR IGNORE INTO elo_calendar VALUES(?,?)',(ident,round_boundary(now_ms(),ladder)))
             return self.get(ident)
         return self.command(actor, target + ":" + ident, key, {}, action)
 

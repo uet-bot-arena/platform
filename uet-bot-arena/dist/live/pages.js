@@ -1,3 +1,4 @@
+import {ladderInterval} from './ladder-clock.js';
 import {auditPage} from './audit-ui.js';
 import {importedBanner,resultsTools} from './imported-results.js';
 import {finalCard,finalsPage} from './finals.js';
@@ -45,7 +46,7 @@ export function compCards(s) {
   const seen=new Set();
   for(const c of items){
     if(children.has(c.id)||seen.has(c.id))continue;seen.add(c.id);
-    entries.push({status:c.status,created:c.event?.imported_ms||c.created_ms,html:l10n`<article class="real-card" data-key="competition-${c.id}"><div class="section-head">${badge(c.archived_ms?'aborted':c.status,c.archived_ms?tr('Đã lưu trữ'):c.config.format==='elo'&&c.status==='open'?tr('Đang nhận bài'):undefined)}<span class="muted">${c.event?'':timeLabel(competitionProfile(c))}</span></div><h3>${esc(c.title)}</h3>${c.config.ruleset?badge('attention','Ruleset add-on'):''}<p>${c.config.format==='elo'?tr('Ladder Elo + vòng tròn'):c.config.format==='swiss'?'Swiss · '+(c.config.rounds||tr('Tự tính'))+tr(' vòng'):tr('Vòng tròn hai lượt')} · Tối đa ${c.config.max_teams} đội</p>${c.event?`<p class="muted">${tr('Nạp từ hub LAN lúc ')}${date(c.event.imported_ms)}</p>`:''}<div class="table-actions">${link('competitions/'+c.id,tr('Mở giải đấu'),'small')}${admin?(c.event?button(tr('Ẩn'),'hide-imported',`data-id="${esc(c.event.id)}"`,'small danger-button'):competitionTools(c)):''}</div></article>`});
+    entries.push({status:c.status,created:c.event?.imported_ms||c.created_ms,html:l10n`<article class="real-card" data-key="competition-${c.id}"><div class="section-head">${badge(c.archived_ms?'aborted':c.status,c.archived_ms?tr('Đã lưu trữ'):c.config.format==='elo'&&c.status==='open'?tr('Đang nhận bài'):undefined)}<span class="muted">${c.event?'':timeLabel(competitionProfile(c))}</span></div><h3>${esc(c.title)}</h3>${c.config.ruleset?badge('attention','Ruleset add-on'):''}<p>${c.config.format==='elo'?tr('Ladder Elo + vòng tròn'):c.config.format==='swiss'?'Swiss · '+(c.config.rounds||tr('Tự tính'))+tr(' vòng'):tr('Vòng tròn hai lượt')} · Tối đa ${c.config.max_teams} đội</p>${c.config.format==='elo'&&c.config.ladder?`<p>${tr('Ladder mỗi ')}${esc(ladderInterval(c.config.ladder))} · ${tr('Đợt kế tiếp')}: ${date(c.elo?.next_round_ms)}</p>`:''}${c.event?`<p class="muted">${tr('Nạp từ hub LAN lúc ')}${date(c.event.imported_ms)}</p>`:''}<div class="table-actions">${link('competitions/'+c.id,tr('Mở giải đấu'),'small')}${admin?(c.event?button(tr('Ẩn'),'hide-imported',`data-id="${esc(c.event.id)}"`,'small danger-button'):competitionTools(c)):''}</div></article>`});
   }
   const active=x=>['open','running','groups','knockout'].includes(x.status)?1:0;
   entries.sort((a,b)=>active(b)-active(a)||(b.created||0)-(a.created||0));

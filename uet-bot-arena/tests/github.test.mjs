@@ -23,7 +23,7 @@ test('deadline preview and locked GitHub time remain distinct; guide explains ro
   assert.match(githubGuide(),/Only select repositories/);assert.match(githubGuide(),/năm lần push/);assert.match(githubGuide(),/git checkout/);
 });
 test('competition form serializes Vietnam deadline independently of browser timezone to UTC milliseconds',()=>{
-  const data=new FormData();data.set('submission_deadline-date','2026-10-24');data.set('submission_deadline-time','12:30');
+  const data=new FormData();data.set('submission_deadline-date','2026-10-24');data.set('submission_deadline-hour','12');data.set('submission_deadline-minute','30');
   assert.equal(readTournamentOptions(data).submission_deadline,new Date('2026-10-24T12:30:00+07:00').getTime());
   data.set('submission_deadline-date','bad');assert.throws(()=>readTournamentOptions(data),/Hạn không hợp lệ/);
 });

@@ -6,13 +6,13 @@ import {setLanguage} from '../dist/live/i18n.js';
 import {page} from '../dist/live/pages.js';
 
 test('Vietnam deadlines roundtrip saved values even with TZ=UTC',()=>{
- const form=new FormData();form.set('submission_deadline-date','2026-11-05');form.set('submission_deadline-time','23:00');
+ const form=new FormData();form.set('submission_deadline-date','2026-11-05');form.set('submission_deadline-hour','23');form.set('submission_deadline-minute','00');
  const ms=readVnDeadline(form,'submission_deadline');assert.equal(ms,Date.parse('2026-11-05T16:00:00Z'));
  const html=vnDeadlineField('submission_deadline',ms);
- assert.match(html,/type="date" value="2026-11-05"/);assert.match(html,/value="23:00" selected/);
- assert.equal((html.match(/<option /g)||[]).length,48);assert.doesNotMatch(html,/datetime-local/);
+ assert.match(html,/type="date" value="2026-11-05"/);assert.match(html,/value="23" selected/);
+ assert.equal((html.match(/<option /g)||[]).length,84);assert.doesNotMatch(html,/datetime-local/);
  assert.match(vnDeadlineText(ms),/23:00 thứ Năm 05\/11\/2026/);
- assert.match(vnDeadlineField('team-deadline',Date.parse('2026-11-05T16:17:00Z')),/value="23:17" selected/);
+ assert.match(vnDeadlineField('team-deadline',Date.parse('2026-11-05T16:17:00Z')),/value="17" selected/);
  form.set('submission_deadline-date','2026-02-30');assert.throws(()=>readVnDeadline(form,'submission_deadline'));
 });
 test('student overview has a checklist instead of profile forms, including without a team',()=>{
