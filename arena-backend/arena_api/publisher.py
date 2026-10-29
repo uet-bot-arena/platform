@@ -35,7 +35,7 @@ def pick(value, fields):
 def public_competition(value):
     result = pick(value, ('id','title','status','created_ms','locked_ms','completed_ms',
                           'submission_deadline','revision','archived_ms','entries',
-                          'fixture_counts','elo'))
+                          'fixture_counts','elo','participation_counts'))
     result['config'] = pick(value['config'], CONFIG_FIELDS)
     for field in ('ruleset','basic_rules'):
         if result['config'].get(field):
@@ -86,6 +86,11 @@ class Publisher:
         self.recent_games = {}
         accounts = Accounts.__new__(Accounts)
         accounts.db, accounts.store = self.db, store
+        accounts.season_id = settings.account_rules.season_id
+        from arena_api.teams import Teams
+        teams = Teams.__new__(Teams)
+        teams.a, teams.db, teams.store, teams.rules = accounts, self.db, store, settings.account_rules
+        teams.season = settings.account_rules.season_id
         service = Service.__new__(Service)
         service.store = store
         epoch = self.db.execute('SELECT epoch_ms FROM controller_clock WHERE id=1').fetchone()
@@ -94,6 +99,7 @@ class Publisher:
         service.timing.store = store
         comp = Competitions.__new__(Competitions)
         comp.store, comp.db, comp.accounts, comp.service = store, self.db, accounts, service
+        comp.teams = teams
         comp.elo = EloScheduler(comp)
         from arena_api.finals import Finals
         comp.finals = Finals(comp)

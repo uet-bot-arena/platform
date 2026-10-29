@@ -26,7 +26,7 @@ test('admin competition summary exposes scoped counts, reasons and progress',()=
 
 test('a person without a team reads open competitions from the public snapshot',async()=>{
  const calls=[],files=[];
- const api={request:async p=>{calls.push(p);return {team:null};},snapshot:async p=>{files.push(p);return {items:[{id:'open',title:'Open',status:'open'}]};}};
+ const api={request:async p=>{calls.push(p);return {team:null,clock:{clock_id:'test',server_received_unix_ms:0,server_sent_unix_ms:0}};},snapshot:async p=>{files.push(p);return {items:[{id:'open',title:'Open',status:'open'}]};}};
  const data=await participantData(api,{},'team',[],new URLSearchParams());
- assert.deepEqual(calls,['/users/me']);assert.deepEqual(files,['competitions.json']);assert.match(teamCompetitions(data),/Open/);
+ assert.deepEqual(calls,['/ui/personal?view=team','/ui/read?view=team']);assert.deepEqual(files,['competitions.json']);assert.match(teamCompetitions(data),/Open/);
 });

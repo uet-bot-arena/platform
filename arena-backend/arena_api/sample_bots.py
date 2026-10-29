@@ -5,7 +5,7 @@ import zipfile
 
 from fastapi import APIRouter, Depends, Request
 from arena.protocol import Fault
-from arena_api.dependencies import admin_principal, team_principal
+from arena_api.dependencies import admin_principal, practice_principal
 from arena_api.schemas import Model
 
 router = APIRouter(prefix="/api/v1", tags=["sample-bots"])
@@ -34,7 +34,7 @@ def public(item):
 
 
 @router.get("/sample-bots")
-def listing(request: Request, auth=Depends(team_principal)):
+def listing(request: Request, auth=Depends(practice_principal)):
     return {"items":[public(x) for x in request.app.state.store.list("sample_bot") if x.get("builtin") and x["enabled"]]}
 
 

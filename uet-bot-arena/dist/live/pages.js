@@ -2,13 +2,13 @@ import {auditPage} from './audit-ui.js';
 import {importedBanner,resultsTools} from './imported-results.js';
 import {finalCard,finalsPage} from './finals.js';
 import {recentMatchPanel,submissionLabel} from './quick-practice.js';
-import {teamCompetitions} from './competition-ui.js';
+import {teamCompetitions,entryChecklist,competitionBadge} from './competition-ui.js';
 import {tr,html as l10n,language,locale} from './i18n.js';
 import {announcementsPage} from './notices-ui.js';
 import {eloCompetition,eloStandings} from './elo.js';
 import {githubPage,githubGuide} from './github-ui.js';
 import {personalAuthPage,accountTeamPage,matchingPage,peopleAdminPage} from './people-ui.js';
-import {emailPage,emailVerificationPage} from './email-ui.js';
+import {emailVerificationPage} from './email-ui.js';
 import {gradersPage} from './graders-ui.js';
 import {sampleAdmin} from './sample-bots.js';
 import {tournamentOptions} from './tournament-options.js';
@@ -45,7 +45,7 @@ export function compCards(s) {
   const seen=new Set();
   for(const c of items){
     if(children.has(c.id)||seen.has(c.id))continue;seen.add(c.id);
-    entries.push({status:c.status,created:c.event?.imported_ms||c.created_ms,html:l10n`<article class="real-card" data-key="competition-${c.id}"><div class="section-head">${badge(c.archived_ms?'aborted':c.status,c.archived_ms?tr('Đã lưu trữ'):undefined)}<span class="muted">${c.event?'':timeLabel(competitionProfile(c))}</span></div><h3>${esc(c.title)}</h3>${c.config.ruleset?badge('attention','Ruleset add-on'):''}<p>${c.config.format==='elo'?tr('Ladder Elo + vòng tròn'):c.config.format==='swiss'?'Swiss · '+(c.config.rounds||tr('Tự tính'))+tr(' vòng'):tr('Vòng tròn hai lượt')} · Tối đa ${c.config.max_teams} đội</p>${c.event?`<p class="muted">${tr('Nạp từ hub LAN lúc ')}${date(c.event.imported_ms)}</p>`:''}<div class="table-actions">${link('competitions/'+c.id,tr('Mở giải đấu'),'small')}${admin?(c.event?button(tr('Ẩn'),'hide-imported',`data-id="${esc(c.event.id)}"`,'small danger-button'):competitionTools(c)):''}</div></article>`});
+    entries.push({status:c.status,created:c.event?.imported_ms||c.created_ms,html:l10n`<article class="real-card" data-key="competition-${c.id}"><div class="section-head">${badge(c.archived_ms?'aborted':c.status,c.archived_ms?tr('Đã lưu trữ'):c.config.format==='elo'&&c.status==='open'?tr('Đang nhận bài'):undefined)}<span class="muted">${c.event?'':timeLabel(competitionProfile(c))}</span></div><h3>${esc(c.title)}</h3>${c.config.ruleset?badge('attention','Ruleset add-on'):''}<p>${c.config.format==='elo'?tr('Ladder Elo + vòng tròn'):c.config.format==='swiss'?'Swiss · '+(c.config.rounds||tr('Tự tính'))+tr(' vòng'):tr('Vòng tròn hai lượt')} · Tối đa ${c.config.max_teams} đội</p>${c.event?`<p class="muted">${tr('Nạp từ hub LAN lúc ')}${date(c.event.imported_ms)}</p>`:''}<div class="table-actions">${link('competitions/'+c.id,tr('Mở giải đấu'),'small')}${admin?(c.event?button(tr('Ẩn'),'hide-imported',`data-id="${esc(c.event.id)}"`,'small danger-button'):competitionTools(c)):''}</div></article>`});
   }
   const active=x=>['open','running','groups','knockout'].includes(x.status)?1:0;
   entries.sort((a,b)=>active(b)-active(a)||(b.created||0)-(a.created||0));
@@ -53,10 +53,9 @@ export function compCards(s) {
 }
 function home(s) {
   if(s.user?.role==='admin')return adminDashboard(s);
-  if(s.user&&!s.user.team_id&&!s.team)return accountTeamPage(s);
   if(!s.user) return l10n`${head('UET Bot Arena',tr('Nền tảng thi đấu bot OTTv2 dành cho sinh viên.'),link('register',tr('Đăng ký đội'),'primary'))}<section class="guest-intro"><div><h2>Thi đấu bot Oẳn Tù Tì</h2><p>Các đội nộp bot Python, C hoặc C++ để thi đấu theo luật OTTv2 (mặc định bàn 9×9; BTC có thể đổi luật theo giải). Bạn có thể xem lịch, bảng xếp hạng và trận đấu mà không cần tài khoản.</p></div><div class="page-actions">${link('live',tr('Xem trận không cần đăng nhập'),'primary')}${link('guide',tr('Luật chơi & hướng dẫn'))}</div></section>${recentMatchPanel(s.recentMatch,s.competitions)}${panel(tr('Giải đấu công khai'),compCards(s),link('schedule',tr('Xem lịch đấu'),'small'))}<ol class="onboarding">${[[tr('Xác minh tài khoản'),tr('Xác minh email trường, rồi lập hoặc vào đội bốn người.')],[tr('Nộp và kiểm tra bot'),tr('Dùng repo mẫu Python, C hoặc C++; push lên GitHub để hub tự kiểm tra, hoặc dán code để thử nhanh.')],[tr('Tham gia giải'),tr('Bản Đạt mới nhất vào ladder; hub khóa bot tại hạn để xếp hạng chính thức.')]].map(([title,text],i)=>`<li><span>${i+1}</span><div><h3>${title}</h3><p>${text}</p></div></li>`).join('')}</ol>`;
   const admin=s.user.role==='admin', d=s.dashboard||{};
-  return l10n`${head(tr('Tổng quan'),s.team?.name?tr('Đội ')+s.team.name:tr('Thông tin giải đấu và hoạt động của đội.'),admin?link('admin',tr('Duyệt đội thi'),'primary'):link('submissions',tr('Nộp phiên bản bot'),'primary'))}${admin?stats([[tr('ĐỘI THAM GIA'),d.teams||0,'users'],[tr('HỒ SƠ CHỜ DUYỆT'),d.pending_registrations||0,'file'],[tr('GIẢI ĐẤU'),d.competitions||0,'trophy'],[tr('Tác vụ đang chạy'),d.active_jobs||0,'code']]):stats([[tr('Phiên bản bot'),d.counts?.submissions||0,'upload'],[tr('Kiểm tra'),d.counts?.benchmarks||0,'code'],[tr('Trận luyện tập'),d.counts?.matches||0,'play'],[tr('Tác vụ đang chạy'),d.counts?.active_jobs||0,'clock']])}${teamCompetitions(s)}<div class="section-head"><div><h2>Giải đấu</h2></div>${link('competitions',tr('Xem tất cả'))}</div>${compCards(s)}${!admin?panel(tr('Hoạt động gần đây'),jobTable(s,s.jobs.slice(0,5))):note(tr('Duyệt hồ sơ đội trước, sau đó mở giải để các đội chọn bot đã benchmark. Chốt lịch khi đủ đội và bắt đầu giải.'))}`;
+  return l10n`${head(tr('Tổng quan'),s.team?.name?tr('Đội ')+s.team.name:tr('Thông tin giải đấu và hoạt động của đội.'),admin?link('admin',tr('Duyệt đội thi'),'primary'):link('submissions',tr('Nộp phiên bản bot'),'primary'))}${admin?stats([[tr('ĐỘI THAM GIA'),d.teams||0,'users'],[tr('HỒ SƠ CHỜ DUYỆT'),d.pending_registrations||0,'file'],[tr('GIẢI ĐẤU'),d.competitions||0,'trophy'],[tr('Tác vụ đang chạy'),d.active_jobs||0,'code']]):stats([[tr('Phiên bản bot'),d.counts?.submissions||0,'upload'],[tr('Kiểm tra'),d.counts?.benchmarks||0,'code'],[tr('Trận luyện tập'),d.counts?.matches||0,'play'],[tr('Tác vụ đang chạy'),d.counts?.active_jobs||0,'clock']])}${entryChecklist(s)}${teamCompetitions(s)}<div class="section-head"><div><h2>Giải đấu</h2></div>${link('competitions',tr('Xem tất cả'))}</div>${compCards(s)}${!admin?panel(tr('Hoạt động gần đây'),jobTable(s,s.jobs.slice(0,5))):note(tr('Duyệt hồ sơ đội trước, sau đó mở giải để các đội chọn bot đã benchmark. Chốt lịch khi đủ đội và bắt đầu giải.'))}`;
 }
 export function jobTable(s,jobs) {
   return jobs.length?table([tr('Tác vụ'),tr('Loại'),tr('Trạng thái'),tr('Tạo lúc'),''],jobs.map(j=>`<tr data-key="job-${j.id}"><td class="mono">${short(j.id)}</td><td>${j.kind==='benchmark'?tr('Kiểm tra'):tr('Luyện tập')}</td><td>${badge(j.status)}</td><td>${date(j.created_unix_ms)}</td><td>${link('jobs/'+j.id,tr('Chi tiết'),'small')}</td></tr>`)):empty(tr('Chưa có tác vụ'),tr('Kết quả kiểm tra và luyện tập sẽ xuất hiện tại đây.'));
@@ -158,6 +157,6 @@ export function page(s) {
   if(s.route==='guest-register')return authPage({...s,route:'register'});
   if(s.route==='guest-recover')return authPage({...s,route:'recover'});
   if(['login','register','recover','change-password'].includes(s.route)) return authPage(s);
-  let content=s.loading?empty(tr('Đang tải dữ liệu…')):s.error?`${head(tr('Chưa tải được trang.'))}<div class="form-error visible">${esc(s.error)}</div>${button(tr('Thử lại'),'refresh')}`:({rulesets:x=>x.ids?.[0]?addonDetailPage(x):addonPage(x),graders:gradersPage,email:emailPage,users:peopleAdminPage,matching:matchingPage,home,submissions,benchmark,practice,competitions,standings,limits:limitsPage,announcements:announcementsPage,queue:queuePage,team:x=>x.personal?accountTeamPage(x):team(x),admin,operations:x=>adminOperations(x)+sampleAdmin(x),guide,jobs:job,live:x=>schedule(x,true),schedule:x=>schedule(x,false),audit:auditPage}[s.route]?.(s)||'');
+  let content=s.loading?empty(tr('Đang tải dữ liệu…')):s.error?`${head(tr('Chưa tải được trang.'))}<div class="form-error visible">${esc(s.error)}</div>${button(tr('Thử lại'),'refresh')}`:({rulesets:x=>x.ids?.[0]?addonDetailPage(x):addonPage(x),graders:gradersPage,users:peopleAdminPage,matching:matchingPage,home,submissions,benchmark,practice,competitions,standings,limits:limitsPage,announcements:announcementsPage,queue:queuePage,team:x=>x.personal?accountTeamPage(x):team(x),admin,operations:x=>adminOperations(x)+sampleAdmin(x),guide,jobs:job,live:x=>schedule(x,true),schedule:x=>schedule(x,false),audit:auditPage}[s.route]?.(s)||'');
   return shell(s,content);
 }

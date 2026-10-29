@@ -226,7 +226,8 @@ class Teams:
         with self.store.lock:
             people = self.a.rows("SELECT id,display_name,class_name,language,introduction,contact FROM accounts "
                                  "WHERE looking=1 AND team_id IS NULL AND locked=0 AND role IN ('student','staff') ORDER BY display_name,id")
-            teams = self.a.rows("SELECT t.id,t.name,COUNT(m.user_id) AS count FROM teams t LEFT JOIN team_members m ON m.team_id=t.id "
+            teams = self.a.rows("SELECT t.id,t.name,COUNT(m.user_id) AS count,a.display_name AS captain_name,a.language,a.contact FROM teams t LEFT JOIN team_members m ON m.team_id=t.id "
+                                "LEFT JOIN team_members captain ON captain.team_id=t.id AND captain.captain=1 LEFT JOIN accounts a ON a.id=captain.user_id "
                                 "WHERE t.season_id=? AND t.recruiting=1 AND t.locked_ms IS NULL AND t.archived_ms IS NULL AND t.is_guest=0 GROUP BY t.id HAVING COUNT(m.user_id)<?", (self.season, self.rules.team_size))
             return {"people": people, "teams": teams, "team_size": self.rules.team_size}
 

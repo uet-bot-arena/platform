@@ -587,6 +587,10 @@ class Competitions:
         item["entries"] = entries
         if item['config']['format']=='elo':
             item['elo']=self.elo.public(ident)
+            from arena_api.competition_views import competition_teams
+            from collections import Counter
+            states = Counter(t['state'] for t in competition_teams(self, ident))
+            item['participation_counts'] = {k:states[k] for k in ('active','eligible','ineligible')}
             known={r['id']:r['name'] for r in self.rows("SELECT t.id,t.name FROM teams t JOIN elo_ratings r ON r.team_id=t.id WHERE r.competition_id=?",(ident,))}
             existing={e['team_id'] for e in item['entries']}
             item['entries'].extend(dict(team_id=t,name=name,version='',accepted_ms=None) for t,name in known.items() if t not in existing)

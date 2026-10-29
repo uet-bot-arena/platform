@@ -25,7 +25,7 @@ export class APIError extends Error {
       server_error:tr('Máy chủ đang gặp sự cố. Hãy giữ nguyên biểu mẫu và thử lại sau.'),
       password_change_required:tr('Hãy đổi mật khẩu tạm trước khi tiếp tục.'), worker_unavailable:tr('Máy chấm chưa nhận được yêu cầu. Hãy thử lại sau.'),
       qualification_required:error.detail==='Bản thử nhanh chỉ dùng để kiểm và luyện tập; giải nhận bot từ GitHub'?tr(error.detail):tr('Cần bản kiểm tra Đạt đủ 72 mẫu với đúng bộ luật và cấu hình máy chấm của giải.'),
-      competition_conflict:error.detail, registration_conflict:tr('Tên đội đã đăng ký hoặc hồ sơ đã được xử lý.'),
+      invalid_archive:error.detail, competition_conflict:error.detail, registration_conflict:tr('Tên đội đã đăng ký hoặc hồ sơ đã được xử lý.'),
       account_conflict:tr('Tên đăng nhập đã tồn tại. Hãy chọn tên khác.'), quota_exceeded:tr('Đã đạt giới hạn hoặc hàng đợi đang đầy. Hãy thử lại sau.'),
       rate_limited:error.detail==='Tối đa 10 bản thử nhanh mỗi giờ'?tr(error.detail):tr('Bạn đã gửi quá nhiều yêu cầu. Hãy thử lại sau.'), version_conflict:error.detail==='Bạn đã nạp đúng mã này'?tr(error.detail):tr('Phiên bản đã tồn tại. Hãy dùng một phiên bản mới.')};
     super(labels[code] || (typeof error.detail === 'string' && language()==='vi' ? error.detail : tr('Thông tin chưa hợp lệ. Hãy kiểm tra các trường đã nhập.')));

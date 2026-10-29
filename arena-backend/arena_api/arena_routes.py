@@ -1,5 +1,5 @@
 import asyncio
-from copy import deepcopy
+from copy import copy, deepcopy
 import io
 import json
 from pathlib import Path
@@ -12,7 +12,7 @@ from arena import engine
 from arena.config import profile, match_profile
 from arena.protocol import Fault
 from arena.service import TERMINAL
-from arena_api.dependencies import COOKIE, team_principal, admin_principal
+from arena_api.dependencies import COOKIE, team_principal, practice_principal, admin_principal
 from arena_api.schemas import Benchmark, Match, TeamView, Model
 from arena_api.teams import public_team
 
@@ -22,22 +22,22 @@ router = APIRouter(prefix="/api/v1", tags=["arena"])
 
 @router.get('/ui/page', summary='Dữ liệu riêng của một trang đội; một request, giữ quyền của API đội')
 def page_data(request: Request, view: Literal['home','team','submissions','benchmark','practice','competitions','jobs','arena']='home',
-              job_id: str | None = None, auth=Depends(team_principal)):
+              job_id: str | None = None, auth=Depends(practice_principal)):
     return page_bundle(request,view,job_id,auth)
 
 
 @router.get('/ui/personal', summary='Hồ sơ/đội trên process chính, gồm chốt hạn lập đội')
-def page_personal(request: Request, view: Literal['home','team','submissions','competitions']='home', poll: bool = False, auth=Depends(team_principal)):
+def page_personal(request: Request, view: Literal['home','team','submissions','competitions']='home', poll: bool = False, auth=Depends(practice_principal)):
     return page_bundle(request,view,None,auth,section='personal',poll=poll)
 
 
 @router.get('/ui/read', summary='Dữ liệu trang đội chỉ đọc, dùng chung bộ lọc quyền')
-def page_read(request: Request, view: Literal['home','team','submissions','competitions']='home', auth=Depends(team_principal)):
+def page_read(request: Request, view: Literal['home','team','submissions','competitions']='home', auth=Depends(practice_principal)):
     return page_bundle(request,view,None,auth,section='data')
 
 
 def page_bundle(request,view,job_id,auth,section='all',poll=False):
-    state=request.app.state;team_id=auth['user']['team_id'];data={}
+    state=request.app.state;team_id=auth['owner_id'];has_team=bool(auth['user']['team_id']);data={}
     received=time.time_ns()/1_000_000
     if section!='data' and view in ('home','team','submissions','competitions'):
         data['personal']={'profile':state.people.profile(auth['user']['id']),
@@ -45,12 +45,12 @@ def page_bundle(request,view,job_id,auth,section='all',poll=False):
         data['team']=data['personal']['team']
         if view in ('home','team') and not poll:
             from arena_api.competition_views import team_competitions
-            data['teamCompetitions']=team_competitions(state.competitions, team_id)
+            data['teamCompetitions']=team_competitions(state.competitions, team_id) if has_team else {'items':[]}
     if section=='personal':
         return JSONResponse(data)
-    if view in ('team','submissions'):
+    if has_team and view in ('home','team','submissions'):
         data['github']=state.github.view(team_id)
-    if view=='team':data['teamElo']=state.competitions.elo.team_view(team_id)
+    if has_team and view=='team':data['teamElo']=state.competitions.elo.team_view(team_id)
     if view in ('home','benchmark','practice','competitions','arena','submissions'):
         data['submissions']=[state.service.public_submission(s) for s in state.store.list('submission',team_id)]
     if view in ('home','benchmark','practice','competitions','submissions'):
@@ -168,7 +168,7 @@ def dashboard(request: Request, auth=Depends(team_principal)):
 
 
 @router.get("/starter.zip", summary="Tải SDK C++17 OTTv2 protocol v2")
-def starter(runtime: str = Query("cpp17", pattern="^(cpp17|c11|python3)$"), auth=Depends(team_principal)):
+def starter(runtime: str = Query("cpp17", pattern="^(cpp17|c11|python3)$"), auth=Depends(practice_principal)):
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as z:
         names = {"cpp17": ("bot.cpp", "json.hpp", "LICENSE.MIT", "README.md"),
@@ -179,9 +179,9 @@ def starter(runtime: str = Query("cpp17", pattern="^(cpp17|c11|python3)$"), auth
 
 
 @router.get("/submissions", summary="Các source version bất biến của đội")
-def submissions(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0, le=2147483647), auth=Depends(team_principal)):
+def submissions(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0, le=2147483647), auth=Depends(practice_principal)):
     service = request.app.state.service
-    items = request.app.state.store.list("submission", auth["user"]["team_id"])
+    items = request.app.state.store.list("submission", auth["owner_id"])
     return JSONResponse({"items": [service.public_submission(s) for s in items[offset:offset + limit]], "total": len(items), "limit": limit, "offset": offset})
 
 
@@ -191,7 +191,7 @@ class PracticeSubmission(Model):
 
 
 @router.post('/practice-submissions', status_code=201, summary='Dán mã nguồn để kiểm 72 mẫu và luyện tập, không dùng dự giải')
-async def practice_submission(body: PracticeSubmission, request: Request, idempotency_key: str = Header(alias='Idempotency-Key'), auth=Depends(team_principal)):
+async def practice_submission(body: PracticeSubmission, request: Request, idempotency_key: str = Header(alias='Idempotency-Key'), auth=Depends(practice_principal)):
     if not request.app.state.settings.practice_upload:
         raise Fault('forbidden', 'Hub này không nhận bản thử nhanh')
     if not body.code.strip() or len(body.code.encode('utf-8')) > 200_000:
@@ -202,10 +202,50 @@ async def practice_submission(body: PracticeSubmission, request: Request, idempo
         entry.external_attr = 0o644 << 16
         archive.writestr(entry, body.code.encode('utf-8'))
     from starlette.concurrency import run_in_threadpool
-    service, team = request.app.state.service, auth['user']['team_id']
+    service, team = request.app.state.service, auth['owner_id']
     item = await run_in_threadpool(lambda: service.submit(team, '', body.runtime, raw.getvalue(), idempotency_key, channel='practice'))
     await run_in_threadpool(service.enqueue, team, 'benchmark', {'submission_id':item['id']}, 'practice-check-'+item['id'])
     return service.public_submission(item)
+
+
+@router.post('/practice-submissions/zip', status_code=201, summary='ZIP thử nhanh, không dùng dự giải')
+async def practice_zip_submission(request: Request, idempotency_key: str = Header(alias='Idempotency-Key'),
+                                  x_arena_runtime: str = Header('cpp17'), auth=Depends(practice_principal)):
+    if not request.app.state.settings.practice_upload:
+        raise Fault('forbidden', 'Hub này không nhận bản thử nhanh')
+    item = await receive_zip(request, auth['owner_id'], '', idempotency_key, x_arena_runtime, 2, practice=True)
+    from starlette.concurrency import run_in_threadpool
+    await run_in_threadpool(request.app.state.service.enqueue, auth['owner_id'], 'benchmark',
+                            {'submission_id':item['id']}, 'practice-check-'+item['id'])
+    return request.app.state.service.public_submission(item)
+
+
+def practice_zip(raw):
+    # Strip only the starter's bot/ prefix; archive.unpack keeps all source/security checks.
+    if len(raw) > 1024 * 1024:
+        raise Fault('invalid_archive', 'ZIP thử nhanh tối đa 1 MiB')
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            items = archive.infolist()
+            if not items or len(items) > 65 or sum(i.file_size for i in items) > profile().max_source_bytes:
+                raise Fault('invalid_archive', 'ZIP cần 1–64 file, tổng mã nguồn tối đa 20 MiB')
+            files = [i for i in items if not (i.filename == 'bot/' and i.is_dir())]
+            if not files or len(files) > 64:
+                raise Fault('invalid_archive', 'ZIP cần 1–64 file mã nguồn')
+            wrapped = all(i.filename.startswith('bot/') for i in files)
+            if not wrapped:
+                return raw
+            output = io.BytesIO()
+            with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as flat:
+                for item in files:
+                    if item.flag_bits & 1:
+                        raise Fault('invalid_archive', 'Duplicate, special or encrypted entry')
+                    entry = copy(item)
+                    entry.filename = item.filename[4:]
+                    flat.writestr(entry, archive.read(item))
+            return output.getvalue()
+    except (zipfile.BadZipFile, RuntimeError, NotImplementedError, OSError, UnicodeError) as exc:
+        raise Fault('invalid_archive', str(exc)) from exc
 
 
 @router.post("/submissions", status_code=201, summary="Đội nạp ZIP khi hub LAN cho phép")
@@ -226,13 +266,17 @@ async def team_upload(request: Request, auth=Depends(team_principal)):
     return request.app.state.service.public_submission(item)
 
 
-async def receive_zip(request, team, version, key, runtime, protocol):
+async def receive_zip(request, team, version, key, runtime, protocol, *, practice=False):
     if request.headers.get("Content-Type", "").split(";")[0] != "application/zip":
         raise Fault("invalid_request", "Expected application/zip")
     raw = await request.body()
     from starlette.concurrency import run_in_threadpool
-    request.app.state.accounts.team(team)
-    return await run_in_threadpool(request.app.state.service.submit, team, version, runtime, raw, key, protocol)
+    if practice:
+        raw = practice_zip(raw)
+    else:
+        request.app.state.accounts.team(team)
+    return await run_in_threadpool(lambda: request.app.state.service.submit(
+        team, version, runtime, raw, key, protocol, channel='practice' if practice else 'internal'))
 
 
 @router.post("/admin/teams/{ident}/submissions", status_code=201, summary="BTC nạp ZIP nội bộ cho đội; sinh viên dùng GitHub",
@@ -247,41 +291,41 @@ async def upload(ident: str, request: Request, x_submission_version: str = Heade
 
 
 @router.post("/benchmarks", status_code=202, summary="Đưa benchmark 72 mẫu vào hàng đợi")
-def benchmark(body: Benchmark, request: Request, idempotency_key: str = Header(), auth=Depends(team_principal)):
-    return request.app.state.service.enqueue(auth["user"]["team_id"], "benchmark", body.model_dump(exclude_none=True), idempotency_key)
+def benchmark(body: Benchmark, request: Request, idempotency_key: str = Header(), auth=Depends(practice_principal)):
+    return request.app.state.service.enqueue(auth["owner_id"], "benchmark", body.model_dump(exclude_none=True), idempotency_key)
 
 
 @router.post("/matches", status_code=202, summary="Trận luyện tập giữa hai version của cùng đội")
-def match(body: Match, request: Request, idempotency_key: str = Header(), auth=Depends(team_principal)):
-    job = request.app.state.service.enqueue(auth["user"]["team_id"], "match", body.model_dump(exclude_none=True), idempotency_key)
+def match(body: Match, request: Request, idempotency_key: str = Header(), auth=Depends(practice_principal)):
+    job = request.app.state.service.enqueue(auth["owner_id"], "match", body.model_dump(exclude_none=True), idempotency_key)
     return public_job(job, full=True)
 
 
 @router.get("/jobs", summary="Jobs của đội, phân trang")
-def jobs(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0, le=2147483647), auth=Depends(team_principal)):
-    items = request.app.state.store.list("job", auth["user"]["team_id"], summary=True)
+def jobs(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0, le=2147483647), auth=Depends(practice_principal)):
+    items = request.app.state.store.list("job", auth["owner_id"], summary=True)
     return JSONResponse({"items": [public_job(j) for j in items[offset:offset + limit]], "total": len(items), "limit": limit, "offset": offset})
 
 
 @router.get("/jobs/{ident}", summary="Chi tiết job gồm báo cáo nếu có")
-def job(ident: str, request: Request, auth=Depends(team_principal)):
-    value = public_job(request.app.state.store.get(ident, auth["user"]["team_id"], "job"), full=True)
+def job(ident: str, request: Request, auth=Depends(practice_principal)):
+    value = public_job(request.app.state.store.get(ident, auth["owner_id"], "job"), full=True)
     return {**value, "queue_position": request.app.state.service.pending.position(ident),
             'eta':request.app.state.service.job_eta(value)}
 
 
 @router.get("/jobs/{ident}/report", summary="Tải báo cáo timing/provenance; 409 khi chưa có báo cáo")
-def report(ident: str, request: Request, auth=Depends(team_principal)):
-    result = public_job(request.app.state.store.get(ident, auth["user"]["team_id"], "job"), True)["report"]
+def report(ident: str, request: Request, auth=Depends(practice_principal)):
+    result = public_job(request.app.state.store.get(ident, auth["owner_id"], "job"), True)["report"]
     if not result:
         raise Fault("report_unavailable", "No report is available for this job")
     return Response(json.dumps(result, ensure_ascii=False), media_type="application/json", headers={"Content-Disposition": 'attachment; filename="report.json"'})
 
 
 @router.get("/jobs/{ident}/events", summary="Event log JSON hoặc SSE; hỗ trợ Last-Event-ID khi nối lại")
-def events(ident: str, request: Request, after: int = Query(0, ge=0, le=9223372036854775807), last_event_id: str | None = Header(None), auth=Depends(team_principal)):
+def events(ident: str, request: Request, after: int = Query(0, ge=0, le=9223372036854775807), last_event_id: str | None = Header(None), auth=Depends(practice_principal)):
     store = request.app.state.store
-    team_id = auth["user"]["team_id"]
+    team_id = auth["owner_id"]
     job = store.get(ident, team_id, "job")
     if last_event_id is not None:
         if not last_event_id.isascii() or not last_event_id.isdigit() or len(last_event_id) > 12:
@@ -299,7 +343,7 @@ def events(ident: str, request: Request, after: int = Query(0, ge=0, le=92233720
             try:
                 # Revoked/expired sessions must not keep a live feed open.
                 value=await request.app.state.broadcast.principal(request.app.state.accounts,request.cookies.get(COOKIE, ""))
-                if value['user']['team_id']!=team_id:
+                if (value['user']['team_id'] or 'user:'+value['user']['id'])!=team_id:
                     raise Fault('unauthorized','Đội đã thay đổi')
             except Fault:
                 yield 'event: auth_expired\ndata: {}\n\n'

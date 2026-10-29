@@ -70,6 +70,13 @@ def admin_principal(request: Request):
     return value
 
 
+def practice_principal(request: Request):
+    value = participant_principal(request)
+    if value['user']['team_id']:
+        value = team_principal(request)
+    return {**value, 'owner_id': value['user']['team_id'] or 'user:' + value['user']['id']}
+
+
 def can_manage_graders(request, auth):
     allowed = request.app.state.settings.account_rules.grader_admins
     return auth['user']['role'] == 'admin' and (not allowed or auth['user']['username'].casefold() in allowed)

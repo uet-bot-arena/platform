@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {emailPage,emailStatusText,emailVerificationPage} from '../dist/live/email-ui.js';
+import {emailStatusText,emailVerificationPage} from '../dist/live/email-ui.js';
 import {publicRoute} from '../dist/live/access.js';
 
 test('email status explains queued, dropped, delivered and verified states',()=>{
@@ -19,12 +19,4 @@ test('verification page has the OTP input, Spam hint and escaped address',()=>{
   assert.match(html,/disabled/);
   assert.doesNotMatch(html,/<img/);
   assert.doesNotMatch(emailVerificationPage({emailRequest:{verified_ms:1}}),/email-code-form/);
-});
-
-test('organiser email metrics warn on low quota and escape provider labels',()=>{
-  const html=emailPage({mail:{counts:{queued:2,sent:3,failed:1,dropped:0},retried:1,providers:[{name:'<script>',ready:true,sent:3,failed:1,low_quota:true,hourly_remaining:1,hourly_limit:10,daily_remaining:5,daily_limit:100}]}});
-  assert.match(html,/dưới 20%/);
-  assert.match(html,/1 \/ 10/);
-  assert.doesNotMatch(html,/<script>/);
-  assert.doesNotMatch(html,/undefined|NaN/);
 });

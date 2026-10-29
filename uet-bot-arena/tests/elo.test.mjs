@@ -60,11 +60,11 @@ test('team shows exact current and next SHA and only commits Elo after the full 
  assert.match(html,/frozen/);assert.match(html,/next/);assert.match(html,/Đang kiểm tra/);assert.match(html,/chờ cả đợt xong/);
 });
 test('form serializes the approved 20/64/16 rule and two K tiers',()=>{
- const f=new FormData();f.set('format','elo');f.set('submission_deadline','2026-12-01T12:00');
+ const f=new FormData();f.set('format','elo');f.set('submission_deadline-date','2026-12-01');f.set('submission_deadline-time','12:00');
  const options=readTournamentOptions(f);
  assert.deepEqual(options.ladder,{round_hours:2});
  assert.deepEqual(options.official,{general_rounds:20,group_size:64,finalists:16,k:[[20,32],[null,16]]});
- f.delete('submission_deadline');assert.throws(()=>readTournamentOptions(f),/hạn nộp/);
+ f.delete('submission_deadline-date');assert.throws(()=>readTournamentOptions(f),/hạn nộp/);
 });
 
 test('team round-robin view explains frozen Elo while points are being played',()=>{

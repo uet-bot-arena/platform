@@ -138,7 +138,7 @@ def main(output=None,extended=False,english=False):
                 for scheme in (() if english else ('light','dark')):
                     sessions={}
                     routes=[('organizer','operations'),('ui-fixture','practice'),('ui-fixture','benchmark'),('organizer','home'),('organizer',elo_route),('organizer',ladder_route),('ui-fixture','team')]
-                    if extended:routes += [('organizer',r) for r in ('announcements','admin','users','graders','email','audit','rulesets','standings?competition='+legacy['id'])]+[('ui-fixture',r) for r in ('submissions','matching','jobs/'+entry['benchmark_id'])]
+                    if extended:routes += [('organizer',r) for r in ('announcements','admin','users','graders','audit','rulesets','standings?competition='+legacy['id'])]+[('ui-fixture',r) for r in ('submissions','matching','jobs/'+entry['benchmark_id'])]
                     for username,route in routes:
                         context=browser.new_context(color_scheme=scheme,reduced_motion='reduce',viewport=dict(width=1440,height=1000))
                         page=context.new_page();page.on('pageerror',lambda e:result['page_errors'].append(str(e)))

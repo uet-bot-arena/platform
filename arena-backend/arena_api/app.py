@@ -33,6 +33,8 @@ MIB = 1024 * 1024
 
 def body_limit(method, path):
     """(bytes, binary?) accepted for a mutation on this path."""
+    if path == '/api/v1/practice-submissions/zip':
+        return MIB, True
     if path == '/api/v1/practice-submissions':
         return 6 * 200_000 + 1024, False  # JSON escaping can use six bytes per source byte.
     if path == '/api/v1/admin/results-import':

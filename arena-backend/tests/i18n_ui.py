@@ -19,7 +19,7 @@ def survey(browser,origin,result,output):
             played=next((f for f in fixtures if f['status']=='completed' and context.request.get(origin+'/snapshots/fixtures/'+ident+'/'+f['id']+'.json').json().get('attempt_id')),None)
             if played:boards.append('replay/'+ident+'/'+played['id'])
         page=context.new_page();page.on('pageerror',lambda e:result['page_errors'].append(str(e)))
-        for user,routes in [(None,['home','guide','limits','announcements','competitions','schedule','live','queue','standings','login','register','recover','verify-email','set-password','guest-register','guest-recover']),('organizer',['home','announcements','admin','users','graders','email','audit','rulesets','operations','competitions']),('ui-fixture',['home','team','submissions','matching','benchmark','practice','competitions'])]:
+        for user,routes in [(None,['home','guide','limits','announcements','competitions','schedule','live','queue','standings','login','register','recover','verify-email','set-password','guest-register','guest-recover']),('organizer',['home','announcements','admin','users','graders','audit','rulesets','operations','competitions']),('ui-fixture',['home','team','submissions','matching','benchmark','practice','competitions'])]:
             routes=list(routes)+(detail_routes if user=='organizer' else ranking_routes+boards if user is None else [])
             if user:
                 page.set_viewport_size(dict(width=1440,height=1000))

@@ -34,6 +34,16 @@ class CompetitionViews(EloFixture):
         first=self.client.get(url).json()
         self.assertEqual(first['counts'],dict(active=0,eligible=4,ineligible=1,excluded=0))
         self.assertEqual(first['reasons'],dict(team_size=1,repository=1,passed_bot=1))
+        public=self.other_client().get(f'/api/v1/competitions/{self.ident}').json()
+        self.assertEqual(public['participation_counts'],dict(active=0,eligible=4,ineligible=1))
+        self.assertNotIn('email',public);self.assertNotIn('teams',public)
+        from arena_api.publisher import Publisher
+        import gzip
+        publisher=Publisher(self.settings)
+        try:publisher.publish()
+        finally:publisher.close()
+        snapshot=json.loads(gzip.decompress((self.settings.data/'snapshots'/f'competitions/{self.ident}.json.gz').read_bytes()))
+        self.assertEqual(snapshot['participation_counts'],public['participation_counts'])
         self.assertEqual(team.get(url).status_code,403)
         rid=self.book.start(self.ident,'ladder',1,1000,self.entries);self.complete_games(rid);self.book.finish(rid,2000)
         result=self.client.get(url).json()

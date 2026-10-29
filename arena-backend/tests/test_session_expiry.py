@@ -71,7 +71,7 @@ class SessionExpiry(APIHarness):
         # Authentication is checked before looking up the absent job; do not open a long-lived stream.
         with patch('arena_api.accounts.now_ms',return_value=BASE+300000):
             response=client.get('/api/v1/jobs/absent/events',headers={'Accept':'text/event-stream'})
-        self.assertEqual(response.status_code,403)  # no team: still authenticated, then refused by team_principal
+        self.assertEqual(response.status_code,404)  # Personal practice authenticates, then rejects the nonexistent job.
         self.assertEqual(a.one('SELECT last_seen_ms FROM sessions WHERE token_hash=?',(token_hash(value['token']),))['last_seen_ms'],BASE)
 
     def test_cookie_limits_and_multiple_simultaneous_logins(self):

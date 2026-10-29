@@ -7,6 +7,7 @@ import {participantData,privatePage} from './page-data.js';
 import {visiblePoll,githubPollMs} from './polling.js';
 import {tr,html as l10n,language,setLanguage} from './i18n.js';
 import {startAnnouncements} from './announcements.js';
+import {vnDeadlineField,readVnDeadline} from './vn-deadline.js';
 import {readTournamentOptions,updateLadderPreview} from './tournament-options.js';
 import {timeField,timeBody,competitionProfile} from './time-control.js';
 import {ArenaAPI,saveBlob,uuid,copyText} from './client.js';
@@ -35,7 +36,7 @@ const enc=encodeURIComponent;
 function toast(message){const el=document.getElementById('toast');el.className='toast show';el.textContent=message;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),6000);}
 async function copyMessage(text,message){toast(await copyText(text)?message:tr('Hãy bôi đen rồi nhấn Ctrl+C'));}
 function clearView(){eloPoll?.close();githubPoll?.close();emailPoll?.close();competitionFeed?.close();competitionFeed=null;board?.close();board=null;jobFeed?.close();jobFeed=null;closeModal();}
-function render(){app.innerHTML=page(s);const title={home:'UET Bot Arena',login:tr('Đăng nhập'),register:tr('Đăng ký đội'),recover:tr('Cấp lại mật khẩu'),'change-password':tr('Đổi mật khẩu')}[s.route]||document.querySelector('#main h1')?.textContent||'UET Bot Arena';document.title=title==='UET Bot Arena'?title:title+' · UET Bot Arena';mobileSidebar();updateLadderPreview(document.getElementById('competition-form'));}
+function render(){app.innerHTML=page(s);const title={home:'UET Bot Arena',login:tr('Đăng nhập'),register:tr('Đăng ký đội'),recover:tr('Cấp lại mật khẩu'),'change-password':tr('Đổi mật khẩu')}[s.route]||document.querySelector('#main h1')?.textContent||'UET Bot Arena';document.title=title==='UET Bot Arena'?title:title+' · UET Bot Arena';mobileSidebar();document.querySelectorAll('form').forEach(updateLadderPreview);}
 function mobileSidebar(){const sidebar=document.querySelector('.sidebar');if(sidebar)sidebar.inert=matchMedia('(max-width:760px)').matches&&!s.menuOpen;}
 matchMedia('(max-width:760px)').addEventListener('change',mobileSidebar);
 function go(route){if(location.hash==='#/'+route)openRoute();else location.hash='/'+route;}
@@ -96,7 +97,7 @@ async function loadRouteData(route,ids,q){
   if(s.user?.team_id&&!admin&&['team','submissions'].includes(route))work.push(api.request('/teams/me/github').then(x=>data.github=x));
   if(needsTeams)work.push(api.request('/teams/me').then(x=>data.team=x));
   if(s.user?.team_id&&['home','submissions','benchmark','practice','competitions','jobs','arena','replay'].includes(route)&&!admin){work.push(api.all('/submissions').then(x=>data.submissions=x));work.push(api.all('/jobs').then(x=>data.jobs=x));}
-  if(['home','admin','users','competitions','schedule','live','standings','arena','replay'].includes(route))work.push(api.all('/competitions').then(x=>data.competitions=x));
+  if(['home','admin','users','operations','competitions','schedule','live','standings','arena','replay'].includes(route))work.push(api.all('/competitions').then(x=>data.competitions=x));
   if(route==='home'&&data.selectedCompetition)work.push(api.request('/admin/competitions/'+enc(data.selectedCompetition)+'/summary').then(x=>data.competitionSummary=x));
   if(route==='home'&&s.user&&(admin||s.user.team_id))work.push(api.request(admin?'/admin/metrics':'/dashboard').then(x=>{if(admin)data.metrics=x;else data.dashboard=x;}));
   if(route==='jobs')work.push(api.request('/jobs/'+enc(ids[0])).then(x=>data.job=x));
@@ -111,10 +112,9 @@ async function loadRouteData(route,ids,q){
     work.push(api.request('/admin/github/duplicates').then(x=>data.duplicates=x.items));
     work.push(api.all('/admin/jobs').then(x=>data.adminJobs=x));
     work.push(api.all('/admin/submissions').then(x=>data.adminSubmissions=x));
-    work.push(api.all('/admin/accounts').then(x=>data.accounts=x));
+    work.push(api.all('/admin/accounts'+scope).then(x=>data.accounts=data.selectedCompetition?x.filter(a=>a.participation?.state!=='ineligible'):x));
   }
   if(route==='audit')work.push(api.all(auditPath(s)).then(x=>data.audit=x));
-  if(route==='email')work.push(api.request('/admin/email').then(x=>data.mail=x));
   if(route==='graders'){work.push(api.request('/admin/graders').then(x=>data.graders=x));
     // A local hub may not publish a grader package.
     if(s.canManageGraders!==false)work.push(api.request('/admin/grader-package').catch(()=>null).then(x=>data.graderPackage=validPackage(x)));}
@@ -133,14 +133,13 @@ async function loadRouteData(route,ids,q){
 async function openRoute(){
   const parsed=parseRoute(),id=++generation;clearView();
   if(parsed.route==='experimental'){history.replaceState(null,'','#/rulesets');openRoute();return;}
-  const supported=['home','login','verify-email','set-password','guest-register','guest-recover','email','register','recover','change-password','guide','team','matching','users','submissions','benchmark','practice','competitions','finals','jobs','admin','operations','graders','rulesets','audit','schedule','live','standings','queue','announcements','limits','arena','replay'];
+  const supported=['home','login','verify-email','set-password','guest-register','guest-recover','register','recover','change-password','guide','team','matching','users','submissions','benchmark','practice','competitions','finals','jobs','admin','operations','graders','rulesets','audit','schedule','live','standings','queue','announcements','limits','arena','replay'];
   if(!supported.includes(parsed.route)){go('home');return;}
   if(!s.user&&!publicRoute(parsed.route,parsed.ids)){returnTo=parsed.raw;go('login');return;}
   if(s.user?.must_change_password&&parsed.route!=='change-password'){go('change-password');return;}
   if(s.user&&['login','register'].includes(parsed.route)){go('home');return;}
-  if(s.user?.role!=='admin'&&['admin','audit','operations','graders','email','users'].includes(parsed.route)){go('home');return;}
+  if(s.user?.role!=='admin'&&['admin','audit','operations','graders','users'].includes(parsed.route)){go('home');return;}
   if(s.user?.role==='admin'&&['team','submissions','benchmark','practice','jobs'].includes(parsed.route)){go('home');return;}
-  if(s.user&&!s.user.team_id&&s.user.role!=='admin'&&['submissions','benchmark','practice','jobs'].includes(parsed.route)){go('team');return;}
   if(['register','recover','verify-email'].includes(parsed.route)){
     const purpose=parsed.route==='recover'?'reset':'verify';
     if(purpose!==s.emailPurpose){s.emailRequest=null;s.emailAddress='';s.passwordFinished=false;}
@@ -241,7 +240,7 @@ function patchPage(){
   const focused=document.activeElement;
   if(current&&next)patchChildren(current,next);
   if(focused?.isConnected&&document.activeElement!==focused)focused.focus({preventScroll:true});
-  updateLadderPreview(document.getElementById('competition-form'));
+  document.querySelectorAll('form').forEach(updateLadderPreview);
   connectionStatus(false);
 }
 async function refreshData(){
@@ -271,8 +270,8 @@ document.addEventListener('input',e=>{if(e.target.form)pendingKeys.delete(e.targ
 // Wrong login shows one plain sentence; the support ID is only useful for server-side failures.
 function showFormError(form,e){const el=form.querySelector('.form-error');const message=form.id==='login-form'&&e.status===401?tr('Sai tài khoản hoặc mật khẩu.'):e.message;if(el){el.classList.add('visible');el.textContent=message+(e.requestId&&(!e.status||e.status>=500)?tr(' · Mã hỗ trợ ')+e.requestId:'');}else toast(message);if(e.status===401&&s.user)expired();}
 async function runForm(form,task){if(form.dataset.busy)return;form.dataset.busy='1';const controls=[...form.querySelectorAll('button')],error=form.querySelector('.form-error');controls.forEach(b=>b.disabled=true);const loginButton=form.id==='login-form'?form.querySelector('[type=submit]'):null,loginLabel=loginButton?.textContent;if(loginButton)loginButton.textContent=tr('Đang đăng nhập…');if(error){error.classList.remove('visible');error.textContent='';}try{await task();pendingKeys.delete(form);}catch(e){showFormError(form,e);}finally{delete form.dataset.busy;controls.forEach(b=>b.disabled=false);if(loginButton)loginButton.textContent=loginLabel;}}
-document.addEventListener('change',async e=>{if(e.target.id!=='practice-file'||!e.target.files[0])return;const form=e.target.form;try{const value=await readPracticeFile(e.target.files[0]);form.elements.code.value=value.code;form.elements.runtime.value=value.runtime;pendingKeys.delete(form);}catch(error){showFormError(form,error);}});
-document.addEventListener('click',async e=>{const b=e.target.closest('[data-action=practice-example]');if(!b)return;try{const response=await fetch('/_ui/bot-example.cpp');if(!response.ok)throw new Error(tr('Không đọc được file.'));b.form.elements.code.value=await response.text();b.form.elements.runtime.value='cpp17';pendingKeys.delete(b.form);}catch(error){showFormError(b.form,error);}});
+document.addEventListener('change',async e=>{if(e.target.id!=='practice-file'||!e.target.files[0])return;const form=e.target.form;try{const value=await readPracticeFile(e.target.files[0]);form.practiceZip=value.zip||null;form.elements.code.disabled=!!value.zip;form.elements.code.value=value.zip?value.zip.name:value.code;if(value.runtime)form.elements.runtime.value=value.runtime;pendingKeys.delete(form);}catch(error){showFormError(form,error);}});
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-action=practice-example]');if(!b)return;try{const response=await fetch('/_ui/bot-example.cpp');if(!response.ok)throw new Error(tr('Không đọc được file.'));b.form.practiceZip=null;b.form.elements.code.disabled=false;b.form.elements.code.value=await response.text();b.form.elements.runtime.value='cpp17';pendingKeys.delete(b.form);}catch(error){showFormError(b.form,error);}});
 document.addEventListener('submit',e=>{
   const form=e.target;if(!form.matches('.real-form'))return;e.preventDefault();const data=new FormData(form),v=name=>String(data.get(name)||'').trim();
   runForm(form,async()=>{
@@ -311,7 +310,7 @@ document.addEventListener('submit',e=>{
     }else if(form.id==='personal-team-name'){
       await api.post('/teams/name',{name:v('team-name')});await refreshPerson();
     }else if(form.id==='team-deadline-form'){
-      await api.post('/admin/team-policy',{deadline_ms:v('team-deadline')?new Date(v('team-deadline')).getTime():null,expected_revision:s.teamPolicy.revision});openRoute();
+      await api.post('/admin/team-policy',{deadline_ms:readVnDeadline(data,'team-deadline'),expected_revision:s.teamPolicy.revision});openRoute();
     }else if(form.dataset.proposal){
       await api.post('/admin/team-merges/confirm',{proposal_id:form.dataset.proposal,name:v('team-name')});openRoute();
     }else if(form.id==='admin-membership-form'){
@@ -330,7 +329,7 @@ document.addEventListener('submit',e=>{
       resultsFile=data.get('results');if(!resultsFile?.size||resultsFile.size>64*1024*1024)throw new Error(tr('File kết quả tối đa 64 MB'));
       resultsPreview=await api.request('/admin/results-import?preview=1',{method:'POST',body:resultsFile,headers:{'Content-Type':'application/gzip'}});modal(tr('Nạp kết quả từ hub LAN'),importForm(resultsPreview));
     }else if(form.id==='quick-practice-form'){
-      await api.post('/practice-submissions',{runtime:v('runtime'),code:data.get('code')},keyFor(form));toast(tr('Đã nạp bot và xếp hàng kiểm 72 mẫu.'));openRoute();
+      if(form.practiceZip)await api.request('/practice-submissions/zip',{method:'POST',body:form.practiceZip,headers:{'Content-Type':'application/zip','X-Arena-Runtime':v('runtime'),'Idempotency-Key':keyFor(form)}});else await api.post('/practice-submissions',{runtime:v('runtime'),code:data.get('code')},keyFor(form));toast(tr('Đã nạp bot và xếp hàng kiểm 72 mẫu.'));openRoute();
     }else if(form.id==='zip-form'){
       await api.request('/submissions',{method:'POST',body:data.get('source'),headers:{'Content-Type':'application/zip','X-Submission-Version':v('version'),'X-Arena-Runtime':v('runtime'),'Idempotency-Key':keyFor(form)}});toast(tr('Đã nạp bot và xếp hàng kiểm 72 mẫu.'));openRoute();
     }else if(form.id==='admin-entry-form'){
@@ -347,7 +346,7 @@ document.addEventListener('submit',e=>{
     }else if(form.id==='elo-exclude-form'){
       await api.post('/admin/competitions/'+form.dataset.competition+'/teams/'+form.dataset.team+'/exclude',{excluded:form.dataset.excluded==='true',reason:v('reason')},keyFor(form));closeModal();toast(tr('Đã cập nhật xếp hạng và ghi lý do.'));openRoute();
     }else if(form.id==='competition-edit-form'){
-      await api.post('/admin/competitions/'+form.dataset.id+'/edit',{title:v('title'),...timeBody(data),max_teams:Number(v('max_teams')),...(v('submission_deadline')?{submission_deadline:new Date(v('submission_deadline')).getTime()}:{}),expected_revision:Number(form.dataset.revision)},keyFor(form));closeModal();toast(tr('Đã sửa giải.'));openRoute();
+      await api.post('/admin/competitions/'+form.dataset.id+'/edit',{title:v('title'),...timeBody(data),max_teams:Number(v('max_teams')),...(data.has('submission_deadline-date')?{submission_deadline:readVnDeadline(data,'submission_deadline')}:{}),expected_revision:Number(form.dataset.revision)},keyFor(form));closeModal();toast(tr('Đã sửa giải.'));openRoute();
     }else if(form.id==='admin-team-form'){
       const members=Array.from({length:4},(_,i)=>({name:v('name-'+i),student_id:v('student-'+i)})).filter((m,i)=>i<3||m.name||m.student_id);
       const profile={team:v('team'),email:v('email'),phone:v('phone'),members,confirmed:true};
@@ -370,7 +369,7 @@ document.addEventListener('submit',e=>{
 function refreshAdminBody(){const el=document.getElementById('admin-table');if(el)el.innerHTML=adminTeamsBody(s);}
 function refreshOperationsBody(){const el=document.getElementById('operations-table');if(el)el.innerHTML=operationsBody(s);}
 document.addEventListener('input',e=>{
-  if(['ladder-hours','submission_deadline'].includes(e.target.name))updateLadderPreview(e.target.form);
+  if(e.target.name==='ladder-hours'||e.target.closest('[data-vn-deadline]'))updateLadderPreview(e.target.form);
   if(e.target.name==='admin-search'){s.adminSearch=e.target.value;s.adminPage=1;refreshAdminBody();}
   if(e.target.name==='people-search'){s.peopleSearch=e.target.value;const pos=e.target.selectionStart;render();const input=document.querySelector('[name=people-search]');input.focus();input.setSelectionRange(pos,pos);}
   if(e.target.name==='ops-search'){s.opsSearch=e.target.value;s.opsPage=1;refreshOperationsBody();}
@@ -387,7 +386,7 @@ document.addEventListener('change',async e=>{
   const name=e.target.name,value=e.target.value;
   const auditFilters={'audit-role':'auditRole','audit-group':'auditGroup','audit-search':'auditSearch'};
   if(auditFilters[name]){s[auditFilters[name]]=value;await openRoute();return;}
-  if(name==='competition-scope'){go(competitionRoute(parseRoute().raw,value));return;}
+  if(name==='competition-scope'){s.opsTeam='';go(competitionRoute(parseRoute().raw,value));return;}
   if(name==='use-experimental'){const label=e.target.form.querySelector('[data-experimental-select]'),select=label.querySelector('select');label.hidden=!e.target.checked;select.required=e.target.checked;if(!e.target.checked)select.value='';}
 
   if(['submission_id','red_submission_id','blue_submission_id'].includes(name)){
@@ -523,7 +522,7 @@ document.addEventListener('click',async e=>{
     }
     if(['competition-edit','competition-archive','competition-restore'].includes(action)){
       const c=s.competitions.find(x=>x.id===b.dataset.id)||s.competition;
-      if(action==='competition-edit')modal(tr('Sửa giải · ')+c.title,`<form class="real-form" id="competition-edit-form" data-id="${c.id}" data-revision="${c.revision}">${field(tr('Tên giải'),'title','required minlength="3" maxlength="100"','text',c.title)}${timeField(c.config.profile)}${c.config.format==='elo'?field(tr('Hạn nộp GitHub (giờ trên máy BTC)'),'submission_deadline','required','datetime-local',new Date(c.submission_deadline-new Date(c.submission_deadline).getTimezoneOffset()*60000).toISOString().slice(0,16))+note(tr('Hạn nộp sửa được tới trước khi qua hạn.')):''}${field(tr('Số đội tối đa'),'max_teams','required min="2" max="4096"','number',c.config.max_teams)}${note(tr('Chỉ đổi thời gian ở bản nháp chưa có đội. Khi mở đăng ký, có thể sửa tên và giới hạn đội trước khi chốt lịch.'))}${errors()}${submit(tr('Lưu cấu hình'))}</form>`);
+      if(action==='competition-edit'){modal(tr('Sửa giải · ')+c.title,`<form class="real-form" id="competition-edit-form" data-id="${c.id}" data-revision="${c.revision}">${field(tr('Tên giải'),'title','required minlength="3" maxlength="100"','text',c.title)}${timeField(c.config.profile)}${c.config.format==='elo'?vnDeadlineField('submission_deadline',c.submission_deadline)+`<input type="hidden" name="ladder-hours" value="${c.config.ladder.round_hours}">`+note(tr('Hạn nộp sửa được tới trước khi qua hạn.')):''}${field(tr('Số đội tối đa'),'max_teams','required min="2" max="4096"','number',c.config.max_teams)}${note(tr('Chỉ đổi thời gian ở bản nháp chưa có đội. Khi mở đăng ký, có thể sửa tên và giới hạn đội trước khi chốt lịch.'))}${errors()}${submit(tr('Lưu cấu hình'))}</form>`);updateLadderPreview(document.getElementById('competition-edit-form'));}
       else{const restore=action==='competition-restore';confirmAction((restore?tr('Khôi phục'):tr('Xóa'))+tr(' giải ')+c.title+'?',restore?tr('Giải trở lại danh sách, giữ nguyên trạng thái trước khi xóa.'):tr('Chỉ xóa bản nháp / giải mở chưa có đội chọn bot, hoặc giải đã hoàn tất. Toàn bộ lịch sử và kết quả được giữ.'),async()=>{await api.post('/admin/competitions/'+c.id+'/'+(restore?'restore':'archive'),{expected_revision:c.revision},keyFor(b));});}return;
     }
     if(action==='review-registration'){

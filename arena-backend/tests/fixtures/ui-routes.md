@@ -8,7 +8,7 @@
 | standings | — | competitions.json, competitions/{id}.json, fixtures/{id}.json, standings/{id}.json |
 | schedule | — | competitions.json, competitions/{id}.json, fixtures/{id}.json, standings/{id}.json |
 | queue | — | queue.json |
-| competitions | — | competitions.json, competitions/{id}.json, fixtures/{id}.json, standings/{id}.json |
+| competitions | /team/competitions | competitions.json, competitions/{id}.json, fixtures/{id}.json, standings/{id}.json |
 | live | — | competitions.json, competitions/{id}.json, fixtures/{id}.json, standings/{id}.json |
 | announcements | — | announcements.json |
 | benchmark | /ui/page?view=benchmark | — |

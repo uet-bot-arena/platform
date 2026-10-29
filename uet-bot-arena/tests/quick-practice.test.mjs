@@ -16,7 +16,8 @@ test('file picker reads and detects language and rejects oversized files',async(
  globalThis.FileReader=class{readAsText(file){this.result=file.code;this.onload();}};
  assert.deepEqual(await readPracticeFile({name:'test.py',size:8,code:'print(1)'}),{runtime:'python3',code:'print(1)'});
  await assert.rejects(readPracticeFile({name:'test.py',size:200001}));
- await assert.rejects(readPracticeFile({name:'test.zip',size:5}));
+ const zip={name:'test.zip',size:5};assert.deepEqual(await readPracticeFile(zip),{zip});
+ await assert.rejects(readPracticeFile({name:'test.zip',size:1024*1024+1}));
  delete globalThis.FileReader;
 });
 test('recent finished match uses at most two snapshots and shared board',async()=>{
