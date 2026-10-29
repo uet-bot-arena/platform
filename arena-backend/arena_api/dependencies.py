@@ -71,7 +71,9 @@ def admin_principal(request: Request):
 
 
 def practice_principal(request: Request):
-    value = participant_principal(request)
+    value = active_principal(request)
+    if value['user']['role']=='admin':
+        return {**value, 'owner_id': 'user:' + value['user']['id']}
     if value['user']['team_id']:
         value = team_principal(request)
     return {**value, 'owner_id': value['user']['team_id'] or 'user:' + value['user']['id']}

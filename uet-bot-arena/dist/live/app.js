@@ -1,3 +1,4 @@
+import {teamChoiceButtons} from './people-ui.js';
 import {auditPath} from './audit-ui.js';
 import {importedEventFor,importedBanner,exportForm,importForm} from './imported-results.js';
 import {readPracticeFile} from './quick-practice.js';
@@ -16,7 +17,7 @@ import {esc,icon,button,field,table,note,errors,submit,shell,badge,short,select,
 import {MatchBoard,boardPage} from './board.js';
 import {CompetitionFollow} from './follow.js';
 import {patchChildren} from './patch.js';
-import {adminTeamsBody,operationsBody} from './admin-ui.js';
+import {adminTeamsBody,operationsBody,managedTeams} from './admin-ui.js';
 import {graderTokenModal,graderMessage,validPackage,controlsMessage} from './graders-ui.js';
 import {loadBotGuide} from './bot-guide.js';
 import {publicRoute} from './access.js';
@@ -72,14 +73,14 @@ async function loadData(route,ids,q){
 }
 async function loadRouteData(route,ids,q){
   api.admin=s.user?.role==='admin';
-  if(!api.admin)return participantData(api,s.user,route,ids,q);
+  if(!api.admin||['benchmark','practice','jobs'].includes(route)||['arena','replay'].includes(route)&&ids[0]==='practice')return participantData(api,s.user,route,ids,q);
   const data={selectedCompetition:q.get('competition')||''};
   const scope=data.selectedCompetition?'?competition='+enc(data.selectedCompetition):'';
   if(s.user&&s.user.role!=='admin'&&['home','team','submissions','competitions'].includes(route))data.personal=await api.request('/users/me');
   if(route==='team'&&s.user?.team_id)data.teamElo=await api.request('/team/elo');
   if(route==='matching')data.matching=await api.request('/matching');
   if(route==='users'){
-    [data.people,data.teamPolicy,data.teamMerges,data.teamChoices]=await Promise.all([api.all('/admin/users'+scope),api.request('/admin/team-policy'),api.request('/admin/team-merges'),api.all('/admin/teams'+scope)]);
+    [data.people,data.teamPolicy,data.teamMerges,data.teamChoices]=await Promise.all([api.all('/admin/users'+scope),api.request('/admin/team-policy'),api.request('/admin/team-merges'),api.all('/admin/teams?visibility=all'+(data.selectedCompetition?'&competition='+enc(data.selectedCompetition):''))]);
   }
   if(['practice','operations'].includes(route))data.sampleBots=(await api.request(s.user?.role==='admin'?'/admin/sample-bots':'/sample-bots')).items;
   if(route==='guide'){
@@ -102,6 +103,7 @@ async function loadRouteData(route,ids,q){
   if(route==='home'&&s.user&&(admin||s.user.team_id))work.push(api.request(admin?'/admin/metrics':'/dashboard').then(x=>{if(admin)data.metrics=x;else data.dashboard=x;}));
   if(route==='jobs')work.push(api.request('/jobs/'+enc(ids[0])).then(x=>data.job=x));
   if(route==='admin'){
+    work.push(api.all('/admin/teams?visibility=all'+(data.selectedCompetition?'&competition='+enc(data.selectedCompetition):'')).then(x=>data.teamChoices=x));
     work.push(api.all('/admin/users'+scope).then(x=>data.people=x));
     work.push(api.all('/admin/registrations?status='+(s.registrationStatus||'pending')).then(x=>data.registrations=x));
     work.push(api.all('/admin/accounts'+scope).then(x=>data.accounts=x));
@@ -139,13 +141,14 @@ async function openRoute(){
   if(s.user?.must_change_password&&parsed.route!=='change-password'){go('change-password');return;}
   if(s.user&&['login','register'].includes(parsed.route)){go('home');return;}
   if(s.user?.role!=='admin'&&['admin','audit','operations','graders','users'].includes(parsed.route)){go('home');return;}
-  if(s.user?.role==='admin'&&['team','submissions','benchmark','practice','jobs'].includes(parsed.route)){go('home');return;}
+  if(s.user?.role==='admin'&&['team','submissions','matching'].includes(parsed.route)){go('home');return;}
   if(['register','recover','verify-email'].includes(parsed.route)){
     const purpose=parsed.route==='recover'?'reset':'verify';
     if(purpose!==s.emailPurpose){s.emailRequest=null;s.emailAddress='';s.passwordFinished=false;}
     s.emailPurpose=purpose;
   }
   if(parsed.query.has('invite'))s.inviteCode=parsed.query.get('invite');
+  if(parsed.route==='users'&&parsed.query.has('search')){s.peopleSearch=parsed.query.get('search');s.peopleTeamFilter='all';}
   Object.assign(s,defaults(),parsed,{loading:!['login','register','recover','change-password'].includes(parsed.route),error:null,menuOpen:false});render();
   if(parsed.route==='admin'&&['accounts','registrations','recoveries'].includes(parsed.query.get('tab')))s.adminTab=parsed.query.get('tab');
   if(parsed.route==='operations'&&parsed.query.has('status'))s.opsStatus=parsed.query.get('status');
@@ -313,8 +316,10 @@ document.addEventListener('submit',e=>{
       await api.post('/admin/team-policy',{deadline_ms:readVnDeadline(data,'team-deadline'),expected_revision:s.teamPolicy.revision});openRoute();
     }else if(form.dataset.proposal){
       await api.post('/admin/team-merges/confirm',{proposal_id:form.dataset.proposal,name:v('team-name')});openRoute();
-    }else if(form.id==='admin-membership-form'){
-      await api.post('/admin/teams/'+enc(v('team-id'))+'/membership',{user_id:v('user-id'),action:v('member-action')});openRoute();
+    }else if(form.id==='admin-person-team-form'){
+      if(form.dataset.create==='true')await api.post('/admin/users/'+enc(form.dataset.user)+'/team',{name:v('team-name')},keyFor(form));
+      else{if(!v('team-id'))throw new Error(tr('Chọn một đội còn chỗ.'));await api.post('/admin/teams/'+enc(v('team-id'))+'/membership',{user_id:form.dataset.user,action:'add'});}
+      closeModal();openRoute();
     }else if(form.id==='recovery-form'){await api.post('/auth/recovery',{username:v('username'),email:v('email')});s.recoverySent=true;render();
     }else if(form.id==='password-form'){
       const pw=data.get('new-password');if(pw.length<8)throw new Error(tr('Mật khẩu mới phải có ít nhất 8 ký tự.'));if(pw!==data.get('confirm-password'))throw new Error(tr('Hai lần nhập mật khẩu mới chưa khớp.'));
@@ -369,8 +374,10 @@ document.addEventListener('submit',e=>{
 function refreshAdminBody(){const el=document.getElementById('admin-table');if(el)el.innerHTML=adminTeamsBody(s);}
 function refreshOperationsBody(){const el=document.getElementById('operations-table');if(el)el.innerHTML=operationsBody(s);}
 document.addEventListener('input',e=>{
-  if(['ladder-hours','ladder-minutes','format'].includes(e.target.name)||e.target.closest('[data-vn-deadline]'))updateLadderPreview(e.target.form);
+  if(e.target.name==='max_teams'&&e.target.form?.id==='competition-form')e.target.form.dataset.capacityEdited='true';
+  if(['ladder-hours','ladder-minutes','format','max_teams','finalists','general-rounds','group-size'].includes(e.target.name)||e.target.closest('[data-vn-deadline]'))updateLadderPreview(e.target.form);
   if(e.target.name==='admin-search'){s.adminSearch=e.target.value;s.adminPage=1;refreshAdminBody();}
+  if(e.target.name==='member-team-search'){const form=e.target.form;form.elements['team-id'].value='';form.querySelector('#member-team-choices').innerHTML=teamChoiceButtons(s,e.target.value);}
   if(e.target.name==='people-search'){s.peopleSearch=e.target.value;const pos=e.target.selectionStart;render();const input=document.querySelector('[name=people-search]');input.focus();input.setSelectionRange(pos,pos);}
   if(e.target.name==='ops-search'){s.opsSearch=e.target.value;s.opsPage=1;refreshOperationsBody();}
 });
@@ -384,6 +391,7 @@ document.addEventListener('change',async e=>{
     form.querySelector('[data-elo-time]').hidden=!elo;
   }
   const name=e.target.name,value=e.target.value;
+  if(name==='people-team-filter'){s.peopleTeamFilter=value;render();return;}
   const auditFilters={'audit-role':'auditRole','audit-group':'auditGroup','audit-search':'auditSearch'};
   if(auditFilters[name]){s[auditFilters[name]]=value;await openRoute();return;}
   if(name==='competition-scope'){s.opsTeam='';go(competitionRoute(parseRoute().raw,value));return;}
@@ -488,6 +496,16 @@ document.addEventListener('click',async e=>{
       }else{await api.post(paths[action],body);await refreshPerson();}
       return;
     }
+    if(action==='person-team-choice'){
+      const form=b.closest('form');form.elements['team-id'].value=b.dataset.team;form.querySelectorAll('[data-action=person-team-choice]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));return;
+    }
+    if(['person-add','person-create-team','person-remove','person-captain'].includes(action)){
+      const person=s.people.find(p=>p.id===b.dataset.user),team=s.teamChoices.find(t=>t.id===person.team_id),name=person.display_name||person.username;
+      if(action==='person-add'||action==='person-create-team'){
+        const create=action==='person-create-team';modal((create?tr('Lập đội mới'):tr('Thêm vào đội'))+' · '+name,`<form id="admin-person-team-form" class="real-form" data-user="${esc(person.id)}" data-create="${create}">${create?field(tr('Tên đội'),'team-name','required minlength="2" maxlength="40"'):field(tr('Tìm đội theo tên hoặc thành viên'),'member-team-search','','search')+'<input type="hidden" name="team-id"><div id="member-team-choices" class="table-actions">'+teamChoiceButtons(s)+'</div>'}${errors()}${submit(create?tr('Lập đội mới'):tr('Thêm'))}</form>`);
+      }else confirmAction((action==='person-remove'?tr('Xóa khỏi đội'):tr('Làm đội trưởng'))+' · '+name+' · '+team.name+'?',tr('Thay đổi thành viên được ghi nhật ký.'),()=>api.post('/admin/teams/'+enc(team.id)+'/membership',{user_id:person.id,action:action==='person-remove'?'remove':'captain'}));
+      return;
+    }
     if(action==='person-lock'||action==='person-judge'){
       await api.post('/admin/users/'+enc(b.dataset.user)+(action==='person-lock'?'/lock':'/judge'),action==='person-lock'?{locked:b.dataset.locked==='true'}:{enabled:b.dataset.enabled==='true'});openRoute();return;
     }
@@ -500,13 +518,18 @@ document.addEventListener('click',async e=>{
     if(action==='ops-tab'){s.opsTab=b.dataset.tab;s.opsPage=1;render();return;}
     if(action==='admin-page'){if(b.dataset.scope==='teams'){s.adminPage=Number(b.dataset.page);refreshAdminBody();}else{s.opsPage=Number(b.dataset.page);refreshOperationsBody();}return;}
     if(action==='team-create'){teamForm();return;}
+    if(['student-team-detail','student-team-archive','student-team-restore'].includes(action)){
+      const t=s.teamChoices.find(t=>t.id===b.dataset.id);
+      if(action==='student-team-detail')modal(tr('Hồ sơ đội · ')+t.name,table([tr('Thành viên'),'Email',tr('Vai trò')],t.roster.map(p=>`<tr><td>${esc(p.display_name||p.username)}</td><td>${esc(p.email)}</td><td>${p.captain?tr('Đội trưởng'):tr('Thành viên')}</td></tr>`)));
+      else{const restore=action==='student-team-restore';confirmAction((restore?tr('Khôi phục'):tr('Xóa'))+' · '+t.name+'?',tr('Lịch sử được giữ; khôi phục vẫn giữ khóa tài khoản. Mở khóa từng người ở Người dùng & lập đội sau khi kiểm tra.'),()=>api.post('/admin/teams/'+enc(t.id)+(restore?'/restore':'/archive'),{expected_revision:t.revision}));}return;
+    }
     if(['team-detail','team-edit','team-archive','team-restore'].includes(action)){
       const a=s.accounts.find(x=>x.id===b.dataset.id),t=a.team;
       if(action==='team-edit')teamForm(a);
       else if(action==='team-detail')modal(tr('Hồ sơ đội · ')+t.name,l10n`<dl class="detail-list"><div><dt>Tài khoản</dt><dd>${esc(a.username)}</dd></div><div><dt>Email</dt><dd>${esc(t.email)}</dd></div><div><dt>Điện thoại</dt><dd>${esc(t.phone||'—')}</dd></div><div><dt>Ngày tạo</dt><dd>${date(t.created_ms)}</dd></div><div><dt>Trạng thái</dt><dd>${t.archived_ms?tr('Đã lưu trữ'):a.locked?tr('Đang khóa'):tr('Đang quản lý')}</dd></div></dl>${table([tr('Thành viên'),tr('Mã sinh viên')],t.members.map(m=>`<tr><td>${esc(m.name)}</td><td>${esc(m.student_id)}</td></tr>`))}`);
       else{const restore=action==='team-restore';confirmAction((restore?tr('Khôi phục'):tr('Xóa'))+tr(' đội ')+t.name+'?',restore?tr('Đội được đưa lại vào danh sách. Tài khoản vẫn khóa; hãy mở khóa sau khi kiểm tra.'):tr('Tài khoản sẽ bị khóa và mọi phiên đăng nhập bị thu hồi. Lịch sử bot và thi đấu được giữ; có thể khôi phục.'),()=>api.post('/admin/teams/'+t.id+'/'+(restore?'restore':'archive'),{expected_revision:t.revision}));}return;
     }
-    if(action==='export-teams'){exportCSV('teams.csv',[[tr('Đội'),tr('Tài khoản'),'Email',tr('Điện thoại'),tr('Trạng thái'),tr('Thành viên')],...s.accounts.map(a=>[a.team.name,a.username,a.team.email,a.team.phone,a.team.archived_ms?tr('Đã lưu trữ'):a.locked?tr('Khóa'):tr('Hoạt động'),a.team.members.map(m=>m.name+' ('+m.student_id+')').join('; ')])]);return;}
+    if(action==='export-teams'){exportCSV('teams.csv',[[tr('Đội'),tr('Tài khoản'),'Email',tr('Điện thoại'),tr('Trạng thái'),tr('Thành viên')],...managedTeams(s).map(a=>[a.team.name,a.username,a.team.email,a.team.phone,a.team.archived_ms?tr('Đã lưu trữ'):a.locked?tr('Khóa'):tr('Hoạt động'),a.team.members.map(m=>m.name+' ('+m.student_id+')').join('; ')])]);return;}
     if(action==='resolve-recovery'){confirmAction(tr('Đánh dấu đã xử lý?'),tr('Đóng yêu cầu cấp lại này. Thao tác này không đổi mật khẩu.'),()=>api.post('/admin/recoveries/'+b.dataset.id+'/resolve'));return;}
     if(action==='admin-job'){
       b.disabled=true;const j=await api.request('/admin/jobs/'+enc(b.dataset.id));b.disabled=false;
@@ -522,7 +545,7 @@ document.addEventListener('click',async e=>{
     }
     if(['competition-edit','competition-archive','competition-restore'].includes(action)){
       const c=s.competitions.find(x=>x.id===b.dataset.id)||s.competition;
-      if(action==='competition-edit'){modal(tr('Sửa giải · ')+c.title,`<form class="real-form" id="competition-edit-form" data-id="${c.id}" data-revision="${c.revision}" data-ladder="${esc(JSON.stringify(c.config.ladder||{}))}">${field(tr('Tên giải'),'title','required minlength="3" maxlength="100"','text',c.title)}${timeField(c.config.profile)}${c.config.format==='elo'?vnDeadlineField('submission_deadline',c.submission_deadline)+ladderFields(c.config.ladder)+note(tr('Hạn nộp sửa được tới trước khi qua hạn.'))+note(tr('Có thể đổi khoảng và giờ đợt đầu khi giải còn nhận bài; đợt đang chạy giữ nguyên.')):''}${field(tr('Số đội tối đa'),'max_teams','required min="2" max="4096"','number',c.config.max_teams)}${note(tr('Chỉ đổi thời gian ở bản nháp chưa có đội. Khi mở đăng ký, có thể sửa tên và giới hạn đội trước khi chốt lịch.'))}${errors()}${submit(tr('Lưu cấu hình'))}</form>`);updateLadderPreview(document.getElementById('competition-edit-form'));}
+      if(action==='competition-edit'){modal(tr('Sửa giải · ')+c.title,`<form class="real-form" id="competition-edit-form" data-id="${c.id}" data-revision="${c.revision}" data-ladder="${esc(JSON.stringify(c.config.ladder||{}))}">${field(tr('Tên giải'),'title','required minlength="3" maxlength="100"','text',c.title)}${timeField(c.config.profile)}${c.config.format==='elo'?vnDeadlineField('submission_deadline',c.submission_deadline)+ladderFields(c.config.ladder)+note(tr('Hạn nộp sửa được tới trước khi qua hạn.'))+note(tr('Có thể đổi khoảng và giờ đợt đầu khi giải còn nhận bài; đợt đang chạy giữ nguyên.')):''}${field(tr('Số đội được đăng ký tối đa'),'max_teams','required min="2" max="4096"','number',c.config.max_teams)}${note(tr('Chỉ đổi thời gian ở bản nháp chưa có đội. Khi mở đăng ký, có thể sửa tên và giới hạn đội trước khi chốt lịch.'))}${errors()}${submit(tr('Lưu cấu hình'))}</form>`);updateLadderPreview(document.getElementById('competition-edit-form'));}
       else{const restore=action==='competition-restore';confirmAction((restore?tr('Khôi phục'):tr('Xóa'))+tr(' giải ')+c.title+'?',restore?tr('Giải trở lại danh sách, giữ nguyên trạng thái trước khi xóa.'):tr('Chỉ xóa bản nháp / giải mở chưa có đội chọn bot, hoặc giải đã hoàn tất. Toàn bộ lịch sử và kết quả được giữ.'),async()=>{await api.post('/admin/competitions/'+c.id+'/'+(restore?'restore':'archive'),{expected_revision:c.revision},keyFor(b));});}return;
     }
     if(action==='review-registration'){

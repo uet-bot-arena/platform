@@ -28,7 +28,7 @@ test('matching renders only safe contact text without a request-to-join action',
 test('admin can promote only staff and sees explicit merge confirmation',()=>{
   const html=peopleAdminPage({people:[{id:'a',display_name:'Student',role:'student'},{id:'b',display_name:'Teacher',role:'staff'}],teamChoices:[{id:'team',name:'Đội kiểm thử',roster:[]}],teamPolicy:{revision:1},teamMerges:{items:[{id:'p',people:[{display_name:'<script>x</script>'}],team_name:'New'}]}});
   assert.equal((html.match(/data-action="person-judge"/g)||[]).length,1);
-  assert.match(html,/Xác nhận ghép/);assert.match(html,/admin-membership-form/);assert.doesNotMatch(html,/<script>/);
+  assert.match(html,/Xác nhận ghép/);assert.match(html,/person-add/);assert.doesNotMatch(html,/admin-membership-form|<script>/);
 });
 test('a guest team never appears in the ranking chart',()=>{
   const html=page({route:'standings',ids:[],user:null,competitions:[],competition:{id:'x',title:'Cup'},standings:{items:[{team_id:'guest',name:'Guest',is_guest:true,rank:null,points:99,wins:33,draws:0,losses:0,played:33}]}});

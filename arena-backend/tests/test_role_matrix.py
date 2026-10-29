@@ -47,6 +47,7 @@ class RoleMatrix(APIHarness):
         public={"/api/v1/github/webhook",'/api/v1/auth/enroll','/api/v1/auth/reset','/api/v1/registrations','/api/v1/auth/login','/api/v1/auth/recovery','/api/v1/auth/email/request','/api/v1/auth/email/requests/{ident}','/api/v1/auth/email/verify','/api/v1/time','/api/v1/health/live','/api/v1/health/ready','/api/v1/platform','/api/v1/rules','/api/v1/experimental/guide'}
         principal_only={'/api/v1/auth/me','/api/v1/auth/logout','/api/v1/auth/password'}
         shared={'/api/v1/matching','/api/v1/rulesets','/api/v1/rulesets/schema','/api/v1/rulesets/{ident}','/api/v1/rulesets/{ident}/preview','/api/v1/rulesets/{ident}/package.json','/api/v1/rulesets/{ident}/kit.zip','/api/v1/rulesets/{ident}/starter.zip','/api/v1/experimental/starter.zip'}
+        practice={('GET','/api/v1/'+p) for p in ('ui/page','ui/personal','ui/read','starter.zip','submissions','sample-bots','jobs','jobs/{ident}','jobs/{ident}/report','jobs/{ident}/events')} | {('POST','/api/v1/'+p) for p in ('practice-submissions','practice-submissions/zip','benchmarks','matches')}
         operations={(path,method.upper()):op for path,methods in self.app.openapi()['paths'].items() for method,op in methods.items()}
         rows=[]
         candidates=[]
@@ -93,7 +94,7 @@ class RoleMatrix(APIHarness):
                             elif method!='GET' and not csrf:expected=403
                             elif role=='temporary' and route.path not in principal_only:expected=403
                             elif '/admin/' in route.path and role!='admin':expected=403
-                            elif role=='admin' and route.path not in principal_only and route.path not in shared and '/admin/' not in route.path:expected=403
+                            elif role=='admin' and route.path not in principal_only and route.path not in shared and (method,route.path) not in practice and '/admin/' not in route.path:expected=403
                             else:expected=200
                             response=client.request(method,path,headers=h,params=query,**({'json':body} if body is not None else {'content':b''} if method in ('POST','PUT') else {}))
                             rows.append({'method':method,'path':route.path,'role':role,'csrf':csrf,'expected':expected,'actual':response.status_code})

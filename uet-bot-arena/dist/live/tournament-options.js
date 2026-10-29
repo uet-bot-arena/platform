@@ -19,6 +19,7 @@ export function ladderFields(ladder={round_minutes:120}){
 }
 export function updateLadderPreview(form){
   if(!form)return;
+  updateTournamentForm(form);
   updateVnDeadlinePreviews(form);
   const inputs=[form.elements['ladder-hours'],form.elements['ladder-minutes']].filter(Boolean),calendar=form.querySelector('[data-ladder-calendar]'),error=form.querySelector('[data-ladder-error]');
   if(!calendar)return;
@@ -32,7 +33,7 @@ export function updateLadderPreview(form){
 }
 
 export function tournamentOptions(){
-  return l10n`${vnDeadlineField('submission_deadline')}<label class="field"><span>Máy chấm cho trận tính điểm</span>${select('grader_platform',[['windows','Windows (AppContainer)'],['linux','Linux (bubblewrap)']])}</label><label class="field"><span>Thể thức</span>${select('format',[['elo',tr('Ladder Elo → vòng chung → vòng tròn tính điểm')],['double_round_robin',tr('Vòng tròn 2 lượt (tối đa 32 đội)')],['swiss',tr('Swiss (nhiều đội) · mỗi cặp 2 ván đổi màu')]])}</label><details><summary>Luật ladder và xếp hạng chính thức</summary><div class="form-grid">${ladderFields()}${field(tr('Số đợt vòng chung'),'general-rounds','min="1" max="64"','number','20')}${field(tr('Số đội vòng tròn'),'group-size','min="2" max="128"','number','64')}${field(tr('Số đội vào chung kết'),'finalists','min="1" max="128"','number','16')}${field(tr('Số ván chính thức đầu dùng K lớn'),'k-games','min="1"','number','20')}${field(tr('K ban đầu'),'first-k','min="1" max="64"','number','32')}${field(tr('K sau đó'),'later-k','min="1" max="64"','number','16')}</div>${note(tr('Vòng tròn: thắng 1, hòa ½, thua 0; không cập nhật Elo. Số đội không quá kích thước nhóm đầu thì bỏ vòng chung.'))}</details>${field(tr('Số vòng Swiss (để trống: hệ thống tự tính theo số đội)'),'rounds','min="1" max="64"','number')}<label class="check-field"><input type="checkbox" name="custom-basic">Tùy chỉnh luật bàn cờ (kích thước, căn cứ, điều kiện thắng)</label><div class="form-grid">${field(tr('Số hàng (7–15)'),'board-rows','min="7" max="15" required','number','9')}${field(tr('Số cột (7–15)'),'board-cols','min="7" max="15" required','number','9')}${field(tr('Căn cứ Đỏ'),'base-red','pattern="[a-o]([1-9]|1[0-5])" required','text','a1')}${field(tr('Căn cứ Xanh (để trống: góc đối diện)'),'base-blue','','text','')}<label class="field"><span>Thắng khi diệt sạch</span>${select('eliminate-types',[['1',tr('1 loại quân')],['2',tr('2 loại quân')]])}</label></div><label class="check-field"><input name="base-capture" type="checkbox" checked>Thắng khi chiếm căn cứ đối phương</label><label class="field"><span>Xếp quân thủ công (không bắt buộc; để trống = xếp tự động đối xứng như OTTv2)</span><textarea class="input" name="placement" rows="3" placeholder='[{"square":"a2","side":"red","kind":"rock"}]'></textarea></label>${note(tr('Luật, thể thức và số vòng được giữ cố định sau khi tạo giải. Quỹ giờ của bot không đổi theo kích thước bàn; chỉ giới hạn số nước tăng theo số ô. Hệ thống từ chối luật cho phép một bên thắng ngay ở nước đầu. Swiss: mỗi vòng ghép các đội cùng điểm và tránh gặp lại đối thủ cũ; nếu số đội lẻ, một đội được nghỉ và nhận 6 điểm (như thắng cả vòng), mỗi đội nghỉ tối đa 1 lần; bằng điểm thì xét Buchholz (tổng điểm các đối thủ đã gặp).'))}`;
+  return l10n`${vnDeadlineField('submission_deadline')}<label class="field"><span>Máy chấm cho trận tính điểm</span>${select('grader_platform',[['windows','Windows (AppContainer)'],['linux','Linux (bubblewrap)']])}</label><label class="field"><span>Thể thức</span>${select('format',[['elo',tr('Ladder Elo → vòng chung → vòng tròn tính điểm')],['double_round_robin',tr('Vòng tròn 2 lượt (tối đa 32 đội)')],['swiss',tr('Swiss (nhiều đội) · mỗi cặp 2 ván đổi màu')]])}</label><div data-elo-options><div class="form-grid">${ladderFields()}${field(tr('Số đội vào chung kết'),'finalists','min="1" max="128"','number','16')}</div><details><summary>Nâng cao</summary><div class="form-grid">${field(tr('Số đợt vòng chung'),'general-rounds','min="1" max="64"','number','20')}${field(tr('Số đội vòng tròn'),'group-size','min="2" max="128"','number','64')}${field(tr('Số ván chính thức đầu dùng K lớn'),'k-games','min="1"','number','20')}${field(tr('K ban đầu'),'first-k','min="1" max="64"','number','32')}${field(tr('K sau đó'),'later-k','min="1" max="64"','number','16')}</div>${note(tr('Vòng tròn: thắng 1, hòa ½, thua 0; không cập nhật Elo. Số đội không quá kích thước nhóm đầu thì bỏ vòng chung.'))}</details><p class="info-note" data-ranking-preview></p></div><p class="info-note" data-points-preview hidden>Xếp hạng theo điểm; không tự chọn đội chung kết.</p>${field(tr('Số vòng Swiss (để trống: hệ thống tự tính theo số đội)'),'rounds','min="1" max="64"','number')}<label class="check-field"><input type="checkbox" name="custom-basic">Tùy chỉnh luật bàn cờ (kích thước, căn cứ, điều kiện thắng)</label><div class="form-grid">${field(tr('Số hàng (7–15)'),'board-rows','min="7" max="15" required','number','9')}${field(tr('Số cột (7–15)'),'board-cols','min="7" max="15" required','number','9')}${field(tr('Căn cứ Đỏ'),'base-red','pattern="[a-o]([1-9]|1[0-5])" required','text','a1')}${field(tr('Căn cứ Xanh (để trống: góc đối diện)'),'base-blue','','text','')}<label class="field"><span>Thắng khi diệt sạch</span>${select('eliminate-types',[['1',tr('1 loại quân')],['2',tr('2 loại quân')]])}</label></div><label class="check-field"><input name="base-capture" type="checkbox" checked>Thắng khi chiếm căn cứ đối phương</label><label class="field"><span>Xếp quân thủ công (không bắt buộc; để trống = xếp tự động đối xứng như OTTv2)</span><textarea class="input" name="placement" rows="3" placeholder='[{"square":"a2","side":"red","kind":"rock"}]'></textarea></label>${note(tr('Luật, thể thức và số vòng được giữ cố định sau khi tạo giải. Quỹ giờ của bot không đổi theo kích thước bàn; chỉ giới hạn số nước tăng theo số ô. Hệ thống từ chối luật cho phép một bên thắng ngay ở nước đầu. Swiss: mỗi vòng ghép các đội cùng điểm và tránh gặp lại đối thủ cũ; nếu số đội lẻ, một đội được nghỉ và nhận 6 điểm (như thắng cả vòng), mỗi đội nghỉ tối đa 1 lần; bằng điểm thì xét Buchholz (tổng điểm các đối thủ đã gặp).'))}`;
 }
 
 export function readTournamentOptions(data){
@@ -62,4 +63,20 @@ export function readTournamentOptions(data){
     result.basic_rules={rows,cols,bases,eliminate_types:Number(data.get('eliminate-types')),base_capture:data.get('base-capture')==='on',placement};
   }
   return result;
+}
+
+export function rankingPreview(data){
+ const n=(key,fallback)=>Number(data.get(key)||fallback),finalists=n('finalists',16);
+ return l10n`Sau hạn nộp: ${n('general-rounds',20)} đợt vòng chung cho mọi đội → ${n('group-size',64)} đội đầu đá vòng tròn 2 ván/cặp → ${finalists} đội đầu vào chung kết. Chung kết LAN tạo ở tab Chung kết, cần đúng 16 đội.`+(finalists!==16?' '+tr('Chung kết LAN hiện chỉ nhận đúng 16 đội; số khác chỉ dùng để công bố danh sách'):'');
+}
+export function updateTournamentForm(form){
+ if(form.id!=='competition-form')return;
+ const elo=form.elements.format.value==='elo';
+ if(!form.dataset.capacityEdited)form.elements.max_teams.value=elo?'1000':'16';
+ form.querySelector('[data-elo-options]').hidden=!elo;
+ form.querySelector('[data-elo-options]').querySelectorAll('input,select').forEach(input=>input.disabled=!elo);
+ form.querySelector('[data-points-preview]').hidden=elo;
+ form.querySelector('[data-competition-time]').hidden=elo;
+ form.querySelector('[data-elo-time]').hidden=!elo;
+ form.querySelector('[data-ranking-preview]').textContent=rankingPreview(new FormData(form));
 }

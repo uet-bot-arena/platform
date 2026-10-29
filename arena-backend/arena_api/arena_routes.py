@@ -37,11 +37,11 @@ def page_read(request: Request, view: Literal['home','team','submissions','compe
 
 
 def page_bundle(request,view,job_id,auth,section='all',poll=False):
-    state=request.app.state;team_id=auth['owner_id'];has_team=bool(auth['user']['team_id']);data={}
+    state=request.app.state;team_id=auth['owner_id'];has_team=bool(auth['user']['team_id']) and auth['user']['role']!='admin';data={}
     received=time.time_ns()/1_000_000
     if section!='data' and view in ('home','team','submissions','competitions'):
         data['personal']={'profile':state.people.profile(auth['user']['id']),
-            'team':state.teams.current(auth['user']['id']),'policy':state.teams.policy()}
+            'team':None if auth['user']['role']=='admin' else state.teams.current(auth['user']['id']),'policy':state.teams.policy()}
         data['team']=data['personal']['team']
         if view in ('home','team') and not poll:
             from arena_api.competition_views import team_competitions
@@ -78,6 +78,14 @@ def page_bundle(request,view,job_id,auth,section='all',poll=False):
 
 
 PRIVATE_SAMPLE = "Chẩn đoán của bot mẫu BTC được giữ kín"
+
+
+def audit_practice(request, auth, action, target):
+    if auth['user']['role']=='admin':
+        accounts=request.app.state.accounts
+        with accounts.store.transaction():
+            if not accounts.one('SELECT 1 FROM audit WHERE actor=? AND action=? AND target=?',(auth['user']['id'],action,target)):
+                accounts.audit(auth['user']['id'],action,target)
 
 
 def public_job(job, full=False):
@@ -204,7 +212,9 @@ async def practice_submission(body: PracticeSubmission, request: Request, idempo
     from starlette.concurrency import run_in_threadpool
     service, team = request.app.state.service, auth['owner_id']
     item = await run_in_threadpool(lambda: service.submit(team, '', body.runtime, raw.getvalue(), idempotency_key, channel='practice'))
-    await run_in_threadpool(service.enqueue, team, 'benchmark', {'submission_id':item['id']}, 'practice-check-'+item['id'])
+    job = await run_in_threadpool(service.enqueue, team, 'benchmark', {'submission_id':item['id']}, 'practice-check-'+item['id'])
+    audit_practice(request,auth,'submission.practice',item['id'])
+    audit_practice(request,auth,'practice.benchmark',job['id'])
     return service.public_submission(item)
 
 
@@ -215,8 +225,10 @@ async def practice_zip_submission(request: Request, idempotency_key: str = Heade
         raise Fault('forbidden', 'Hub này không nhận bản thử nhanh')
     item = await receive_zip(request, auth['owner_id'], '', idempotency_key, x_arena_runtime, 2, practice=True)
     from starlette.concurrency import run_in_threadpool
-    await run_in_threadpool(request.app.state.service.enqueue, auth['owner_id'], 'benchmark',
+    job = await run_in_threadpool(request.app.state.service.enqueue, auth['owner_id'], 'benchmark',
                             {'submission_id':item['id']}, 'practice-check-'+item['id'])
+    audit_practice(request,auth,'submission.practice',item['id'])
+    audit_practice(request,auth,'practice.benchmark',job['id'])
     return request.app.state.service.public_submission(item)
 
 
@@ -292,12 +304,15 @@ async def upload(ident: str, request: Request, x_submission_version: str = Heade
 
 @router.post("/benchmarks", status_code=202, summary="Đưa benchmark 72 mẫu vào hàng đợi")
 def benchmark(body: Benchmark, request: Request, idempotency_key: str = Header(), auth=Depends(practice_principal)):
-    return request.app.state.service.enqueue(auth["owner_id"], "benchmark", body.model_dump(exclude_none=True), idempotency_key)
+    job=request.app.state.service.enqueue(auth["owner_id"], "benchmark", body.model_dump(exclude_none=True), idempotency_key)
+    audit_practice(request,auth,'practice.benchmark',job['id'])
+    return job
 
 
 @router.post("/matches", status_code=202, summary="Trận luyện tập giữa hai version của cùng đội")
 def match(body: Match, request: Request, idempotency_key: str = Header(), auth=Depends(practice_principal)):
     job = request.app.state.service.enqueue(auth["owner_id"], "match", body.model_dump(exclude_none=True), idempotency_key)
+    audit_practice(request,auth,'practice.match',job['id'])
     return public_job(job, full=True)
 
 
@@ -343,7 +358,7 @@ def events(ident: str, request: Request, after: int = Query(0, ge=0, le=92233720
             try:
                 # Revoked/expired sessions must not keep a live feed open.
                 value=await request.app.state.broadcast.principal(request.app.state.accounts,request.cookies.get(COOKIE, ""))
-                if (value['user']['team_id'] or 'user:'+value['user']['id'])!=team_id:
+                if ('user:'+value['user']['id'] if value['user']['role']=='admin' else value['user']['team_id'] or 'user:'+value['user']['id'])!=team_id:
                     raise Fault('unauthorized','Đội đã thay đổi')
             except Fault:
                 yield 'event: auth_expired\ndata: {}\n\n'

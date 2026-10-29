@@ -25,7 +25,7 @@ test('student overview has a checklist instead of profile forms, including witho
  assert.match(entryChecklist(ready),/Đã đủ các bước/);assert.doesNotMatch(entryChecklist(ready),/<ol/);
 });
 test('Elo participation uses aggregate counts, state and missing-step link, and translates open separately',()=>{
- const competition={id:'c',title:'Cup',status:'open',submission_deadline:Date.parse('2026-11-05T16:00:00Z'),config:{format:'elo',ladder:{round_hours:1}},participation_counts:{active:2,eligible:1,ineligible:3},elo:{next_round_ms:12345}};
+ const competition={id:'c',title:'Cup',status:'open',submission_deadline:Date.parse('2026-11-05T16:00:00Z'),config:{format:'elo',ladder:{round_hours:1},official:{finalists:16}},participation_counts:{active:2,eligible:1,ineligible:3},elo:{next_round_ms:12345}};
  assert.match(eloJoinPanel({competition}),/Đăng nhập để tham gia/);
  const s={competition,user:{team_id:'t'},teamCompetitions:{items:[{id:'c',state:'ineligible',reasons:['team_size']}]}};
  assert.match(eloJoinPanel(s),/href="#\/team"/);assert.match(eloJoinPanel(s),/Đang đấu: 2/);

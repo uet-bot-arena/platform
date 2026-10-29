@@ -2,6 +2,10 @@ import {tr} from './i18n.js';
 import {esc,head,panel,table,field,select,badge,date,short} from './view.js';
 
 export const actionLabels={
+ "team.admin_create": "BTC lập đội cho người dùng",
+ "submission.practice": "BTC nạp bot thử riêng",
+ "practice.benchmark": "BTC kiểm tra bot riêng",
+ "practice.match": "BTC tạo trận luyện tập riêng",
  "admin.created": "Tạo tài khoản BTC",
  "auth.login": "Đăng nhập",
  "auth.logout": "Đăng xuất",

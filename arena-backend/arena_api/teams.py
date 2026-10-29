@@ -290,6 +290,25 @@ class Teams:
         self.db.execute("UPDATE accounts SET team_id=?,looking=0 WHERE id=?", (team, user))
         self.sync(team)
 
+    def admin_create(self, user, name, actor, key):
+        from arena.service import digest
+        if not 8 <= len(key) <= 128:
+            raise Fault('invalid_request', 'Idempotency-Key of 8..128 characters required')
+        operation = 'team.admin_create:' + user
+        hashed = digest({'name': name})
+        with self.store.transaction():
+            old = self.a.one('SELECT * FROM competition_commands WHERE actor=? AND operation=? AND key=?', (actor, operation, key))
+            if old:
+                if old['digest'] != hashed:
+                    raise Fault('idempotency_conflict', 'Key already used for different input')
+                return json.loads(old['response'])
+            if self.person(user)['team_id']:
+                raise Fault('admin_conflict', 'Người dùng đã có đội')
+            result = self.create(user, name, admin=True)
+            self.a.audit(actor, 'team.admin_create', result['id'])
+            self.db.execute('INSERT INTO competition_commands VALUES(?,?,?,?,?)', (actor, operation, key, hashed, json.dumps(result)))
+            return result
+
     def admin_change(self, team, target, action, actor):
         with self.store.transaction():
             value = self.a.team(team)

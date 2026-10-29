@@ -40,6 +40,44 @@ class PeopleAPI(APIHarness):
         state.competitions.teams = self.teams
         self.serial = 0
 
+    def test_admin_create_team_roles_csrf_idempotency_and_audit(self):
+        student,user=self.person()
+        path='/api/v1/admin/users/'+user['id']+'/team'
+        headers={'Idempotency-Key':'admin-create-team'}
+        self.assertEqual(student.post(path,json={'name':'Denied'},headers=headers).status_code,403)
+        self.assertEqual(self.other_client().post(path,json={'name':'Denied'},headers=headers).status_code,401)
+        csrf=self.client.headers.pop('X-CSRF-Token')
+        self.assertEqual(self.client.post(path,json={'name':'Denied'},headers=headers).status_code,403)
+        self.client.headers['X-CSRF-Token']=csrf
+        r=self.client.post(path,json={'name':'Đội mới của BTC'},headers=headers)
+        self.assertEqual(r.status_code,201,r.text);team=r.json()
+        self.assertEqual(team['captain_id'],user['id']);self.assertEqual(len(team['invite_code']),8)
+        self.assertEqual(self.client.post(path,json={'name':'Đội mới của BTC'},headers=headers).json(),team)
+        self.assertEqual(self.client.post(path,json={'name':'Tên khác'},headers=headers).status_code,409)
+        self.assertEqual(self.client.post(path,json={'name':'Đội khác'},headers={'Idempotency-Key':'another-team-key'}).status_code,409)
+        audit=self.app.state.accounts.rows("SELECT actor,target FROM audit WHERE action='team.admin_create'")
+        self.assertEqual(len(audit),1);self.assertEqual(audit[0]['target'],team['id'])
+        self.assertNotEqual(audit[0]['actor'],user['id'])
+
+    def test_admin_team_listing_roster_and_student_archive_restore(self):
+        student,user=self.person('22025526@vnu.test','Captain')
+        team=self.team(student,'NHÓM 5')
+        rows=self.client.get('/api/v1/admin/teams').json()['items']
+        row=next(t for t in rows if t['id']==team['id'])
+        self.assertEqual((row['member_count'],row['team_size']),(1,4))
+        self.assertEqual(row['roster'][0]['email'],'22025526@vnu.test')
+        self.assertTrue(row['roster'][0]['captain'])
+        self.assertEqual(student.get('/api/v1/admin/teams').status_code,403)
+        self.assertEqual(self.other_client().get('/api/v1/admin/teams').status_code,401)
+        r=self.client.post('/api/v1/admin/teams/'+team['id']+'/archive',json={'expected_revision':row['revision']})
+        self.assertEqual(r.status_code,200,r.text)
+        self.assertEqual(self.client.get('/api/v1/admin/teams').json()['items'],[])
+        rows=self.client.get('/api/v1/admin/teams?visibility=all').json()['items'];self.assertEqual(len(rows),1)
+        self.assertTrue(rows[0]['archived_ms']);self.assertEqual(rows[0]['roster'],row['roster'])
+        r=self.client.post('/api/v1/admin/teams/'+team['id']+'/restore',json={'expected_revision':r.json()['revision']})
+        self.assertEqual(r.status_code,200,r.text)
+        self.assertTrue(self.app.state.accounts.one('SELECT locked FROM accounts WHERE id=?',(user['id'],))['locked'])
+
     def proof(self, email, purpose="verify"):
         guest = self.other_client()
         response = guest.post("/api/v1/auth/email/request", json={"email": email, "purpose": purpose})

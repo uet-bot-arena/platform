@@ -1,5 +1,6 @@
 from typing import Literal
-from fastapi import APIRouter, Depends, Query, Request
+import json
+from fastapi import APIRouter, Depends, Header, Query, Request
 from pydantic import Field, SecretStr
 
 from arena_api.dependencies import active_principal, admin_principal, participant_principal, peer
@@ -138,21 +139,30 @@ def users(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = 
 
 
 @router.get("/admin/teams", summary="Các đội trong mùa để BTC chọn chỉnh thành viên")
-def team_choices(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0), competition: str | None = None, auth=Depends(admin_principal)):
+def team_choices(request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0), competition: str | None = None, visibility: Literal['active','deleted','all'] = 'active', auth=Depends(admin_principal)):
     states=competition_filter(request, competition)
     a, teams = request.app.state.accounts, request.app.state.teams
     with a.store.lock:
         where=" AND id IN ("+','.join('?' for _ in states)+")" if states else " AND 0" if states is not None else ""
-        rows = a.rows("SELECT id,name,is_guest,locked_ms FROM teams WHERE season_id=? AND archived_ms IS NULL"+where+" ORDER BY name,id LIMIT ? OFFSET ?", (teams.season,*(states or {}),limit,offset))
+        visible = " AND archived_ms IS NULL" if visibility=='active' else " AND archived_ms IS NOT NULL" if visibility=='deleted' else ''
+        rows = a.rows("SELECT id,name,is_guest,locked_ms,archived_ms,revision,legacy_roster,members,created_ms FROM teams WHERE season_id=?"+visible+where+" ORDER BY name,id LIMIT ? OFFSET ?", (teams.season,*(states or {}),limit,offset))
         for row in rows:
             if states is not None:row['participation']=states[row['id']]
-            row["roster"] = [{k: p[k] for k in ("id", "display_name", "captain")} for p in teams.roster(row["id"])]
+            row["roster"] = [{k: p[k] for k in ("id", "display_name", "captain", "username")} | {'email': p['username'] if p['role'] in ('student','staff') else ''} for p in teams.roster(row["id"])]
+            members = json.loads(row.pop('members'))
+            row['member_count'] = len(members) if row['legacy_roster'] else len(row['roster'])
+            row['team_size'] = teams.rules.team_size
         return {"items": rows, "limit": limit, "offset": offset}
 
 
 @router.post("/admin/users/{ident}/judge", summary="Nâng hoặc thu hồi Giám khảo của cán bộ")
 def judge(ident: str, body: Flag, request: Request, auth=Depends(admin_principal)):
     return request.app.state.people.judge(ident, body.enabled, auth["user"]["id"])
+
+
+@router.post('/admin/users/{ident}/team', status_code=201, summary='BTC lập đội mới cho người chưa có đội')
+def create_person_team(ident: str, body: TeamName, request: Request, idempotency_key: str = Header(), auth=Depends(admin_principal)):
+    return request.app.state.teams.admin_create(ident, body.name, auth['user']['id'], idempotency_key)
 
 
 @router.post("/admin/users/{ident}/lock", summary="Khóa người dùng và thu hồi phiên")

@@ -15,7 +15,10 @@ class PageData(APIHarness):
         self.assertEqual(data['dashboard']['counts']['benchmarks'],1)
         self.assertEqual(first.get('/api/v1/ui/page?view=jobs&job_id='+other['id']).status_code,404)
         self.assertEqual(self.other_client().get('/api/v1/ui/page?view=home').status_code,401)
-        self.assertEqual(self.client.get('/api/v1/ui/page?view=home').status_code,403)
+        admin=self.client.get('/api/v1/ui/page?view=home')
+        self.assertEqual(admin.status_code,200,admin.text)
+        self.assertIsNone(admin.json()['personal']['team'])
+        self.assertEqual(admin.json()['jobs'],[])
         self.assertEqual(first.get('/api/v1/ui/page?view=unknown').status_code,422)
         for view in ('team','submissions','benchmark','practice'):
             response=first.get('/api/v1/ui/page?view='+view)

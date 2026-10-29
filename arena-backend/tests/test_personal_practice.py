@@ -76,6 +76,44 @@ class PersonalPractice(APIHarness):
         new=self.code(a,'print(2)','team-source').json()
         self.assertNotEqual(new['team_id'],sub['team_id'])
 
+    def test_admin_private_practice_roles_owner_audit_and_read_worker(self):
+        student,user=self.person()
+        mine=self.code(self.client).json()
+        admin=self.client.get('/api/v1/auth/me').json()['user']
+        self.assertEqual(mine['team_id'],'user:'+admin['id'])
+        first=self.client.get('/api/v1/jobs').json()['items'][0]
+        for suffix in ('','/events'):
+            self.assertEqual(self.client.get('/api/v1/jobs/'+first['id']+suffix).status_code,200)
+            self.assertEqual(student.get('/api/v1/jobs/'+first['id']+suffix).status_code,404)
+        other=self.code(student,'print(2)','student-source').json()
+        jid=student.get('/api/v1/jobs').json()['items'][0]['id']
+        self.assertEqual(self.client.get('/api/v1/jobs/'+jid).status_code,404)
+        zipped=self.zip(self.client,[('bot/bot.py','print(3)')],'admin-zip')
+        self.assertEqual(zipped.status_code,201,zipped.text)
+        r=self.client.post('/api/v1/benchmarks',json={'submission_id':mine['id']},headers={'Idempotency-Key':'admin-check-again'})
+        self.assertEqual(r.status_code,202,r.text)
+        r=self.client.post('/api/v1/matches',json={'red_submission_id':mine['id'],'blue_submission_id':mine['id'],'match_ms':10000,'delegate_timeout_claims':True},headers={'Idempotency-Key':'admin-private-match'})
+        self.assertEqual(r.status_code,202,r.text)
+        self.assertEqual(self.client.get('/api/v1/ui/page?view=practice').status_code,200)
+        self.assertEqual(self.client.get('/api/v1/ui/page?view=home').status_code,200)
+        for path in ('/teams/me/github','/team/competitions','/team/elo'):
+            self.assertEqual(self.client.get('/api/v1'+path).status_code,403,path)
+        body={'submission_id':mine['id'],'benchmark_id':first['id'],'delegate_timeout_claims':True}
+        self.assertEqual(self.client.post('/api/v1/competitions/'+'a'*32+'/entry',json=body,headers={'Idempotency-Key':'admin-no-entry'}).status_code,403)
+        self.assertEqual(self.client.post('/api/v1/teams',json={'name':'Admin cannot join'}).status_code,403)
+        audit=self.app.state.accounts.rows("SELECT actor,action FROM audit WHERE action IN ('submission.practice','practice.benchmark','practice.match')")
+        self.assertTrue(audit);self.assertEqual({x['actor'] for x in audit},{admin['id']})
+        self.app.state.accounts.bootstrap_admin('btc5','private-test-password')
+        second=self.other_client();login=second.post('/api/v1/auth/login',json={'username':'btc5','password':'private-test-password'});second.headers['X-CSRF-Token']=login.json()['csrf_token']
+        self.assertEqual(second.get('/api/v1/jobs/'+first['id']).status_code,404)
+        self.assertEqual(self.code(second,'print(4)','btc5-code').status_code,201)
+        from fastapi.testclient import TestClient
+        from arena_api.read_worker import create_app as read_app
+        with TestClient(read_app(self.settings),base_url=self.settings.origin) as reader:
+            reader.cookies.update(self.client.cookies)
+            items=reader.get('/api/v1/ui/read?view=home').json()['submissions']
+            self.assertEqual({x['team_id'] for x in items},{'user:'+admin['id']})
+
     def test_zip_validation_shared_quota_and_qualification(self):
         a,user=self.person()
         r=self.zip(a,[('bot/',''),('bot/bot.py','import helper'),('bot/helper.py','x=1')])

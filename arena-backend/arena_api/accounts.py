@@ -329,7 +329,7 @@ class Accounts:
         elif role=='system':where.append('actor.id IS NULL')
         groups={'auth':['auth.'],'competition':['competition.','elo.','finals.','season.'],'grader':['grader.'],
                 'account':['team.','registration.','person.','account.','admin.','recovery.'],
-                'results':['results.'],'bot':['submission.','github.','sample_bot.']}
+                'results':['results.'],'bot':['submission.','github.','sample_bot.','practice.']}
         if group in groups:
             where.append('('+' OR '.join('instr(a.action,?)=1' for _ in groups[group])+')')
             args.extend(groups[group])
